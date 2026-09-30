@@ -3,10 +3,9 @@ import os
 from logging.config import fileConfig
 
 from alembic import context
+from factory_store.schema import metadata
 from sqlalchemy import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
-
-from factory_store.schema import metadata
 
 URL_VAR = "FACTORY_STORE_URL"
 DEFAULT_URL = "postgresql+asyncpg://factory:factory@127.0.0.1:5432/factory"
