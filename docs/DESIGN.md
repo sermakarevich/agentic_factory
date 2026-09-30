@@ -484,6 +484,18 @@ process state. No task.json, no attempts log, no signal files.
   only, so gRPC hangs. Postgres, for the store, runs from the repo's
   docker compose (`just db`); the runner keeps running on the host either
   way, since it needs the coder CLIs, their auth stores and the worktrees.
+- The UI knows the job. `search_attributes.py` names six Keyword search
+  attributes the server indexes: `Provider`, `Model`, `Workdir` set by the
+  cli when it starts the workflow, `Runner` upserted by the workflow after
+  the job activity (the identity of the runner that ran its last try, from
+  the activity's `TryResult` or the `ActivityError`), `Outcome` (`done` |
+  `failed`) and `Verdict` upserted at the end. The UI lists them as
+  columns and takes them in filters (`Provider="claude" AND Outcome="failed"`).
+  They must exist on the server first: `just temporal-attributes` (the cli's
+  `attributes` command) adds the missing ones once; a start with an unknown
+  attribute is refused, an upsert of one blocks the workflow task. The
+  runner polls as `host:pid:sha` (`identity.py`), which the task queue's
+  workers page and every `ActivityTaskStarted` event show.
 - Harness calls preferred over API calls for cost; both are activities.
 - Steps go to the OpenCode Go API (`https://opencode.ai/zen/go/v1`),
   covered by the same subscription as the opencode CLI. Key in

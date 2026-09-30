@@ -1,4 +1,5 @@
 from factory_store.store import Store
+from pydantic import BaseModel, Field
 from temporalio import activity
 
 from agentic_factory.callbacks.fanout import Fanout
@@ -18,12 +19,22 @@ from temporal_agentic_factory.activities.failure import to_application_error
 from temporal_agentic_factory.activities.heartbeat import Heartbeat, HeartbeatCallback
 
 
+class TryResult(BaseModel):
+    """What a try that ended with a result gives the workflow: the result and
+    the runner that produced it, for the UI's `Runner` column. A failed try
+    names its runner in the `ActivityError` instead."""
+
+    result: JobResult
+    runner: str = Field(description="The runner's Temporal identity: host:pid:sha.")
+
+
 class JobActivity:
-    def __init__(self, store: Store) -> None:
+    def __init__(self, store: Store, runner: str) -> None:
         self.store = store
+        self.runner = runner
 
     @activity.defn
-    async def execute_job(self, job: Job) -> JobResult:
+    async def execute_job(self, job: Job) -> TryResult:
         """One try of the job. Temporal retries by re-running this with the
         same `job`, session included; the heartbeat of the earlier try only
         says how big that session got, so the engine can compact it before
@@ -34,11 +45,12 @@ class JobActivity:
         job = _continued_for_this_try(job, info)
         callback = self._callback_for_try(job.session_id, info.attempt)
         try:
-            return await jobs.run(
+            result = await jobs.run(
                 job, callback, harness_for(job.provider), _repair_summary_with_step_client
             )
         except JobFailed as failure:
             raise to_application_error(failure) from failure
+        return TryResult(result=result, runner=self.runner)
 
     def _callback_for_try(self, session_id: str, attempt: int) -> JobCallback:
         """Heartbeats to Temporal, lines to the log, the try and its events to the store."""

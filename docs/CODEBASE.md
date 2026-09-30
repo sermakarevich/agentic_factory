@@ -32,7 +32,7 @@ agentic_factory/
     temporal_agentic_factory/ # Temporal binding: installs `agentic_factory`
       pyproject.toml        # package `temporal_agentic_factory`
       justfile
-      src/temporal_agentic_factory/  # cli, client, runner
+      src/temporal_agentic_factory/  # cli, client, runner, identity (host:pid:sha), search_attributes (the ui's columns)
         activities/           # session, job, report, record: one class each; failure, heartbeat: what only activities need
         workflows/            # job: the workflows composing the activities
         settings/             # server address, activity limits

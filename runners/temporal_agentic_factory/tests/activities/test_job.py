@@ -25,7 +25,7 @@ def db() -> FakeStore:
 
 
 def execute_job(db: FakeStore) -> activity.JobActivity:
-    return activity.JobActivity(db)  # type: ignore[arg-type]
+    return activity.JobActivity(db, "host:1:abc")  # type: ignore[arg-type]
 
 
 async def test_second_try_continues_with_the_context_size_from_heartbeat(
@@ -48,7 +48,7 @@ async def test_second_try_continues_with_the_context_size_from_heartbeat(
 
     assert ran[0].session_id == "s1" and ran[0].session_tokens == 120_000
     assert ran[0].prompt.startswith("Try 2:")
-    assert result.session_id == "s1"
+    assert result.result.session_id == "s1" and result.runner == "host:1:abc"
 
 
 async def test_first_try_runs_the_job_as_given(

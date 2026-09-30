@@ -14,17 +14,19 @@ from temporal_agentic_factory.settings.load import settings
 from temporal_agentic_factory.workflows.job import JobWorkflow
 
 
-async def serve() -> None:
-    """Poll the task queue until stopped. The process's one store is made
-    here, given to every activity, and closed when the polling ends."""
+async def serve(identity: str) -> None:
+    """Poll the task queue until stopped, as `identity` to the server. The
+    process's one store is made here, given to every activity, and closed
+    when the polling ends."""
     client = await connect()
     store = Store.from_url(shared.store.url)
     try:
         worker = Worker(
             client,
             task_queue=settings.temporal.task_queue,
+            identity=identity,
             workflows=[JobWorkflow],
-            activities=_activities(store),
+            activities=_activities(store, identity),
             max_concurrent_activities=settings.runner.max_concurrent_activities,
         )
         await worker.run()
@@ -32,10 +34,10 @@ async def serve() -> None:
         await store.dispose()
 
 
-def _activities(store: Store) -> list[Callable[..., Any]]:
+def _activities(store: Store, identity: str) -> list[Callable[..., Any]]:
     return [
         SessionActivity(store).create_session,
-        JobActivity(store).execute_job,
+        JobActivity(store, identity).execute_job,
         ReportActivity(store).build_report,
         RecordActivity(store).record_job,
     ]

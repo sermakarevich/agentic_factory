@@ -52,6 +52,7 @@ temporal-install:
     temporal --version
 
 # start the local Temporal dev server: gRPC {{temporal_ip}}:{{temporal_port}}, UI :{{temporal_ui_port}}, history in {{temporal_data}}/temporal.db
+# (then `just temporal-attributes` once, so the UI has the job columns)
 temporal ui_ip=temporal_ip:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -64,6 +65,10 @@ temporal ui_ip=temporal_ip:
 # other tailnet devices (gRPC stays on 127.0.0.1)
 temporal-tailscale:
     just temporal 0.0.0.0
+
+# register the job's search attributes (Provider, Model, Workdir, Runner, Outcome, Verdict) on the server: once per server
+temporal-attributes:
+    uv run factory attributes
 
 # is the dev server up?
 temporal-health:

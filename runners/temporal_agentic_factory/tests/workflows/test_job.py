@@ -15,6 +15,8 @@ from temporalio.worker import Worker
 from agentic_factory.job.contract import Job, JobResult
 from agentic_factory.job.outcome import JobOutcome
 from agentic_factory.job.report.contract import JobReport, Verdict
+from temporal_agentic_factory import search_attributes
+from temporal_agentic_factory.activities.job import TryResult
 from temporal_agentic_factory.activities.report import ReportRequest
 from temporal_agentic_factory.workflows.job import JobWorkflow, _failure_text
 
@@ -30,13 +32,13 @@ async def fake_session(job: Job) -> str:
 
 
 @activity.defn(name="execute_job")
-async def fake_job(job: Job) -> JobResult:
+async def fake_job(job: Job) -> TryResult:
     """Fails once, then answers. Stands in for the real activity."""
     tries.append(activity.info().attempt)
     sessions.append(job.session_id)
     if activity.info().attempt == 1:
         raise ApplicationError("no output", type="Stalled")
-    return JobResult(session_id=job.session_id, cost_usd=0.5)
+    return TryResult(result=JobResult(session_id=job.session_id, cost_usd=0.5), runner="r1")
 
 
 @activity.defn(name="build_report")
@@ -50,14 +52,20 @@ async def fake_record(outcome: JobOutcome) -> None:
     recorded.append(outcome)
 
 
+async def _environment() -> WorkflowEnvironment:
+    """A test server with the job's search attributes, as `factory attributes`
+    gives a real one; without them the workflow's upserts are refused."""
+    env = await WorkflowEnvironment.start_time_skipping(data_converter=pydantic_data_converter)
+    await search_attributes.add(env.client, "default", [key.name for key in search_attributes.KEYS])
+    return env
+
+
 async def test_job_workflow_retries_the_activity_and_returns_its_result() -> None:
     tries.clear()
     sessions.clear()
     report_requests.clear()
     recorded.clear()
-    async with await WorkflowEnvironment.start_time_skipping(
-        data_converter=pydantic_data_converter
-    ) as env:
+    async with await _environment() as env:
         queue = f"test-{uuid.uuid4()}"
         async with Worker(
             env.client,
@@ -65,13 +73,18 @@ async def test_job_workflow_retries_the_activity_and_returns_its_result() -> Non
             workflows=[JobWorkflow],
             activities=[fake_session, fake_job, fake_report, fake_record],
         ):
-            result = await env.client.execute_workflow(
+            handle = await env.client.start_workflow(
                 JobWorkflow.run,
                 Job(prompt="hi", workdir=".", model="m"),
                 id=f"j-{uuid.uuid4()}",
                 task_queue=queue,
             )
+            result = await handle.result()
+            shown = (await handle.describe()).typed_search_attributes
     assert tries == [1, 2] and sessions == ["s1", "s1"]  # one session, made before try 1
+    assert shown.get(search_attributes.RUNNER) == "r1"  # what the ui's columns show
+    assert shown.get(search_attributes.OUTCOME) == "done"
+    assert shown.get(search_attributes.VERDICT) == "done"
     assert result.result is not None
     assert result.session_id == "s1"
     assert result.result.session_id == "s1" and result.result.cost_usd == 0.5
@@ -106,13 +119,11 @@ def test_failure_text_names_what_ended_the_last_try() -> None:
 
 async def test_a_permanently_failed_job_still_gets_a_report() -> None:
     @activity.defn(name="execute_job")
-    async def always_fails(job: Job) -> JobResult:
+    async def always_fails(job: Job) -> TryResult:
         raise ApplicationError("no output", type="Stalled")
 
     report_requests.clear()
-    async with await WorkflowEnvironment.start_time_skipping(
-        data_converter=pydantic_data_converter
-    ) as env:
+    async with await _environment() as env:
         queue = f"test-{uuid.uuid4()}"
         async with Worker(
             env.client,
@@ -139,9 +150,7 @@ async def test_a_failed_report_is_not_fatal() -> None:
     report_requests.clear()
     tries.clear()
     sessions.clear()
-    async with await WorkflowEnvironment.start_time_skipping(
-        data_converter=pydantic_data_converter
-    ) as env:
+    async with await _environment() as env:
         queue = f"test-{uuid.uuid4()}"
         async with Worker(
             env.client,
@@ -166,9 +175,7 @@ async def test_a_failed_record_is_not_fatal() -> None:
 
     tries.clear()
     sessions.clear()
-    async with await WorkflowEnvironment.start_time_skipping(
-        data_converter=pydantic_data_converter
-    ) as env:
+    async with await _environment() as env:
         queue = f"test-{uuid.uuid4()}"
         async with Worker(
             env.client,

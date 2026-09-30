@@ -11,11 +11,12 @@ with workflow.unsafe.imports_passed_through():
         TimeoutError,
     )
 
-    from agentic_factory.job.contract import Job, JobResult
+    from agentic_factory.job.contract import Job
     from agentic_factory.job.outcome import JobOutcome
     from agentic_factory.job.report.contract import JobReport
     from agentic_factory.settings.load import settings as app_settings
-    from temporal_agentic_factory.activities.job import JobActivity
+    from temporal_agentic_factory import search_attributes
+    from temporal_agentic_factory.activities.job import JobActivity, TryResult
     from temporal_agentic_factory.activities.record import RecordActivity
     from temporal_agentic_factory.activities.report import ReportActivity, ReportRequest
     from temporal_agentic_factory.activities.session import SessionActivity
@@ -64,7 +65,7 @@ async def _created_session_id(job: Job) -> str:
     )
 
 
-async def _execute_job_activity(job: Job) -> JobResult:
+async def _execute_job_activity(job: Job) -> TryResult:
     """One job run: the execute_job activity with a timeout past the job's own,
     a heartbeat timeout past its stall limit, and the retries from settings."""
     cfg = settings.job_activity
@@ -112,17 +113,22 @@ async def run_job_with_report(job: Job) -> JobOutcome:
         failure=request.failure,
         report=report,
     )
+    workflow.upsert_search_attributes(search_attributes.at_end(outcome))
     await _recorded(outcome)
     return outcome
 
 
 async def _job_as_report_request(job: Job) -> ReportRequest:
     """The job run, as the report step wants it: its result, or the failure
-    that ended it after every try."""
+    that ended it after every try. Either way the runner of the last try goes
+    to the UI."""
     try:
-        return ReportRequest(session_id=job.session_id, result=await _execute_job_activity(job))
+        done = await _execute_job_activity(job)
     except ActivityError as error:
+        workflow.upsert_search_attributes(search_attributes.after_job(error.identity))
         return ReportRequest(session_id=job.session_id, failure=_failure_text(error))
+    workflow.upsert_search_attributes(search_attributes.after_job(done.runner))
+    return ReportRequest(session_id=job.session_id, result=done.result)
 
 
 async def _report_or_none(request: ReportRequest) -> JobReport | None:

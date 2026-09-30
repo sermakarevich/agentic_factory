@@ -255,6 +255,21 @@ queues.
   localhost, since the dev server takes one UI address. `tailscale serve` would be
   cleaner (HTTPS, a name) but needs the feature enabled on the tailnet by
   its admin.
+- **Search attributes for the UI, memo rejected** (Sep 30). The workflow
+  list showed status, id, type and times, nothing about the job. Six
+  Keyword search attributes (`Provider`, `Model`, `Workdir`, `Runner`,
+  `Outcome`, `Verdict`) now travel with the workflow: set at start by the
+  cli, upserted by the workflow as it learns them. A memo would have been
+  simpler (no registration) but the UI shows a memo only on the workflow's
+  own page, not as list columns or filters. The runner's identity became
+  `host:pid:sha` instead of the SDK's `pid@host`, so the `Runner` column and
+  the workers page say which checkout is running. The workflow cannot ask
+  the server which worker ran an activity, so the job activity returns
+  `TryResult(result, runner)` and a failed try's `ActivityError` carries
+  the identity. Registration is a cli command (`factory attributes`, list
+  then add the missing) rather than `start-dev --search-attribute` flags,
+  so the names live in one module; the time-skipping test server takes the
+  add call but has no list, which is why the tests call `add` directly.
 - **Proven by the restart test.** Runner killed mid-job and restarted:
   Temporal failed the try with a heartbeat timeout, try 2 started with
   attempt 2 in the session made before try 1, and the coder resumed it
