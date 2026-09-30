@@ -48,7 +48,9 @@ async def _run_and_record_try(job: Job, observer: Observer, db: Store, attempt: 
     """The engine run, with how it ended written to the try's row: done,
     failed with the failure's text, or cancelled."""
     try:
-        result = await jobs.run(job, observer, harness_for(job.provider), _repair_summary)
+        result = await jobs.run(
+            job, observer, harness_for(job.provider), _repair_summary_with_step_client
+        )
     except JobFailed as failure:
         await db.finish_try(job.session_id, attempt, Outcome.FAILED, str(failure))
         raise to_application_error(failure) from failure
@@ -62,11 +64,11 @@ async def _run_and_record_try(job: Job, observer: Observer, db: Store, attempt: 
 def _continued_for_this_try(job: Job, info: activity.Info) -> Job:
     """The job as this try runs it: continued from the earlier tries, with the
     session size the last heartbeat of the previous try reported."""
-    previous = Heartbeat.last(info.heartbeat_details)
+    previous = Heartbeat.last_of_previous_try(info.heartbeat_details)
     return continue_job(job, info.attempt, previous.context_tokens if previous else 0)
 
 
-async def _repair_summary(block: str) -> JobSummary | None:
+async def _repair_summary_with_step_client(block: str) -> JobSummary | None:
     """The engine's repair: the summary step with the client for the step
     provider from settings, made only when a summary needs repairing."""
     return await repair_summary(block, client_for(settings.step.provider))

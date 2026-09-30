@@ -8,8 +8,8 @@ from temporal_agentic_factory.heartbeat import Heartbeat, HeartbeatObserver
 
 
 def test_last_reads_a_plain_dict_or_nothing() -> None:
-    assert Heartbeat.last([]) is None
-    last = Heartbeat.last([{"at": None, "events": 3, "context_tokens": 7}])
+    assert Heartbeat.last_of_previous_try([]) is None
+    last = Heartbeat.last_of_previous_try([{"at": None, "events": 3, "context_tokens": 7}])
     assert last is not None and last.context_tokens == 7 and last.events == 3
 
 

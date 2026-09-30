@@ -1,22 +1,23 @@
 import asyncio
 import contextlib
-from asyncio.subprocess import DEVNULL, PIPE, Process
+from asyncio.subprocess import Process
 from collections.abc import Awaitable, Callable
-from pathlib import Path
 from time import monotonic
 
-from agentic_factory.event import Observer
+from agentic_factory.event import Event, Observer
 from agentic_factory.failure import CoderCrashed, JobFailed, Stalled, TimedOut
 from agentic_factory.job.context import ContextWatch, compact
 from agentic_factory.job.contract import Job, JobResult
 from agentic_factory.job.defaults import with_default_model
-from agentic_factory.job.environment import environment
 from agentic_factory.job.harness import Harness
 from agentic_factory.job.ledger import Ledger
 from agentic_factory.job.session import create_session
+from agentic_factory.job.spawn import start_process
 from agentic_factory.job.summary import JobSummary
 from agentic_factory.job.summary_parse import parse_summary
 from agentic_factory.job.summary_prompt import wrap_prompt
+from agentic_factory.job.tail import tail_of
+from agentic_factory.job.workdir import ensure_workdir
 from agentic_factory.settings.load import settings
 from agentic_factory.tokens import Tokens
 
@@ -31,18 +32,13 @@ async def run(job: Job, observer: Observer, harness: Harness, repair: Repair) ->
     does not parse goes to `repair`, one model step, before the result is made.
     The caller picks the harness (`harness_for`) and the repair (`repair_summary`)."""
     job = with_default_model(job, harness)
-    _make_workdir(job)
+    ensure_workdir(job)
     job = await _with_session(job, harness)
     started = monotonic()
-    if job.session_tokens >= settings.job.compact_at_tokens:
-        await compact(harness, job, job.session_id, observer)
+    await _compact_if_large(job, harness, observer)
     ledger = await _run_coder(job, harness, observer, started)
     summary = await _parse_or_repair_summary(ledger, repair)
     return _job_result(ledger, summary, monotonic() - started)
-
-
-def _make_workdir(job: Job) -> None:
-    Path(job.workdir).mkdir(parents=True, exist_ok=True)
 
 
 async def _with_session(job: Job, harness: Harness) -> Job:
@@ -53,38 +49,41 @@ async def _with_session(job: Job, harness: Harness) -> Job:
     return job.model_copy(update={"session_id": await create_session(job, harness)})
 
 
+async def _compact_if_large(job: Job, harness: Harness, observer: Observer) -> None:
+    """A session resumed past the compaction threshold is compacted first."""
+    if job.session_tokens >= settings.job.compact_at_tokens:
+        await compact(harness, job, job.session_id, observer)
+
+
 async def _run_coder(job: Job, harness: Harness, observer: Observer, started: float) -> Ledger:
     """Start the coder and read it to the end, killing it on any failure or
     cancellation. Returns the ledger of what it said; raises `CoderCrashed`
     when it died or never said it finished."""
     ledger = Ledger()
     proc = await _start_coder(job, harness)
-    stderr_task = asyncio.create_task(_stderr_tail(proc, settings.job.failure_tail_chars))
+    stderr_task = asyncio.create_task(_stderr_tail(proc))
     try:
         await _read_events(proc, job, harness, observer, started, ledger)
         exit_code = await proc.wait()
     except (JobFailed, asyncio.CancelledError):
         await _kill_coder(proc)
         raise
-    stderr = await stderr_task
-    if exit_code != 0:
-        raise CoderCrashed(exit_code, stderr)
-    if ledger.finished is None:
-        raise CoderCrashed(exit_code, f"exited without saying it finished\n{stderr}")
+    _raise_unless_finished(exit_code, await stderr_task, ledger)
     return ledger
 
 
 async def _start_coder(job: Job, harness: Harness) -> Process:
-    """The coder process, in the workdir, with the wrapped prompt and closed stdin."""
-    return await asyncio.create_subprocess_exec(
-        *harness.command(job.model_copy(update={"prompt": wrap_prompt(job.prompt)})),
-        cwd=job.workdir,
-        env=environment(job.workdir),
-        stdin=DEVNULL,  # claude waits for piped input when stdin is open
-        stdout=PIPE,
-        stderr=PIPE,
-        limit=settings.job.line_limit_bytes,
-    )
+    """The coder process, in the workdir, with the wrapped prompt."""
+    argv = harness.command(job.model_copy(update={"prompt": wrap_prompt(job.prompt)}))
+    return await start_process(argv, job.workdir, limit=settings.job.line_limit_bytes)
+
+
+def _raise_unless_finished(exit_code: int, stderr: str, ledger: Ledger) -> None:
+    """`CoderCrashed` when the coder died, or ended without saying it finished."""
+    if exit_code != 0:
+        raise CoderCrashed(exit_code, stderr)
+    if ledger.finished is None:
+        raise CoderCrashed(exit_code, f"exited without saying it finished\n{stderr}")
 
 
 async def _read_events(
@@ -101,14 +100,19 @@ async def _read_events(
     watch = ContextWatch(job, harness, observer)
     while True:
         data = await _read_line_within_limits(proc, job, deadline)
-        text = data.decode(errors="replace")
-        events = harness.parse_line(text) if data else harness.end_of_stream()
-        for event in events:
+        for event in _events_of(data, harness):
             await observer.on_event(event)
             ledger.add(event)
             await watch.on_event(event)
         if not data:
             return
+
+
+def _events_of(data: bytes, harness: Harness) -> list[Event]:
+    """The events in one line of stdout; at its end, what the harness still holds."""
+    if not data:
+        return harness.end_of_stream()
+    return harness.parse_line(data.decode(errors="replace"))
 
 
 async def _read_line_within_limits(proc: Process, job: Job, deadline: float) -> bytes:
@@ -147,10 +151,9 @@ def _job_result(ledger: Ledger, summary: JobSummary | None, duration_sec: float)
     )
 
 
-async def _stderr_tail(proc: Process, keep: int) -> str:
+async def _stderr_tail(proc: Process) -> str:
     assert proc.stderr is not None
-    data = await proc.stderr.read()
-    return data[-keep:].decode(errors="replace")
+    return tail_of(await proc.stderr.read())
 
 
 async def _kill_coder(proc: Process) -> None:

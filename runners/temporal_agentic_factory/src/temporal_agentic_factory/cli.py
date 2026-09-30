@@ -63,13 +63,16 @@ def _given(options: dict[str, Any]) -> dict[str, Any]:
     return {name: value for name, value in options.items() if value is not None}
 
 
+JOB_ID_CHARS = 8  # of the uuid, after "job-": enough to tell runs apart in the ui
+
+
 async def _job_outcome(job: Job) -> JobOutcome:
     """The job workflow started and waited for; ctrl-c stops the run, not just the wait."""
     client = await connect()
     handle = await client.start_workflow(
         JobWorkflow.run,
         job,
-        id=f"job-{uuid4().hex[:8]}",
+        id=f"job-{uuid4().hex[:JOB_ID_CHARS]}",
         task_queue=settings.temporal.task_queue,
     )
     typer.echo(f"started {handle.id}", err=True)

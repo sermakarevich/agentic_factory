@@ -19,6 +19,7 @@ class JobActivitySettings(BaseModel):
     retry_initial_sec: int
     retry_backoff: float
     retry_max_sec: int
+    min_retry_delay_sec: int
 
 
 class StepActivitySettings(BaseModel):

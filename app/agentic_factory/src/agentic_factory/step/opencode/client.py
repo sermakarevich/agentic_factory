@@ -13,8 +13,8 @@ from openai import (
     RateLimitError,
 )
 from openai.types import CompletionUsage
-from openai.types.chat import ChatCompletionMessageParam
-from openai.types.responses import ResponseFormatTextJSONSchemaConfigParam, ResponseUsage
+from openai.types.chat import ChatCompletion, ChatCompletionMessageParam
+from openai.types.responses import Response, ResponseFormatTextJSONSchemaConfigParam, ResponseUsage
 from openai.types.shared_params import ReasoningEffort, ResponseFormatJSONSchema
 
 from agentic_factory.failure import BadOutput, NetworkError, ProviderError, RateLimited, TimedOut
@@ -66,10 +66,9 @@ class OpencodeGo(Client):
         return cls(key)
 
     async def complete(self, step: Step) -> Answer:
+        """The answer, with the API's errors as the job's failures."""
         try:
-            if protocol_for(step.model) is Protocol.RESPONSES:
-                return await self._responses(step)
-            return await self._chat(step)
+            return await self._answer_by_protocol(step)
         except RateLimitError as error:
             raise RateLimited(_resets_at(error)) from None
         except APITimeoutError:
@@ -79,50 +78,73 @@ class OpencodeGo(Client):
         except APIStatusError as error:
             raise ProviderError(f"{error.status_code}: {error.message}") from None
 
+    async def _answer_by_protocol(self, step: Step) -> Answer:
+        if protocol_for(step.model) is Protocol.RESPONSES:
+            return await self._responses(step)
+        return await self._chat(step)
+
     async def _chat(self, step: Step) -> Answer:
-        messages: list[ChatCompletionMessageParam] = []
-        if step.system_prompt:
-            messages.append({"role": "system", "content": step.system_prompt})
-        messages.append({"role": "user", "content": step.prompt})
-        response_format: ResponseFormatJSONSchema = {
-            "type": "json_schema",
-            "json_schema": {"name": SCHEMA_NAME, "strict": True, "schema": step.output_schema},
-        }
         completion = await self._client.chat.completions.create(
             model=step.model,
-            messages=messages,
-            response_format=response_format,
+            messages=_chat_messages(step),
+            response_format=_chat_response_format(step),
             reasoning_effort=_effort(step),
             max_tokens=step.max_tokens,
             timeout=step.timeout_sec,
             extra_headers={SESSION_HEADER: str(uuid4())},
         )
-        choice = completion.choices[0]
-        if choice.finish_reason != "stop":
-            raise BadOutput(f"answer cut off: {choice.finish_reason}")
-        return Answer(text=choice.message.content or "", tokens=_chat_tokens(completion.usage))
+        return _answer_from_completion(completion)
 
     async def _responses(self, step: Step) -> Answer:
-        text_format: ResponseFormatTextJSONSchemaConfigParam = {
-            "type": "json_schema",
-            "name": SCHEMA_NAME,
-            "strict": True,
-            "schema": step.output_schema,
-        }
         response = await self._client.responses.create(
             model=step.model,
             instructions=step.system_prompt or None,
             input=step.prompt,
-            text={"format": text_format},
+            text={"format": _text_format(step)},
             reasoning={"effort": _effort(step)},
             max_output_tokens=step.max_tokens,
             timeout=step.timeout_sec,
             extra_headers={SESSION_HEADER: str(uuid4())},
         )
-        if response.status != "completed":
-            reason = response.incomplete_details and response.incomplete_details.reason
-            raise BadOutput(f"answer cut off: {reason or response.status}")
-        return Answer(text=response.output_text, tokens=_responses_tokens(response.usage))
+        return _answer_from_response(response)
+
+
+def _chat_messages(step: Step) -> list[ChatCompletionMessageParam]:
+    messages: list[ChatCompletionMessageParam] = []
+    if step.system_prompt:
+        messages.append({"role": "system", "content": step.system_prompt})
+    messages.append({"role": "user", "content": step.prompt})
+    return messages
+
+
+def _chat_response_format(step: Step) -> ResponseFormatJSONSchema:
+    return {
+        "type": "json_schema",
+        "json_schema": {"name": SCHEMA_NAME, "strict": True, "schema": step.output_schema},
+    }
+
+
+def _answer_from_completion(completion: ChatCompletion) -> Answer:
+    choice = completion.choices[0]
+    if choice.finish_reason != "stop":
+        raise BadOutput(f"answer cut off: {choice.finish_reason}")
+    return Answer(text=choice.message.content or "", tokens=_chat_tokens(completion.usage))
+
+
+def _text_format(step: Step) -> ResponseFormatTextJSONSchemaConfigParam:
+    return {
+        "type": "json_schema",
+        "name": SCHEMA_NAME,
+        "strict": True,
+        "schema": step.output_schema,
+    }
+
+
+def _answer_from_response(response: Response) -> Answer:
+    if response.status != "completed":
+        reason = response.incomplete_details and response.incomplete_details.reason
+        raise BadOutput(f"answer cut off: {reason or response.status}")
+    return Answer(text=response.output_text, tokens=_responses_tokens(response.usage))
 
 
 def _effort(step: Step) -> ReasoningEffort:

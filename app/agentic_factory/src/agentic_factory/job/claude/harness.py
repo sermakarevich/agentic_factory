@@ -1,8 +1,5 @@
-import json
 from datetime import UTC, datetime
 from typing import Any
-
-from pydantic import ValidationError
 
 from agentic_factory.event import Event, EventKind, ToolCall
 from agentic_factory.failure import ProviderError, RateLimited
@@ -19,6 +16,7 @@ from agentic_factory.job.claude.stream import (
     Usage,
 )
 from agentic_factory.job.contract import Job
+from agentic_factory.job.decode import decoded_line
 from agentic_factory.job.harness import Harness
 from agentic_factory.settings.load import settings
 from agentic_factory.tokens import Tokens
@@ -58,7 +56,7 @@ class ClaudeHarness(Harness):
     def parse_line(self, text: str) -> list[Event]:
         if not text.strip():
             return []
-        decoded = _decoded_line(text)
+        decoded = decoded_line(text, Line)
         if decoded is None:
             return [self._unknown_line(text, raw={})]
         line, raw = decoded
@@ -161,15 +159,6 @@ def _tool_args(tools: list[str]) -> list[str]:
     if tools:
         return ["--allowedTools", *tools]
     return ["--dangerously-skip-permissions"]
-
-
-def _decoded_line(text: str) -> tuple[Line, dict[str, Any]] | None:
-    """The line as claude's shape plus the json it came from; None when it is neither."""
-    try:
-        raw = json.loads(text)
-        return Line.model_validate(raw), raw
-    except (ValueError, ValidationError):
-        return None
 
 
 def _reset_time(info: RateLimitInfo) -> datetime | None:

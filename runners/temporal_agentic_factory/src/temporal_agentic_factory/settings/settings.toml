@@ -1,7 +1,7 @@
 [temporal]
 address = "127.0.0.1:7233"   # not "localhost": it resolves to ::1 first on macOS, the dev server is IPv4 only
-namespace = "default"
-task_queue = "agentic-factory"
+namespace = "default"          # the Temporal namespace the runner and its workflows live in
+task_queue = "agentic-factory"  # the queue the runner polls and the cli starts workflows on
 
 [runner]
 max_concurrent_activities = 4   # each job activity is one coder process on this machine
@@ -10,11 +10,12 @@ max_concurrent_activities = 4   # each job activity is one coder process on this
 session_timeout_sec = 60     # creating the session before try 1; opencode's api answers in seconds
 heartbeat_margin_sec = 60   # heartbeat timeout = job.stall_sec + this; the engine kills first, Temporal is the backstop
 close_margin_sec = 120      # start-to-close = job.timeout_sec + this
-max_attempts = 5
-retry_initial_sec = 10
-retry_backoff = 2.0
-retry_max_sec = 600
+max_attempts = 5            # tries per job before the workflow gives up
+retry_initial_sec = 10      # wait before try 2; a rate limit overrides it with its reset time
+retry_backoff = 2.0         # each later wait is the previous one times this
+retry_max_sec = 600         # the longest backoff wait
+min_retry_delay_sec = 1     # the shortest wait after a rate limit whose reset time has passed
 
 [step_activity]
 timeout_sec = 300   # one structured-output request; no heartbeat
-max_attempts = 3
+max_attempts = 3    # tries per step before the workflow gives up

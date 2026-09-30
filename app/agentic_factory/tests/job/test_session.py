@@ -3,7 +3,7 @@ from uuid import UUID
 
 import pytest
 
-from agentic_factory.failure import CoderCrashed
+from agentic_factory.failure import CoderCrashed, SessionNotCreated
 from agentic_factory.job.contract import Job
 from agentic_factory.job.opencode.harness import OpencodeHarness
 from agentic_factory.job.session import create_session
@@ -39,5 +39,5 @@ async def test_failure_to_create_is_a_crash_with_the_output() -> None:
     with pytest.raises(CoderCrashed, match="boom"):
         await create_session(JOB, Scripted("echo boom >&2; exit 3"))
     error = json.dumps({"_tag": "InvalidRequestError", "message": "Expected a valid JSON body"})
-    with pytest.raises(CoderCrashed, match="Expected a valid JSON body"):  # exit 0, error as json
+    with pytest.raises(SessionNotCreated, match="Expected a valid JSON body"):  # exit 0, json
         await create_session(JOB, Scripted(f"echo '{error}'"))

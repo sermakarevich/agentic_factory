@@ -19,7 +19,7 @@ class Heartbeat(BaseModel):
     context_tokens: int = Field(default=0, description="Context size of the last model turn.")
 
     @classmethod
-    def last(cls, details: Sequence[Any]) -> "Heartbeat | None":
+    def last_of_previous_try(cls, details: Sequence[Any]) -> "Heartbeat | None":
         """The previous try's last heartbeat, or None on a first try. Details
         come back without a type hint, so as a plain dict."""
         if not details:

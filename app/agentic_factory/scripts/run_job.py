@@ -59,7 +59,9 @@ def _job_from_args(args: argparse.Namespace) -> Job:
 def _run_and_log(job: Job, harness: Harness, as_json: bool) -> int:
     """The engine run, with its result or failure logged; the exit code."""
     try:
-        result = asyncio.run(run(job, LogObserver(as_json=as_json), harness, _repair_summary))
+        result = asyncio.run(
+            run(job, LogObserver(as_json=as_json), harness, _repair_summary_with_step_client)
+        )
     except JobFailed as failure:
         log.error("failed    %s: %s", type(failure).__name__, failure)
         return 1
@@ -67,7 +69,7 @@ def _run_and_log(job: Job, harness: Harness, as_json: bool) -> int:
     return 0
 
 
-async def _repair_summary(block: str) -> JobSummary | None:
+async def _repair_summary_with_step_client(block: str) -> JobSummary | None:
     """The engine's repair: the summary step with the client for the step
     provider from settings, made only when a summary needs repairing."""
     return await repair_summary(block, client_for(settings.step.provider))

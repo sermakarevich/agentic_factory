@@ -1,12 +1,12 @@
-import asyncio
-from asyncio.subprocess import DEVNULL, PIPE
+from asyncio.subprocess import DEVNULL
 from datetime import UTC, datetime
 
 from agentic_factory.event import Event, EventKind, Observer
 from agentic_factory.failure import ContextPressure
 from agentic_factory.job.contract import Job
-from agentic_factory.job.environment import environment
 from agentic_factory.job.harness import Harness
+from agentic_factory.job.spawn import start_process
+from agentic_factory.job.tail import tail_of
 from agentic_factory.settings.load import settings
 
 
@@ -20,27 +20,25 @@ def context_of(event: Event) -> int | None:
 async def compact(harness: Harness, job: Job, session_id: str, observer: Observer) -> None:
     """Ask the coder to compact the session. Best effort: a failure is reported
     as an event and the run goes on, since the context limit still guards it."""
-    proc = await asyncio.create_subprocess_exec(
-        *harness.compact_command(session_id),
-        cwd=job.workdir,
-        env=environment(job.workdir),
-        stdin=DEVNULL,
-        stdout=DEVNULL,
-        stderr=PIPE,
-    )
+    outcome = await _compaction_outcome(harness, job, session_id)
+    await observer.on_event(_compaction_event(session_id, outcome))
+
+
+async def _compaction_outcome(harness: Harness, job: Job, session_id: str) -> str:
+    """`requested`, or `failed:` with the tail of what the command said."""
+    proc = await start_process(harness.compact_command(session_id), job.workdir, stdout=DEVNULL)
     _, stderr = await proc.communicate()
     if proc.returncode == 0:
-        outcome = "requested"
-    else:
-        tail = stderr[-settings.job.failure_tail_chars :].decode(errors="replace").strip()
-        outcome = f"failed: {tail}"
-    await observer.on_event(
-        Event(
-            kind=EventKind.COMPACTION,
-            at=datetime.now(UTC),
-            session_id=session_id,
-            content=f"compaction {outcome}",
-        )
+        return "requested"
+    return f"failed: {tail_of(stderr)}"
+
+
+def _compaction_event(session_id: str, outcome: str) -> Event:
+    return Event(
+        kind=EventKind.COMPACTION,
+        at=datetime.now(UTC),
+        session_id=session_id,
+        content=f"compaction {outcome}",
     )
 
 
@@ -62,10 +60,18 @@ class ContextWatch:
             return
         if event.kind != EventKind.AI or (context := context_of(event)) is None:
             return
+        self._raise_above_limit(context)
+        await self._compact_once_above_threshold(context)
+
+    def _raise_above_limit(self, context: int) -> None:
         if context > self.job.context_limit_tokens:
             raise ContextPressure(
                 f"context {context} tokens > limit {self.job.context_limit_tokens}"
             )
+
+    async def _compact_once_above_threshold(self, context: int) -> None:
+        """One request per crossing of `compact_at_tokens`, when the coder can
+        take it during a run and the session is known."""
         if context < settings.job.compact_at_tokens:
             self.pending = False  # it shrank; the next crossing may ask again
         elif not self.pending and self.harness.compacts_while_running and self.session_id:

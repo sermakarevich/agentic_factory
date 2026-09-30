@@ -32,9 +32,7 @@ async def repair_summary(block: str, client: Client) -> JobSummary | None:
     """Layer 5: a block that was found but did not parse, handed to a model
     with the summary schema. None when the model could not fix it either.
     `client` is the one for `settings.step.provider`, the step's provider."""
-    step = Step(
-        prompt=block, output_schema=JobSummary.model_json_schema(), system_prompt=SYSTEM_PROMPT
-    )
+    step = _repair_step(block)
     try:
         summary = (await steps.run(step, Silent(), client)).parse(JobSummary)
     except JobFailed as failure:
@@ -42,3 +40,9 @@ async def repair_summary(block: str, client: Client) -> JobSummary | None:
         return None
     log.info("summary repaired by %s", step.provider)
     return summary
+
+
+def _repair_step(block: str) -> Step:
+    return Step(
+        prompt=block, output_schema=JobSummary.model_json_schema(), system_prompt=SYSTEM_PROMPT
+    )

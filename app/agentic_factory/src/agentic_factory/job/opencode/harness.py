@@ -1,4 +1,3 @@
-import json
 from datetime import UTC, datetime
 from typing import Any
 
@@ -7,6 +6,7 @@ from pydantic import ValidationError
 from agentic_factory.event import Event, EventKind, ToolCall
 from agentic_factory.failure import ContextPressure, ProviderError
 from agentic_factory.job.contract import Job
+from agentic_factory.job.decode import decoded_line
 from agentic_factory.job.harness import Harness
 from agentic_factory.job.opencode.stream import (
     Created,
@@ -76,7 +76,7 @@ class OpencodeHarness(Harness):
     def parse_line(self, text: str) -> list[Event]:
         if not text.strip():
             return []
-        decoded = _decoded_line(text)
+        decoded = decoded_line(text, Line)
         if decoded is None:
             return [self._unknown_step(text, raw={})]  # not JSON, or not a line shape
         line, raw = decoded
@@ -189,15 +189,6 @@ class OpencodeHarness(Harness):
             cost_usd=self._cost,
             raw=raw,
         )
-
-
-def _decoded_line(text: str) -> tuple[Line, dict[str, Any]] | None:
-    """The line as opencode's shape plus the json it came from; None when it is neither."""
-    try:
-        raw = json.loads(text)
-        return Line.model_validate(raw), raw
-    except (ValueError, ValidationError):
-        return None
 
 
 def _raise_if_length_reached(reason: str) -> None:

@@ -38,5 +38,9 @@ class CoderCrashed(JobFailed):
         self.stderr = stderr
 
 
+class SessionNotCreated(JobFailed):
+    """The coder's session command ran but named no session."""
+
+
 class BadOutput(JobFailed):
     """The answer of a call was cut off, not JSON, or did not match the schema."""

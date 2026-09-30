@@ -3,6 +3,7 @@ from datetime import UTC, datetime, timedelta
 from temporalio.exceptions import ApplicationError
 
 from agentic_factory.failure import CoderCrashed, JobFailed, RateLimited
+from temporal_agentic_factory.settings.load import settings
 
 
 def to_application_error(failure: JobFailed) -> ApplicationError:
@@ -18,5 +19,6 @@ def to_application_error(failure: JobFailed) -> ApplicationError:
 
 
 def _delay_until(resets_at: datetime) -> timedelta:
-    """How long until the limit lifts; at least a second, as the moment may have passed."""
-    return max(resets_at - datetime.now(UTC), timedelta(seconds=1))
+    """How long until the limit lifts; at least `min_retry_delay_sec`, as it may have passed."""
+    floor = timedelta(seconds=settings.job_activity.min_retry_delay_sec)
+    return max(resets_at - datetime.now(UTC), floor)

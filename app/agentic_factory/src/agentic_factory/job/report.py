@@ -51,13 +51,16 @@ def prompt_for(conversation: str, result: JobResult | None, failure: str) -> str
     how the job ended: the coder's own summary block when there is one, or
     the failure text when the last try failed."""
     clipped = clip_middle(conversation, settings.report.max_chars)
+    return "TRANSCRIPT\n" + clipped + "\n\nENDING\n" + _ending_text(result, failure)
+
+
+def _ending_text(result: JobResult | None, failure: str) -> str:
     parts: list[str] = []
     if result is not None and result.summary_text:
         parts.append("The coder's own summary:\n" + result.summary_text)
     if failure:
         parts.append("The last try failed: " + failure)
-    ending = "\n\n".join(parts) if parts else "No summary and no failure recorded."
-    return "TRANSCRIPT\n" + clipped + "\n\nENDING\n" + ending
+    return "\n\n".join(parts) if parts else "No summary and no failure recorded."
 
 
 async def report(
@@ -66,11 +69,15 @@ async def report(
     """One model step over the conversation. Raises the step's `JobFailed`
     when the model could not answer; the caller decides what that means.
     `client` is the one for `settings.step.provider`, the step's provider."""
-    step = Step(
+    step = _report_step(conversation, result, failure)
+    outcome = (await steps.run(step, Silent(), client)).parse(JobReport)
+    log.info("report by %s: %s", step.provider, outcome.verdict)
+    return outcome
+
+
+def _report_step(conversation: str, result: JobResult | None, failure: str) -> Step:
+    return Step(
         prompt=prompt_for(conversation, result, failure),
         output_schema=JobReport.model_json_schema(),
         system_prompt=SYSTEM_PROMPT,
     )
-    outcome = (await steps.run(step, Silent(), client)).parse(JobReport)
-    log.info("report by %s: %s", step.provider, outcome.verdict)
-    return outcome
