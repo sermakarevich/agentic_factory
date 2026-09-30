@@ -1,0 +1,37 @@
+# Defaults of the application. Override without editing this file:
+#   - settings.local.toml next to it (git-ignored), same layout;
+#   - environment variables AF_<TABLE>__<KEY>, e.g. AF_STEP__MAX_TOKENS=4096;
+#   - a .env file in the repo root, read on start.
+
+[job]
+provider = "opencode"         # the harness that runs it: claude | opencode
+timeout_sec = 3600
+stall_sec = 600               # no output for this long = kill
+compact_at_tokens = 150000     # the coder is asked to compact its context at this size; not a job option
+context_limit_tokens = 200000  # kill and retry above this; the backstop when compaction did not happen
+line_limit_bytes = 16777216    # longest stdout line the engine reads; a tool output can be one very long line
+failure_tail_chars = 4000      # tail of the coder's output kept in a crash message
+error_clip_chars = 500         # longest provider error text kept in a failure
+
+[harness.opencode]
+default_model = "opencode-go/muse-spark-1.3-contributor"
+
+[harness.claude]
+default_model = "sonnet"
+autocompact_min_tokens = 100000  # the least claude accepts for --autocompact (100k to 1M); compact_at_tokens is raised to it
+
+[step]
+provider = "opencode"
+reasoning = "high"            # minimal | low | medium | high; tokens are covered by the plan
+max_tokens = 32768            # answer plus reasoning
+timeout_sec = 600
+error_clip_chars = 500        # longest answer text kept in a bad-output failure
+
+[step.opencode]
+default_model = "muse-spark-1.3-contributor"
+base_url = "https://opencode.ai/zen/go/v1"
+user_agent = "agentic-factory/0.1"   # Go refuses generic SDK agents
+retry_after_default_sec = 60         # wait after a rate limit that names no retry-after
+
+[log]
+content_width = 160           # longest event text on one log line

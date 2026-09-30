@@ -1,0 +1,43 @@
+[project]
+name = "agentic-factory-workspace"
+version = "0.0.0"
+description = "uv workspace root: app, runners, common. Not a package."
+requires-python = ">=3.13"
+
+[tool.uv]
+package = false
+
+[tool.uv.workspace]
+members = ["app/*", "runners/temporal_agent_factory", "common/*"]
+
+[tool.uv.sources]
+agent-factory = { workspace = true }
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+    "pytest-asyncio>=0.24",
+    "ruff>=0.6",
+    "mypy>=1.11",
+]
+
+# Shared tool config. Each package inherits it via `extend`.
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM", "RET", "C4", "PL"]
+
+[tool.ruff.lint.pylint]
+max-args = 8
+max-branches = 15
+max-statements = 60
+
+[tool.ruff.lint.per-file-ignores]
+"**/tests/**" = ["PLR2004", "PLR0913"]
+
+[tool.mypy]
+python_version = "3.13"
+strict = true
+ignore_missing_imports = true

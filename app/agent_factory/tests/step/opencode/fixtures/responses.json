@@ -1,0 +1,41 @@
+{
+  "id": "resp_6abc171c57a40dd6000f42eb",
+  "object": "response",
+  "created_at": 1790711580,
+  "status": "completed",
+  "incomplete_details": null,
+  "model": "muse-spark-1.3-contributor",
+  "output": [
+    {
+      "id": "rs_6abc171c57a40dd6000f42eb:rs_66235b7d-7b30-457f-a3ae-6cffde02be39",
+      "type": "reasoning",
+      "status": "completed",
+      "summary": []
+    },
+    {
+      "id": "msg_c44c91da-fafc-48dd-b371-da3724f28836",
+      "type": "message",
+      "status": "completed",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "output_text",
+          "text": "{\"status\":\"done\",\"summary\":\"Job wrote hello.txt and said done.\"}",
+          "annotations": [],
+          "logprobs": []
+        }
+      ]
+    }
+  ],
+  "usage": {
+    "input_tokens": 83,
+    "output_tokens": 263,
+    "total_tokens": 346,
+    "input_tokens_details": {
+      "cached_tokens": 0
+    },
+    "output_tokens_details": {
+      "reasoning_tokens": 237
+    }
+  }
+}

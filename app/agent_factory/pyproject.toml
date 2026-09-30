@@ -1,0 +1,30 @@
+[project]
+name = "agent-factory"
+version = "0.1.0"
+description = "The application: llm calls, llm jobs, tools, harness runner, worker steps, artifacts. Engine-agnostic."
+requires-python = ">=3.13"
+dependencies = [
+    "dynaconf>=3.3.5",
+    "openai>=3.22.0",
+    "pydantic>=2.8",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/agent_factory"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+
+[tool.ruff]
+extend = "../../pyproject.toml"
+src = ["src", "tests"]
+
+[tool.mypy]
+python_version = "3.13"
+strict = true
+ignore_missing_imports = true

@@ -1,0 +1,41 @@
+set positional-arguments
+
+# agent_factory — the application package. Run `just` to list.
+
+default:
+    @just --list
+
+# lint source and tests
+lint:
+    uv run ruff check src scripts tests
+
+# format source and tests
+fmt:
+    uv run ruff format src scripts tests
+
+# fail if anything needs formatting
+fmt-check:
+    uv run ruff format --check src scripts tests
+
+# static types
+typecheck:
+    uv run mypy src scripts
+
+# unit tests
+test *ARGS:
+    uv run pytest -q -p no:cacheprovider tests {{ARGS}}
+
+# one command that says "green"
+check: lint fmt-check typecheck test
+
+# Run one llm job and watch its events: just run "prompt" [--provider claude] [--model ...]
+run *ARGS:
+    uv run python scripts/run_job.py "$@"
+
+# Demo input for `just step` with no arguments.
+demo_prompt := "The coder wrote hello.txt, ran pytest (2 passed) and said 'done, but I did not update the docs'. Report."
+demo_schema := '{"type":"object","properties":{"status":{"type":"string","enum":["done","partial","blocked"]},"summary":{"type":"string"},"open_items":{"type":"array","items":{"type":"string"}}},"required":["status","summary","open_items"],"additionalProperties":false}'
+
+# One step, a structured-output request (OpenCode Go API): just step ["prompt" ["schema json or @file" [--model ...]]]
+step prompt=demo_prompt schema=demo_schema *ARGS:
+    prompt="$1"; schema="$2"; shift 2; uv run python scripts/run_step.py "$prompt" --schema "$schema" "$@"
