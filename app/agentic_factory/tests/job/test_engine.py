@@ -8,7 +8,8 @@ from agentic_factory.failure import CoderCrashed, ContextPressure, Stalled
 from agentic_factory.job.contract import Job
 from agentic_factory.job.engine import run
 from agentic_factory.job.opencode.harness import OpencodeHarness
-from agentic_factory.job.summary import INSTRUCTION, JobSummary
+from agentic_factory.job.summary import JobSummary
+from agentic_factory.job.summary_prompt import INSTRUCTION
 from agentic_factory.settings.load import settings
 
 FIXTURE = Path(__file__).parent / "opencode" / "fixtures" / "echo.jsonl"

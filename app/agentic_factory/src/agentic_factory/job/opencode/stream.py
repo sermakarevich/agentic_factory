@@ -81,3 +81,12 @@ class Line(BaseModel):
         if self.timestamp is None:
             return datetime.now(tz=UTC)
         return datetime.fromtimestamp(self.timestamp / 1000, tz=UTC)
+
+
+class Created(BaseModel):
+    """What `session.create` prints: the new session under `data`."""
+
+    class Session(BaseModel):
+        id: str
+
+    data: Session

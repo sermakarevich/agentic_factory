@@ -9,13 +9,14 @@ from agentic_factory.failure import BadOutput, TimedOut
 from agentic_factory.settings.load import settings
 from agentic_factory.step.client import Answer, Client
 from agentic_factory.step.contract import Step, StepResult
+from agentic_factory.step.defaults import with_default_model
 
 
 async def run(step: Step, observer: Observer, client: Client) -> StepResult:
     """Run one llm step to its end: send it, show the answer to the observer,
     and either return the result or raise the `JobFailed` subclass that says
     why there is none. The caller picks the client (`client_for`)."""
-    step = _with_default_model(step, client)
+    step = with_default_model(step, client)
     started = monotonic()
     answer = await _answer_within_timeout(client, step)
     await observer.on_event(_answer_as_event(EventKind.AI, answer))
@@ -27,12 +28,6 @@ async def run(step: Step, observer: Observer, client: Client) -> StepResult:
         tokens=answer.tokens,
         duration_sec=monotonic() - started,
     )
-
-
-def _with_default_model(step: Step, client: Client) -> Step:
-    if step.model:
-        return step
-    return step.model_copy(update={"model": client.default_model})
 
 
 async def _answer_within_timeout(client: Client, step: Step) -> Answer:

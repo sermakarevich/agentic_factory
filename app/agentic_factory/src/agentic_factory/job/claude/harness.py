@@ -12,6 +12,7 @@ from agentic_factory.job.claude.stream import (
     BlockType,
     Line,
     LineType,
+    RateLimitInfo,
     RateLimitStatus,
     ResultSubtype,
     SystemSubtype,
@@ -41,23 +42,12 @@ class ClaudeHarness(Harness):
 
     def command(self, job: Job) -> list[str]:
         """The prompt goes right after `-p`: `--allowedTools` is variadic and
-        would swallow it. With no tool list every permission is skipped, as a
-        headless run has nobody to ask; with a list only those tools are allowed
-        and the rest is denied. The session id is ours (`new_session_command`
-        is empty): `--session-id` starts it, `--resume` continues it, and
-        claude's store says which applies."""
+        would swallow it."""
         argv = ["claude", "-p", job.prompt, "--verbose", "--output-format", "stream-json"]
         argv += ["--model", job.model]
-        least = settings.harness.claude.autocompact_min_tokens
-        compact_at = max(settings.job.compact_at_tokens, least)
-        argv += ["--autocompact", str(compact_at)]
-        if job.session_id:
-            flag = "--resume" if session_exists(job.session_id) else "--session-id"
-            argv += [flag, job.session_id]
-        if job.tools:
-            argv += ["--allowedTools", *job.tools]
-        else:
-            argv.append("--dangerously-skip-permissions")
+        argv += _autocompact_args()
+        argv += _session_args(job.session_id)
+        argv += _tool_args(job.tools)
         return argv
 
     def compact_command(self, session_id: str) -> list[str]:
@@ -68,11 +58,10 @@ class ClaudeHarness(Harness):
     def parse_line(self, text: str) -> list[Event]:
         if not text.strip():
             return []
-        try:
-            raw = json.loads(text)
-            line = Line.model_validate(raw)
-        except (ValueError, ValidationError):
+        decoded = _decoded_line(text)
+        if decoded is None:
             return [self._unknown_line(text, raw={})]
+        line, raw = decoded
         self._last_at = line.at or self._last_at
         match line.type:
             case LineType.SYSTEM:
@@ -98,8 +87,7 @@ class ClaudeHarness(Harness):
     def _parse_assistant(self, line: Line, raw: dict[str, Any]) -> Event:
         blocks = line.message.blocks
         calls = [b for b in blocks if b.type == BlockType.TOOL_USE]
-        for call in calls:
-            self._tool_names[call.id] = call.name
+        self._remember_tool_names(calls)
         return self._event(
             EventKind.AI,
             raw,
@@ -107,6 +95,11 @@ class ClaudeHarness(Harness):
             tool_calls=[ToolCall(id=c.id, name=c.name, args=c.input) for c in calls],
             usage=_to_tokens(line.message.usage) if line.message.usage else None,
         )
+
+    def _remember_tool_names(self, calls: list[Block]) -> None:
+        """Tool results carry only the call id; the name comes from here."""
+        for call in calls:
+            self._tool_names[call.id] = call.name
 
     def _parse_user(self, line: Line, raw: dict[str, Any]) -> list[Event]:
         results = [b for b in line.message.blocks if b.type == BlockType.TOOL_RESULT]
@@ -124,9 +117,7 @@ class ClaudeHarness(Harness):
 
     def _parse_rate_limit(self, line: Line, raw: dict[str, Any]) -> Event:
         info = line.rate_limit_info
-        resets_at = (
-            datetime.fromtimestamp(info.resets_at, tz=UTC) if info.resets_at is not None else None
-        )
+        resets_at = _reset_time(info)
         if info.status == RateLimitStatus.REJECTED:
             raise RateLimited(resets_at or self._last_at)
         return self._event(EventKind.RATE_LIMIT, raw, resets_at=resets_at)
@@ -143,14 +134,49 @@ class ClaudeHarness(Harness):
         )
 
     def _unknown_line(self, text: str, raw: dict[str, Any]) -> Event:
-        return self._event(
-            EventKind.UNKNOWN,
-            raw if isinstance(raw, dict) else {},
-            content=text.rstrip("\n"),
-        )
+        return self._event(EventKind.UNKNOWN, raw, content=text.rstrip("\n"))
 
     def _event(self, kind: EventKind, raw: dict[str, Any], **fields: Any) -> Event:
         return Event(kind=kind, at=self._last_at, session_id=self._session_id, raw=raw, **fields)
+
+
+def _autocompact_args() -> list[str]:
+    """Compact at the job's threshold, or at the least claude accepts."""
+    least = settings.harness.claude.autocompact_min_tokens
+    return ["--autocompact", str(max(settings.job.compact_at_tokens, least))]
+
+
+def _session_args(session_id: str) -> list[str]:
+    """The session id is ours (`new_session_command` is empty): `--session-id`
+    starts it, `--resume` continues it, and claude's store says which applies."""
+    if not session_id:
+        return []
+    flag = "--resume" if session_exists(session_id) else "--session-id"
+    return [flag, session_id]
+
+
+def _tool_args(tools: list[str]) -> list[str]:
+    """With a list only those tools are allowed and the rest is denied. With
+    none every permission is skipped, as a headless run has nobody to ask."""
+    if tools:
+        return ["--allowedTools", *tools]
+    return ["--dangerously-skip-permissions"]
+
+
+def _decoded_line(text: str) -> tuple[Line, dict[str, Any]] | None:
+    """The line as claude's shape plus the json it came from; None when it is neither."""
+    try:
+        raw = json.loads(text)
+        return Line.model_validate(raw), raw
+    except (ValueError, ValidationError):
+        return None
+
+
+def _reset_time(info: RateLimitInfo) -> datetime | None:
+    """When the limit lifts, from epoch seconds; None when claude did not say."""
+    if info.resets_at is None:
+        return None
+    return datetime.fromtimestamp(info.resets_at, tz=UTC)
 
 
 def _to_tokens(usage: Usage) -> Tokens:

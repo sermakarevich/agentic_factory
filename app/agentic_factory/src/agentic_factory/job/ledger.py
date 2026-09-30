@@ -1,6 +1,6 @@
 from agentic_factory.event import Event, EventKind
 from agentic_factory.job.stats import JobStats
-from agentic_factory.job.summary import find_summary_block
+from agentic_factory.job.summary_block import find_summary_block
 
 
 class Ledger:

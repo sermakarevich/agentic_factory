@@ -9,11 +9,14 @@ from agentic_factory.event import Observer
 from agentic_factory.failure import CoderCrashed, JobFailed, Stalled, TimedOut
 from agentic_factory.job.context import ContextWatch, compact
 from agentic_factory.job.contract import Job, JobResult
+from agentic_factory.job.defaults import with_default_model
 from agentic_factory.job.environment import environment
 from agentic_factory.job.harness import Harness
 from agentic_factory.job.ledger import Ledger
 from agentic_factory.job.session import create_session
-from agentic_factory.job.summary import JobSummary, parse_summary, wrap_prompt
+from agentic_factory.job.summary import JobSummary
+from agentic_factory.job.summary_parse import parse_summary
+from agentic_factory.job.summary_prompt import wrap_prompt
 from agentic_factory.settings.load import settings
 from agentic_factory.tokens import Tokens
 
@@ -27,7 +30,7 @@ async def run(job: Job, observer: Observer, harness: Harness, repair: Repair) ->
     `JobFailed` subclass that says why there is none. A summary block that
     does not parse goes to `repair`, one model step, before the result is made.
     The caller picks the harness (`harness_for`) and the repair (`repair_summary`)."""
-    job = _with_default_model(job, harness)
+    job = with_default_model(job, harness)
     _make_workdir(job)
     job = await _with_session(job, harness)
     started = monotonic()
@@ -36,12 +39,6 @@ async def run(job: Job, observer: Observer, harness: Harness, repair: Repair) ->
     ledger = await _run_coder(job, harness, observer, started)
     summary = await _parse_or_repair_summary(ledger, repair)
     return _job_result(ledger, summary, monotonic() - started)
-
-
-def _with_default_model(job: Job, harness: Harness) -> Job:
-    if job.model:
-        return job
-    return job.model_copy(update={"model": harness.default_model})
 
 
 def _make_workdir(job: Job) -> None:

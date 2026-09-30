@@ -6,10 +6,15 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from options import given_options
+
 from agentic_factory.failure import JobFailed
 from agentic_factory.observe.log import LogObserver, configure_logging
+from agentic_factory.settings.load import settings
 from agentic_factory.step.catalog import client_for
+from agentic_factory.step.client import Client
 from agentic_factory.step.contract import Reasoning, Step
+from agentic_factory.step.defaults import with_default_model
 from agentic_factory.step.engine import run
 
 log = logging.getLogger("agentic_factory.step")
@@ -31,24 +36,41 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return p.parse_args(argv)
 
 
-def load_schema(text: str) -> dict[str, Any]:
-    if text.startswith("@"):
-        text = Path(text[1:]).read_text()
-    schema: dict[str, Any] = json.loads(text)
+def load_schema(option: str) -> dict[str, Any]:
+    """The `--schema` option as a JSON schema: given inline, or as `@file`."""
+    schema: dict[str, Any] = json.loads(_schema_text(option))
     return schema
+
+
+def _schema_text(option: str) -> str:
+    return Path(option[1:]).read_text() if option.startswith("@") else option
 
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     configure_logging(logging.DEBUG if args.debug else logging.INFO)
+    _quiet_http_logs()
+    client = client_for(args.provider or settings.step.provider)
+    step = with_default_model(_step_from_args(args), client)
+    log.info("step      %s %s", step.provider, step.model)
+    return _run_and_print(step, client, as_json=args.json)
+
+
+def _quiet_http_logs() -> None:
     logging.getLogger("httpx2").setLevel(logging.WARNING)  # one line per request otherwise
-    given = {k: v for k, v in vars(args).items() if v is not None and k not in ("json", "debug")}
+
+
+def _step_from_args(args: argparse.Namespace) -> Step:
+    """The step as given; its schema loaded, everything left out a settings default."""
+    given = given_options(args)
     given["output_schema"] = load_schema(given.pop("schema"))
-    step = Step.model_validate(given)
-    client = client_for(step.provider)
-    log.info("step      %s %s", step.provider, step.model or client.default_model)
+    return Step.model_validate(given)
+
+
+def _run_and_print(step: Step, client: Client, as_json: bool) -> int:
+    """The engine run, its result logged and its output printed; the exit code."""
     try:
-        result = asyncio.run(run(step, LogObserver(as_json=args.json), client))
+        result = asyncio.run(run(step, LogObserver(as_json=as_json), client))
     except JobFailed as failure:
         log.error("failed    %s: %s", type(failure).__name__, failure)
         return 1

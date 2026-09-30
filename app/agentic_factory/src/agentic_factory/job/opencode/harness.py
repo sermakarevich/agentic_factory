@@ -2,37 +2,23 @@ import json
 from datetime import UTC, datetime
 from typing import Any
 
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import ValidationError
 
 from agentic_factory.event import Event, EventKind, ToolCall
 from agentic_factory.failure import ContextPressure, ProviderError
 from agentic_factory.job.contract import Job
 from agentic_factory.job.harness import Harness
-from agentic_factory.job.opencode.stream import Line, LineType, Reason, StepTokens, ToolStatus
+from agentic_factory.job.opencode.stream import (
+    Created,
+    Line,
+    LineType,
+    Reason,
+    StepTokens,
+    ToolStatus,
+)
+from agentic_factory.job.opencode.turn import Turn
 from agentic_factory.settings.load import settings
 from agentic_factory.tokens import Tokens
-
-
-class Turn(BaseModel):
-    """One model turn as it is being collected: text, the calls the model made,
-    and the tool events for their outputs. Emitted when `step_finish` arrives."""
-
-    text: list[str] = Field(default_factory=list)
-    calls: list[ToolCall] = Field(default_factory=list)
-    tools: list[Event] = Field(default_factory=list)
-
-    @property
-    def is_empty(self) -> bool:
-        return not self.text and not self.calls
-
-
-class Created(BaseModel):
-    """What `session.create` prints: the new session under `data`."""
-
-    class Session(BaseModel):
-        id: str
-
-    data: Session
 
 
 class OpencodeHarness(Harness):
@@ -90,19 +76,18 @@ class OpencodeHarness(Harness):
     def parse_line(self, text: str) -> list[Event]:
         if not text.strip():
             return []
-        try:
-            raw = json.loads(text)
-            line = Line.model_validate(raw)
-        except (ValueError, ValidationError):
+        decoded = _decoded_line(text)
+        if decoded is None:
             return [self._unknown_step(text, raw={})]  # not JSON, or not a line shape
+        line, raw = decoded
         self._last_at = line.at
         match line.type:
             case LineType.STEP_START:
                 return self._parse_step_start(line, raw)
             case LineType.TEXT:
-                self._turn.text.append(line.part.text)
+                self._collect_text(line)
             case LineType.TOOL_USE:
-                self._parse_tool_use(line, raw)
+                self._collect_tool_call(line, raw)
             case LineType.STEP_FINISH:
                 return self._parse_step_finish(line, raw)
             case LineType.ERROR:
@@ -117,7 +102,8 @@ class OpencodeHarness(Harness):
         if not self._session_id:
             return []  # never started: no session, no finished; the engine reports a crash
         events = self._flush_turn(self._last_at, usage=None, raw={})
-        events.append(self._finish(self._last_at, raw={}))
+        self._finished = True
+        events.append(self._finished_event(self._last_at, raw={}))
         return events
 
     def _parse_step_start(self, line: Line, raw: dict[str, Any]) -> list[Event]:
@@ -126,36 +112,45 @@ class OpencodeHarness(Harness):
         self._session_id = line.session_id
         return [Event(kind=EventKind.SESSION, at=line.at, session_id=self._session_id, raw=raw)]
 
-    def _parse_tool_use(self, line: Line, raw: dict[str, Any]) -> None:
+    def _collect_text(self, line: Line) -> None:
+        self._turn.text.append(line.part.text)
+
+    def _collect_tool_call(self, line: Line, raw: dict[str, Any]) -> None:
+        """The call and its `tool` event, once the line carries the outcome."""
         part, state = line.part, line.part.state
         if state.status not in (ToolStatus.COMPLETED, ToolStatus.ERROR):
             return  # a later line for the same call carries the outcome
         self._turn.calls.append(ToolCall(id=part.id, name=part.tool, args=state.input))
+        self._turn.tools.append(self._tool_event(line, raw))
+
+    def _tool_event(self, line: Line, raw: dict[str, Any]) -> Event:
+        part, state = line.part, line.part.state
         output = state.output if state.status == ToolStatus.COMPLETED else str(state.error or "")
-        self._turn.tools.append(
-            Event(
-                kind=EventKind.TOOL,
-                at=line.at,
-                session_id=self._session_id,
-                content=output,
-                tool_call_id=part.id,
-                name=part.tool,
-                error=state.status == ToolStatus.ERROR,
-                raw=raw,
-            )
+        return Event(
+            kind=EventKind.TOOL,
+            at=line.at,
+            session_id=self._session_id,
+            content=output,
+            tool_call_id=part.id,
+            name=part.tool,
+            error=state.status == ToolStatus.ERROR,
+            raw=raw,
         )
 
     def _parse_step_finish(self, line: Line, raw: dict[str, Any]) -> list[Event]:
         part = line.part
         usage = _to_tokens(part.tokens)
-        self._total = self._total + usage
-        self._cost += part.cost
-        if part.reason == Reason.LENGTH:
-            raise ContextPressure("opencode stopped: output or context length reached")
+        self._add_to_totals(usage, part.cost)
+        _raise_if_length_reached(part.reason)
         events = self._flush_turn(line.at, usage, raw)
         if part.reason == Reason.STOP:
-            events.append(self._finish(line.at, raw))
+            self._finished = True
+            events.append(self._finished_event(line.at, raw))
         return events
+
+    def _add_to_totals(self, usage: Tokens, cost: float) -> None:
+        self._total = self._total + usage
+        self._cost += cost
 
     def _flush_turn(self, at: datetime, usage: Tokens | None, raw: dict[str, Any]) -> list[Event]:
         """Emit the collected turn as `ai` plus its `tool` events; start a new one."""
@@ -181,12 +176,11 @@ class OpencodeHarness(Harness):
             at=self._last_at,
             session_id=self._session_id,
             content=text.rstrip("\n"),
-            raw=raw if isinstance(raw, dict) else {},
+            raw=raw,
         )
 
-    def _finish(self, at: datetime, raw: dict[str, Any]) -> Event:
-        """Mark the run finished and build the `finished` event with the totals."""
-        self._finished = True
+    def _finished_event(self, at: datetime, raw: dict[str, Any]) -> Event:
+        """The `finished` event with the totals summed over the turns."""
         return Event(
             kind=EventKind.FINISHED,
             at=at,
@@ -195,6 +189,20 @@ class OpencodeHarness(Harness):
             cost_usd=self._cost,
             raw=raw,
         )
+
+
+def _decoded_line(text: str) -> tuple[Line, dict[str, Any]] | None:
+    """The line as opencode's shape plus the json it came from; None when it is neither."""
+    try:
+        raw = json.loads(text)
+        return Line.model_validate(raw), raw
+    except (ValueError, ValidationError):
+        return None
+
+
+def _raise_if_length_reached(reason: str) -> None:
+    if reason == Reason.LENGTH:
+        raise ContextPressure("opencode stopped: output or context length reached")
 
 
 def _to_tokens(step: StepTokens) -> Tokens:

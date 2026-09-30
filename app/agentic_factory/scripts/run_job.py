@@ -4,10 +4,14 @@ import logging
 import sys
 from pathlib import Path
 
+from options import given_options
+
 from agentic_factory.failure import JobFailed
 from agentic_factory.job.catalog import harness_for
 from agentic_factory.job.contract import Job
+from agentic_factory.job.defaults import with_default_model
 from agentic_factory.job.engine import run
+from agentic_factory.job.harness import Harness
 from agentic_factory.job.repair import repair_summary
 from agentic_factory.job.summary import JobSummary
 from agentic_factory.observe.log import LogObserver, configure_logging
@@ -35,26 +39,37 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return p.parse_args(argv)
 
 
-async def repair(block: str) -> JobSummary | None:
-    """The summary step with the client for the step provider from settings."""
-    return await repair_summary(block, client_for(settings.step.provider))
-
-
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     configure_logging(logging.DEBUG if args.debug else logging.INFO)
-    given = {k: v for k, v in vars(args).items() if v is not None and k not in ("json", "debug")}
+    harness = harness_for(args.provider or settings.job.provider)
+    job = with_default_model(_job_from_args(args), harness)
+    log.info("job       %s %s in %s", job.provider, job.model, job.workdir)
+    return _run_and_log(job, harness, as_json=args.json)
+
+
+def _job_from_args(args: argparse.Namespace) -> Job:
+    """The job as given; its workdir absolute, everything left out a settings default."""
+    given = given_options(args)
     given["workdir"] = str(Path(given["workdir"]).resolve())
-    job = Job.model_validate(given)
-    harness = harness_for(job.provider)
-    log.info("job       %s %s in %s", job.provider, job.model or harness.default_model, job.workdir)
+    return Job.model_validate(given)
+
+
+def _run_and_log(job: Job, harness: Harness, as_json: bool) -> int:
+    """The engine run, with its result or failure logged; the exit code."""
     try:
-        result = asyncio.run(run(job, LogObserver(as_json=args.json), harness, repair))
+        result = asyncio.run(run(job, LogObserver(as_json=as_json), harness, _repair_summary))
     except JobFailed as failure:
         log.error("failed    %s: %s", type(failure).__name__, failure)
         return 1
     log.info("result    %s", result.model_dump_json())
     return 0
+
+
+async def _repair_summary(block: str) -> JobSummary | None:
+    """The engine's repair: the summary step with the client for the step
+    provider from settings, made only when a summary needs repairing."""
+    return await repair_summary(block, client_for(settings.step.provider))
 
 
 if __name__ == "__main__":
