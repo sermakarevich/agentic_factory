@@ -1,11 +1,14 @@
-from dataclasses import asdict, dataclass, fields
+from dataclasses import asdict, dataclass, fields, replace
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import ColumnElement, RowMapping, Table, insert, select, update
+from sqlalchemy import RowMapping, Table, insert, select, update
+from sqlalchemy.dialects.postgresql import insert as postgres_insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_engine
 
 from factory_store import schema
+from factory_store.clean import without_nul
 from factory_store.schema import Outcome
 
 
@@ -86,7 +89,7 @@ class Store:
 
     @classmethod
     def from_url(cls, url: str) -> "Store":
-        return cls(create_async_engine(url))
+        return cls(create_async_engine(url, pool_pre_ping=True))
 
     async def create_all(self) -> None:
         """Tables from the schema, for tests. Deployments run the migrations."""
@@ -110,7 +113,7 @@ class Store:
                     "provider": provider,
                     "model": model,
                     "workdir": workdir,
-                    "prompt": prompt,
+                    "prompt": without_nul(prompt),
                     "created_at": _now(),
                 },
             )
@@ -147,7 +150,7 @@ class Store:
                     attempt=attempt,
                     at=at,
                     kind=kind,
-                    payload=payload,
+                    payload=without_nul(payload),
                 )
             )
             pk = result.inserted_primary_key
@@ -182,9 +185,9 @@ class Store:
                 .where(schema.attempt.c.attempt == attempt)
                 .values(
                     outcome=outcome.value,
-                    failure=failure,
+                    failure=without_nul(failure),
                     ended_at=_now(),
-                    result=result or {},
+                    result=without_nul(result or {}),
                     **asdict(totals or Totals()),
                 )
             )
@@ -202,7 +205,9 @@ class Store:
     async def save_job(self, session_id: str, job: JobRecord) -> None:
         """Insert or replace the job row."""
         async with self.engine.begin() as conn:
-            await _upsert(conn, schema.job, {"session_id": session_id}, _job_values(job))
+            await _upsert(
+                conn, schema.job, {"session_id": session_id}, _job_values(_job_without_nul(job))
+            )
 
     async def save_conversation(self, session_id: str, text: str, events_count: int) -> None:
         """Insert or replace the conversation row (built_at = now UTC)."""
@@ -211,7 +216,7 @@ class Store:
                 conn,
                 schema.conversation,
                 {"session_id": session_id},
-                {"built_at": _now(), "events_count": events_count, "text": text},
+                {"built_at": _now(), "events_count": events_count, "text": without_nul(text)},
             )
 
     async def save_report(
@@ -223,7 +228,12 @@ class Store:
                 conn,
                 schema.report,
                 {"session_id": session_id},
-                {"created_at": _now(), "result": result, "summary": summary, "verdict": verdict},
+                {
+                    "created_at": _now(),
+                    "result": without_nul(result),
+                    "summary": without_nul(summary),
+                    "verdict": verdict,
+                },
             )
 
 
@@ -246,26 +256,38 @@ Key = dict[str, Any]  # the columns that identify one row, with their values
 
 
 async def _insert_if_absent(conn: AsyncConnection, table: Table, key: Key, values: Key) -> None:
-    if not await _row_exists(conn, table, key):
-        await conn.execute(insert(table).values(**key, **values))
+    """Insert the row unless its key already exists. One statement, so two
+    writers racing on the same key keep one row."""
+    await conn.execute(_absent_statement(conn, table, key, values))
 
 
 async def _upsert(conn: AsyncConnection, table: Table, key: Key, values: Key) -> None:
     """Insert the row identified by `key` with `values`, or set `values` on it
-    when it exists. Plain select-then-write: the store has one writer per row."""
-    if await _row_exists(conn, table, key):
-        await conn.execute(update(table).where(*_matching(table, key)).values(**values))
-    else:
-        await conn.execute(insert(table).values(**key, **values))
+    when it exists. One statement, so two writers racing on the same key
+    keep one row with the last write's values."""
+    await conn.execute(_upsert_statement(conn, table, key, values))
 
 
-async def _row_exists(conn: AsyncConnection, table: Table, key: Key) -> bool:
-    found = await conn.execute(select(table).where(*_matching(table, key)))
-    return found.first() is not None
+def _absent_statement(conn: AsyncConnection, table: Table, key: Key, values: Key) -> Any:
+    row = {**key, **values}
+    return _row_insert(conn, table, row).on_conflict_do_nothing(index_elements=list(key))
 
 
-def _matching(table: Table, key: Key) -> list[ColumnElement[bool]]:
-    return [table.c[column] == value for column, value in key.items()]
+def _upsert_statement(conn: AsyncConnection, table: Table, key: Key, values: Key) -> Any:
+    row = {**key, **values}
+    return _row_insert(conn, table, row).on_conflict_do_update(
+        index_elements=list(key), set_=values
+    )
+
+
+def _row_insert(conn: AsyncConnection, table: Table, row: Key) -> Any:
+    if conn.dialect.name == "postgresql":
+        return postgres_insert(table).values(**row)
+    return sqlite_insert(table).values(**row)
+
+
+def _job_without_nul(job: JobRecord) -> JobRecord:
+    return replace(job, result=without_nul(job.result))
 
 
 def _job_values(job: JobRecord) -> Key:

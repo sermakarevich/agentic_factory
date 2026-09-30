@@ -193,3 +193,17 @@ async def test_the_job_row_is_replaced_not_duplicated() -> None:
         assert dict(rows[0]["result"]) == {"ok": True}
     finally:
         await store.dispose()
+
+
+async def test_event_payload_with_nul_comes_back_escaped() -> None:
+    store = await make_store()
+    try:
+        await store.start_session("s1", "opencode", "m", "/w", "do it")
+        at = datetime(2026, 9, 30, 12, 0, 0, tzinfo=UTC)
+        payload: dict[str, Any] = {"msg": "a\x00b", "items": ["x\x00y", 1]}
+        await store.append_event("s1", 1, at, "progress", payload)
+        (event,) = await store.load_events("s1")
+        assert event.payload == {"msg": "a\\u0000b", "items": ["x\\u0000y", 1]}
+        assert "\x00" not in str(event.payload)
+    finally:
+        await store.dispose()
