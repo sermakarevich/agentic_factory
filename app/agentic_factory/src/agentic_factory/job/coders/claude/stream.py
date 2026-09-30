@@ -71,6 +71,7 @@ class Block(BaseModel):
 
 
 class Message(BaseModel):
+    id: str = ""  # assistant: one message can arrive as several lines sharing this id
     content: str | list[Block] = ""
     usage: Usage | None = None
 

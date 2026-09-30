@@ -7,7 +7,9 @@ from agentic_factory.event import Event, EventKind
 from agentic_factory.failure import ProviderError, RateLimited
 from agentic_factory.job.coders.claude.harness import ClaudeHarness
 from agentic_factory.job.contract import Job
+from agentic_factory.job.ledger import Ledger
 from agentic_factory.settings.load import settings
+from agentic_factory.tokens import Tokens
 
 FIXTURE = Path(__file__).parent / "fixtures" / "tool.jsonl"
 
@@ -116,3 +118,53 @@ def test_failed_tool_result_is_flagged() -> None:
     )
     (event,) = ClaudeHarness().parse_line(line)
     assert event.kind == EventKind.TOOL and event.error and event.content == "boom"
+
+
+def assistant_line(message_id: str, blocks: list[dict[str, str]]) -> str:
+    return json.dumps(
+        {
+            "type": "assistant",
+            "session_id": "s",
+            "timestamp": "2026-09-30T00:00:00Z",
+            "message": {
+                "id": message_id,
+                "role": "assistant",
+                "content": blocks,
+                "usage": {"input_tokens": 100, "output_tokens": 10},
+            },
+        }
+    )
+
+
+def result_line() -> str:
+    return json.dumps(
+        {
+            "type": "result",
+            "subtype": "success",
+            "is_error": False,
+            "result": "done",
+            "session_id": "s",
+            "usage": {"input_tokens": 200, "output_tokens": 20},
+            "total_cost_usd": 0.01,
+        }
+    )
+
+
+def test_split_message_counts_usage_once() -> None:
+    harness = ClaudeHarness()
+    stream = "\n".join(
+        [
+            assistant_line("msg_1", [{"type": "thinking", "thinking": "hmm"}]),
+            assistant_line("msg_1", [{"type": "text", "text": "hi"}]),
+            result_line(),
+        ]
+    )
+    first, second, finished = parse_all(harness, stream)
+    assert first.kind == EventKind.AI and second.kind == EventKind.AI
+    assert first.usage == Tokens(input=100, output=10) and second.usage is None
+    ledger = Ledger()
+    ledger.add(first)
+    ledger.add(second)
+    assert ledger.tokens == Tokens(input=100, output=10)
+    ledger.add(finished)
+    assert ledger.tokens == Tokens(input=200, output=20)

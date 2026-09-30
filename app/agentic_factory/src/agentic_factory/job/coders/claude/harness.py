@@ -27,6 +27,14 @@ class ClaudeHarness(Harness):
     line is one `ai` event, a `user` line is one `tool` event per result, and
     `result` is `finished` with the totals claude computed itself.
 
+    One assistant message can arrive as several lines sharing its message id
+    (a thinking line then a text line, or a text line then a tool_use line),
+    each carrying the message's full usage. The events are kept one per line,
+    but only the first line of each id keeps its usage: merging the lines
+    would need buffering and change what downstream code sees, while the
+    ledger only needs each message's tokens once. Later lines keep their
+    text and tool calls with `usage=None`.
+
     Tool results do not repeat the tool name, so names are remembered from the
     `tool_use` block by id.
     """
@@ -36,6 +44,7 @@ class ClaudeHarness(Harness):
     def __init__(self) -> None:
         self._session_id = ""
         self._tool_names: dict[str, str] = {}
+        self._seen_message_ids: set[str] = set()
         self._last_at = datetime.now(tz=UTC)
 
     def command(self, job: Job) -> list[str]:
@@ -91,8 +100,20 @@ class ClaudeHarness(Harness):
             raw,
             content="".join(b.text for b in blocks if b.type == BlockType.TEXT),
             tool_calls=[ToolCall(id=c.id, name=c.name, args=c.input) for c in calls],
-            usage=_to_tokens(line.message.usage) if line.message.usage else None,
+            usage=self._usage_first_time(line),
         )
+
+    def _usage_first_time(self, line: Line) -> Tokens | None:
+        """The line's tokens, or None when its message id was already counted."""
+        if line.message.usage is None:
+            return None
+        message_id = line.message.id
+        if not message_id:
+            return _to_tokens(line.message.usage)
+        if message_id in self._seen_message_ids:
+            return None
+        self._seen_message_ids.add(message_id)
+        return _to_tokens(line.message.usage)
 
     def _remember_tool_names(self, calls: list[Block]) -> None:
         """Tool results carry only the call id; the name comes from here."""
