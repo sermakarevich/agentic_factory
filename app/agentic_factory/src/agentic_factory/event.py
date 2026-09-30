@@ -13,6 +13,7 @@ class EventKind(StrEnum):
     TOOL = "tool"  # one tool's output
     RATE_LIMIT = "rate_limit"  # provider quota signal
     FINISHED = "finished"  # coder said it is done; carries the totals
+    USAGE = "usage"  # the try's totals read back from the coder, after a `finished` without them
     COMPACTION = "compaction"  # the engine asked the coder to compact its context
     UNKNOWN = "unknown"  # a line the harness could not translate; content is the text
 

@@ -353,8 +353,11 @@ async def test_usage_lost_at_exit_is_read_back_from_the_coders_record(tmp_path: 
     cut = FIXTURE.parent / "cut.jsonl"
     messages_made_now(record := tmp_path / "messages.json")
     harness = CoderWithRecord(f"cat {cut}", f"cat {record}")
-    result = await run(job(), Recorder(), repair=no_repair, harness=harness)
+    observer = Recorder()
+    result = await run(job(), observer, repair=no_repair, harness=harness)
     assert result.usage_known
+    assert [e.kind for e in observer.events][-2:] == [EventKind.FINISHED, EventKind.USAGE]
+    assert observer.events[-1].usage == result.tokens  # the journal has the read-back too
     assert result.tokens == Tokens(input=9862 + 3264, output=69 + 11, cache_read=9841)
     assert result.cost_usd == pytest.approx(0.0011444 + 0.000354482)
 

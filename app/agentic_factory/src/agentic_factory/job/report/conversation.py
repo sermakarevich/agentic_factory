@@ -71,12 +71,18 @@ def _render_finished(event: Event) -> str:
     return f"finished: {usage}, cost ${event.cost_usd:.4f}"
 
 
+def _render_usage(event: Event) -> str:
+    usage = f"in={event.usage.input} out={event.usage.output}" if event.usage else "no usage"
+    return f"usage {event.content}: {usage}, cost ${event.cost_usd:.4f}"
+
+
 RENDERERS: dict[EventKind, Callable[[Event], str]] = {
     EventKind.SESSION: _render_session,
     EventKind.AI: _render_ai,
     EventKind.TOOL: _render_tool,
     EventKind.RATE_LIMIT: _render_rate_limit,
     EventKind.FINISHED: _render_finished,
+    EventKind.USAGE: _render_usage,
     EventKind.COMPACTION: _render_compaction,
 }
 

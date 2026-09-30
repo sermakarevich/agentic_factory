@@ -55,6 +55,23 @@ def test_render_marks_tries_and_clips_tool_output() -> None:
     assert text.splitlines()[-1] == "finished: in=10 out=5, cost $0.5000"
 
 
+def test_a_read_back_renders_after_finished() -> None:
+    finished = Event(kind=EventKind.FINISHED, at=AT, session_id="s")
+    usage = Event(
+        kind=EventKind.USAGE,
+        at=AT,
+        session_id="s",
+        content="read back from the coder",
+        usage=Tokens(input=10, output=5),
+        cost_usd=0.5,
+    )
+    text = render("", [_row(1, 1, finished), _row(2, 1, usage)])
+    assert text.splitlines()[-2:] == [
+        "finished: no usage, cost $0.0000",
+        "usage read back from the coder: in=10 out=5, cost $0.5000",
+    ]
+
+
 def test_render_empty_is_empty() -> None:
     assert render("", []) == ""
     assert render("do it", []) == "user: do it"

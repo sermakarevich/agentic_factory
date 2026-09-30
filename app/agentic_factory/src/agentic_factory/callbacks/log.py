@@ -31,7 +31,7 @@ def _describe(event: Event) -> str:
             return f"{event.name} -> {_clip(event.content)}"
         case EventKind.RATE_LIMIT:
             return f"resets_at={event.resets_at}"
-        case EventKind.FINISHED:
+        case EventKind.FINISHED | EventKind.USAGE:
             return f"{_tokens(event.usage)}  cost=${event.cost_usd:.4f}"
         case EventKind.COMPACTION | EventKind.UNKNOWN:
             return _clip(event.content)

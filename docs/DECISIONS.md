@@ -329,7 +329,11 @@ queues.
   result never waits on or fails for the accounting. Reading opencode's
   store through its own API is fine; writing into it is not. The time
   fence is the try's start, not the session's: a retried job shares
-  the session and must not count the earlier tries twice.
+  the session and must not count the earlier tries twice. The totals
+  travel as a `usage` event through the same callback as the stream,
+  not as a fix-up of the ledger alone: the journal is the record the
+  reviewer reads, and it should say what the stream said and what was
+  found afterwards, in that order.
 - **Workflows are Python, not YAML.** Graphs are code; a data-driven DAG
   interpreter can be added later if needed. Beads is an input source and
   an output target, not the internal state store.

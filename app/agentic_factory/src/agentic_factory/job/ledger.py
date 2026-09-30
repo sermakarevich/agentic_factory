@@ -1,7 +1,7 @@
 from agentic_factory.event import Event, EventKind
 from agentic_factory.job.stats import JobStats
 from agentic_factory.job.summary.block import find_summary_block
-from agentic_factory.tokens import Tokens, Usage
+from agentic_factory.tokens import Tokens
 
 
 class Ledger:
@@ -26,6 +26,8 @@ class Ledger:
                 self._take_totals(event)
             case EventKind.AI:
                 self._add_turn(event)
+            case EventKind.USAGE:
+                self._take_totals(event)
 
     def _add_turn(self, event: Event) -> None:
         self.tokens = self.tokens + (event.usage or Tokens())
@@ -33,16 +35,10 @@ class Ledger:
         if block := find_summary_block(event.content):
             self.summary_block = block
 
-    def _take_totals(self, finished: Event) -> None:
-        """The coder's totals replace the sum: they are what it billed."""
-        if finished.usage is not None:
-            self.tokens = finished.usage
-            self.cost_usd = finished.cost_usd
+    def _take_totals(self, event: Event) -> None:
+        """The coder's totals replace the sum: they are what it billed. They
+        come with `finished`, or with `usage` when they were read back."""
+        if event.usage is not None:
+            self.tokens = event.usage
+            self.cost_usd = event.cost_usd
             self.usage_known = True
-
-    def take(self, usage: Usage) -> None:
-        """The coder's own record of the try, read back after a run whose
-        stream lost its totals; it replaces the sum like `finished` would."""
-        self.tokens = usage.tokens
-        self.cost_usd = usage.cost_usd
-        self.usage_known = True

@@ -4,7 +4,7 @@ from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from time import monotonic
 
-from agentic_factory.event import Event
+from agentic_factory.event import Event, EventKind
 from agentic_factory.failure import CoderCrashed, Stalled, TimedOut
 from agentic_factory.job.callback import JobCallback, JobEnd
 from agentic_factory.job.coders.harness import Harness
@@ -22,6 +22,7 @@ from agentic_factory.job.summary.parse import parse_summary
 from agentic_factory.job.summary.prompt import wrap_prompt
 from agentic_factory.job.usage import recover_usage
 from agentic_factory.settings.load import settings
+from agentic_factory.tokens import Usage
 
 Repair = Callable[[str], Awaitable[JobSummary | None]]
 
@@ -67,7 +68,7 @@ async def _coder_result(
     await _compact_if_large(job, harness, callback)
     since = datetime.now(UTC)
     await _read_coder(job, harness, callback, started, ledger)
-    await _recover_usage_if_unknown(job, harness, ledger, since)
+    await _recover_usage_if_unknown(job, harness, callback, ledger, since)
     summary = await _parse_or_repair_summary(ledger, repair)
     return _job_result(ledger, summary, monotonic() - started)
 
@@ -203,15 +204,30 @@ async def _read_line_within_limits(proc: Process, job: Job, deadline: float) -> 
 
 
 async def _recover_usage_if_unknown(
-    job: Job, harness: Harness, ledger: Ledger, since: datetime
+    job: Job, harness: Harness, callback: JobCallback, ledger: Ledger, since: datetime
 ) -> None:
     """The coder's own totals for the turns of this try, when its stream did
-    not carry them; the ledger keeps its partial sum when there are none."""
+    not carry them: a `usage` event, to the callback and the ledger like any
+    other, so the journal has it too. The partial sum stays when there are none."""
     if ledger.usage_known:
         return
     usage = await recover_usage(harness, job, since)
-    if usage is not None:
-        ledger.take(usage)
+    if usage is None:
+        return
+    event = _usage_event(job.session_id, usage)
+    await callback.on_event(event)
+    ledger.add(event)
+
+
+def _usage_event(session_id: str, usage: Usage) -> Event:
+    return Event(
+        kind=EventKind.USAGE,
+        at=datetime.now(UTC),
+        session_id=session_id,
+        content="read back from the coder",
+        usage=usage.tokens,
+        cost_usd=usage.cost_usd,
+    )
 
 
 async def _parse_or_repair_summary(ledger: Ledger, repair: Repair) -> JobSummary | None:

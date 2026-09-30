@@ -158,7 +158,11 @@ above, for any coder whose `usage_command` is not empty. Best effort and
 bounded by `job.usage_wait_sec`: a failure, a timeout or an answer that
 is not the record leaves the usage unknown; the result does not depend
 on it. It runs only for a run that reached a result; a crashed or killed
-try reports the sum it saw.
+try reports the sum it saw. What it finds becomes a `usage` event, sent
+to the callback after `finished` and added to the ledger like any other
+event, so the journal and the transcript carry the totals too: the
+transcript reads `finished: no usage` and then `usage read back from
+the coder: in=... out=...`.
 
 `job/session.py`: `create_session(job)` makes that session. For a coder that
 takes any id we choose (claude: `new_session_command` is empty) it is a
