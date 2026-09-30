@@ -45,6 +45,11 @@ class JobResult(BaseModel):
     session_id: str = Field(default="", description="Handle to continue in a later job.")
     tokens: Tokens = Field(default_factory=Tokens)
     cost_usd: float = 0.0
+    usage_known: bool = Field(
+        default=False,
+        description="True when the coder reported its totals. False means tokens and cost "
+        "are a partial sum or zero (opencode drops its last line now and then), not a real 0.",
+    )
     duration_sec: float = 0.0
     stats: JobStats = Field(default_factory=JobStats)
     summary_text: str = Field(

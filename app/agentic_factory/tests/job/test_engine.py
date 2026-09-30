@@ -75,7 +75,7 @@ async def test_replayed_stream_gives_result_and_events() -> None:
     observer = Recorder()
     result = await run(job(), observer, repair=no_repair, harness=ScriptedCoder(f"cat {FIXTURE}"))
     assert result.session_id.startswith("ses_")
-    assert result.tokens.input == 8847 + 11718
+    assert result.tokens.input == 8847 + 11718 and result.usage_known
     assert result.duration_sec > 0
     assert [e.kind for e in observer.events][-1] == EventKind.FINISHED
     assert result.stats.model_dump() == {"turns": 2, "tool_calls": 1, "tool_failures": 0}
@@ -315,3 +315,12 @@ async def test_exit_zero_without_finished_is_a_crash() -> None:
             await run(job(), Recorder(), repair=no_repair, harness=ScriptedCoder(f"cat {tmp}"))
     finally:
         tmp.unlink()
+
+
+async def test_a_dropped_last_line_gives_a_result_with_usage_unknown() -> None:
+    """opencode lost its final `step_finish`: the run still ends, with the
+    turns seen so far summed and the totals marked as not known."""
+    cut = FIXTURE.parent / "cut.jsonl"
+    result = await run(job(), Recorder(), repair=no_repair, harness=ScriptedCoder(f"cat {cut}"))
+    assert not result.usage_known
+    assert result.tokens.input > 0  # the earlier turns carried their usage

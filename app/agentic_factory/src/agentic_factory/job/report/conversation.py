@@ -81,13 +81,15 @@ RENDERERS: dict[EventKind, Callable[[Event], str]] = {
 }
 
 
-def render(rows: list[StoredEvent]) -> str:
-    """The session as a transcript, in stored order: a header when the try
-    changes, then one block per event. Tool outputs and arguments are clipped
-    so a long run still fits a model's context."""
-    if not rows:
+def render(prompt: str, rows: list[StoredEvent]) -> str:
+    """The session as a transcript: the user's request first, then the events
+    in stored order with a header when the try changes. The request is not
+    an event (the coder never echoes it), so it comes from the session row.
+    Tool outputs and arguments are clipped so a long run still fits a
+    model's context."""
+    if not rows and not prompt:
         return ""
-    blocks: list[str] = []
+    blocks: list[str] = [f"user: {prompt}"] if prompt else []
     previous: int | None = None
     for row in rows:
         if row.attempt != previous:

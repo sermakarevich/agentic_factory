@@ -93,7 +93,7 @@ def test_end_of_stream_flushes_the_turn_and_finishes_when_the_last_line_was_drop
     tail = harness.end_of_stream()
     assert [e.kind for e in tail] == [EventKind.AI, EventKind.FINISHED]
     assert tail[0].content == "done" and tail[0].usage is None
-    assert tail[1].usage is not None and tail[1].usage.input > 0
+    assert tail[1].usage is None and tail[1].cost_usd == 0.0  # the totals were on the lost line
     assert harness.end_of_stream() == []
 
 

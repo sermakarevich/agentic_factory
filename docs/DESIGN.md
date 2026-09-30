@@ -62,7 +62,7 @@ Lives in `agentic_factory/tokens.py`, `event.py`, `failure.py` (shared with call
   stall_sec, context_limit_tokens, `session_id` (session of an earlier try)
   and `session_tokens` (its last known context size).
   Built by a job definition, sent to the activity.
-- `JobResult` — what the run produced: session_id, tokens, cost_usd,
+- `JobResult` — what the run produced: session_id, tokens, cost_usd, usage_known,
   duration_sec, plus `stats` (turns, tool_calls, tool_failures), the coder's
   `summary` (its own account of the job, see "Job outcome") and
   `summary_text` (the block as written, for repair). Built by the engine from
@@ -114,8 +114,11 @@ Lives in `agentic_factory/tokens.py`, `event.py`, `failure.py` (shared with call
 Coder quirks learned from smoke runs (opencode v2.0.12):
 - `opencode run` needs `--standalone`, else the last `step_finish` line
   never arrives. Even with it the final line is sometimes lost in a race
-  with process exit, so the harness finishes the run in `end_of_stream()` from the
-  totals seen so far.
+  with process exit, so the harness finishes the run in `end_of_stream()`.
+  That lost line carried the last turn's tokens, so `finished` then has
+  no usage, the result keeps the sum of the earlier turns (zero for a
+  one-turn answer) and `JobResult.usage_known` is false: a 0 there is
+  "not known", never "free". Seen live on Sep 30 (`job-ef580a12`).
 - opencode takes its working directory from `$PWD`, not from the real
   cwd. The engine sets both.
 - The first standalone start can take ~45 s (plugins and MCP servers
@@ -215,7 +218,7 @@ the two engines; workflows compose them; retries never appear in workflow code.
   are our `Heartbeat` model: time of the last event, event count, context
   size of the last model turn.
 - `build_report(request)` — after the job's last try: the app's
-  `job/report/build.py` turns the stored events into the conversation,
+  `job/report/build.py` turns the session's prompt and stored events into the conversation,
   saves it, has the report step read it, saves the report and returns it.
   Given the app's step timeout plus a margin, with the `report_activity`
   retries.
@@ -324,7 +327,7 @@ to a model reading text. Lives in `job/stats.py`, `job/summary/contract.py`,
    mode, so `JobSummary` forbids extra fields.
 6. **The report from the whole session.** After the last try, whatever
    its end, a step reads the rendered conversation of every try (see
-   Materialization) and writes a `JobReport`: task, done (with the evidence
+   Materialization), which opens with the user's request, and writes a `JobReport`: task, done (with the evidence
    seen), not done, problems, and a verdict `done | partial | failed |
    unknown`. It is told that a claim by the coder is not evidence and a
    command output is. The coder's summary block, when there is one, or the
@@ -369,7 +372,9 @@ Tables, one job = one session:
   memory would restart with the process, and timestamps from two tries
   can overlap when an orphaned coder is still writing.
 - `conversation` — the session rendered as one transcript, built once at
-  the end by `job/report/conversation.py`: a header per try, the model's text,
+  the end by `job/report/conversation.py`: the user's request from the
+  `session` row (the coder never echoes it, so it is not an event), then
+  a header per try, the model's text,
   its tool calls with clipped arguments, tool outputs clipped in the middle,
   rate limits, compactions, the finish line. Clip sizes are settings.
 - `report` — the `JobResult` as json (empty when every try failed), the

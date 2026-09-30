@@ -10,8 +10,8 @@ from agentic_factory.step.providers.client import Client
 async def build_report(
     store: Store, session_id: str, result: JobResult | None, failure: str, client: Client
 ) -> JobReport:
-    """After the job's last try: the session's stored events become the
-    conversation, saved beside them; one model step reads it and writes the
+    """After the job's last try: the session's prompt and stored events
+    become the conversation, saved beside them; one model step reads it and writes the
     report, saved too. Raises the step's `JobFailed` when the model could
     not answer; the report row is then not written."""
     text = await _saved_conversation(store, session_id)
@@ -21,8 +21,9 @@ async def build_report(
 
 
 async def _saved_conversation(store: Store, session_id: str) -> str:
+    session = await store.load_session(session_id)
     rows = await store.load_events(session_id)
-    text = render(rows)
+    text = render(session.prompt if session else "", rows)
     await store.save_conversation(session_id, text, len(rows))
     return text
 

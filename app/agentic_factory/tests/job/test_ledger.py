@@ -18,11 +18,12 @@ def test_totals_are_summed_over_turns_until_finished_brings_the_coders_own() -> 
         Event(kind=EventKind.FINISHED, at=NOW, usage=Tokens(input=31, output=3), cost_usd=0.5)
     )
     assert ledger.tokens == Tokens(input=31, output=3) and ledger.cost_usd == 0.5
-    assert ledger.finished is not None
+    assert ledger.finished is not None and ledger.usage_known
 
 
 def test_a_finished_without_usage_keeps_the_sum() -> None:
     ledger = Ledger()
     ledger.add(Event(kind=EventKind.AI, at=NOW, usage=Tokens(input=10)))
+    assert not ledger.usage_known
     ledger.add(Event(kind=EventKind.FINISHED, at=NOW))
-    assert ledger.tokens == Tokens(input=10)
+    assert ledger.tokens == Tokens(input=10) and not ledger.usage_known

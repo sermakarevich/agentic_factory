@@ -28,8 +28,9 @@ class OpencodeHarness(Harness):
 
     opencode sometimes exits before writing the last `step_finish` (seen on
     v2.0.12 with `--standalone`), so `end_of_stream()` takes a trailing turn
-    of text alone for the final answer and emits `finished` from the totals
-    seen so far; a stream that stops anywhere else is left unfinished.
+    of text alone for the final answer and emits `finished` without totals:
+    the lost line carried the last turn's tokens, so the totals are not
+    known. A stream that stops anywhere else is left unfinished.
     """
 
     default_model = settings.harness.opencode.default_model
@@ -100,7 +101,8 @@ class OpencodeHarness(Harness):
     def end_of_stream(self) -> list[Event]:
         """What the stream still holds when it closes. A turn of text alone is
         the final answer whose `step_finish` opencode dropped: it is emitted
-        with `finished` from the totals so far. Anything else (no session, a
+        with `finished` carrying no usage, since the dropped line held the
+        last turn's tokens (the engine keeps the turns summed). Anything else (no session, a
         turn with tool calls, nothing buffered after a tool-calls step) means
         the coder stopped mid-work, so no `finished`: the engine reports a crash."""
         if self._finished or not self._session_id:
@@ -109,7 +111,7 @@ class OpencodeHarness(Harness):
             return self._flush_turn(self._last_at, usage=None, cost=0.0, raw={})
         events = self._flush_turn(self._last_at, usage=None, cost=0.0, raw={})
         self._finished = True
-        events.append(self._finished_event(self._last_at, raw={}))
+        events.append(self._finished_event(self._last_at, usage=None, cost=0.0, raw={}))
         return events
 
     def _parse_step_start(self, line: Line, raw: dict[str, Any]) -> list[Event]:
@@ -151,7 +153,7 @@ class OpencodeHarness(Harness):
         events = self._flush_turn(line.at, usage, part.cost, raw)
         if part.reason == Reason.STOP:
             self._finished = True
-            events.append(self._finished_event(line.at, raw))
+            events.append(self._finished_event(line.at, self._total, self._cost, raw))
         return events
 
     def _add_to_totals(self, usage: Tokens, cost: float) -> None:
@@ -189,14 +191,17 @@ class OpencodeHarness(Harness):
             raw=raw,
         )
 
-    def _finished_event(self, at: datetime, raw: dict[str, Any]) -> Event:
-        """The `finished` event with the totals summed over the turns."""
+    def _finished_event(
+        self, at: datetime, usage: Tokens | None, cost: float, raw: dict[str, Any]
+    ) -> Event:
+        """The `finished` event with the totals summed over the turns, or
+        none when the coder never reported the last turn."""
         return Event(
             kind=EventKind.FINISHED,
             at=at,
             session_id=self._session_id,
-            usage=self._total,
-            cost_usd=self._cost,
+            usage=usage,
+            cost_usd=cost,
             raw=raw,
         )
 

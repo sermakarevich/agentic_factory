@@ -2,7 +2,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 import pytest
-from factory_store.store import StoredEvent
+from factory_store.store import StoredEvent, StoredSession
 
 from agentic_factory.event import Event, EventKind
 from agentic_factory.failure import BadOutput
@@ -20,6 +20,16 @@ class FakeStore:
     def __init__(self, events: list[StoredEvent]) -> None:
         self.events = events
         self.calls: list[tuple[Any, ...]] = []
+
+    async def load_session(self, session_id: str) -> StoredSession | None:
+        return StoredSession(
+            id=session_id,
+            provider="p",
+            model="m",
+            workdir="/w",
+            prompt="say ok",
+            created_at=datetime.now(UTC),
+        )
 
     async def load_events(self, session_id: str) -> list[StoredEvent]:
         return self.events
@@ -62,7 +72,7 @@ async def test_the_report_is_written_over_the_rendered_conversation(
     written = await build_report(db, "s1", RESULT, "", client=None)  # type: ignore[arg-type]
 
     assert written == REPORT
-    assert len(seen) == 1 and "===== try 1 =====" in seen[0]
+    assert len(seen) == 1 and seen[0].startswith("user: say ok\n===== try 1 =====")
     assert db.calls == [
         ("save_conversation", "s1", seen[0], 2),
         (

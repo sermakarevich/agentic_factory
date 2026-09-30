@@ -37,7 +37,7 @@ queues.
 - **Quirks that shaped the harnesses** (all found by live smoke runs):
   opencode needs `--standalone` or the last `step_finish` never arrives,
   and even then the last line can be lost in a race with exit, so the
-  harness closes the run from `end_of_stream()` using the totals seen.
+  harness closes the run from `end_of_stream()`, without totals.
   opencode takes its working directory from `$PWD`, not the real cwd, so
   the engine sets both. Its first standalone start takes about 45 s, so
   the stall timeout must stay above that. claude waits on an open stdin,
@@ -303,6 +303,21 @@ queues.
   calling it and its timeout was shorter than the app's step timeout. The
   report activity's timeout is now the app's `step.timeout_sec` plus a
   margin, read from the app's settings, so the two cannot drift apart.
+- **The transcript opens with the request** (Sep 30). The report step
+  judged `unknown` on a live job: "the original user request is not
+  shown in the transcript". The prompt was only in the `session` row
+  and the conversation was rendered from events alone. `build_report`
+  now loads the session (`Store.load_session`) and `render(prompt, rows)`
+  puts a `user:` block first. Emitting the prompt as an event instead was
+  rejected: it is not something the coder said, and the row already holds it.
+- **Usage is unknown, not zero, when the coder never said it** (Sep 30).
+  The same job reported 0 tokens and $0: opencode dropped its last
+  `step_finish`, the harness synthesized `finished` from totals it never
+  got, and the ledger took those zeros as the coder's own. `finished` now
+  carries no usage in that case, the ledger keeps the sum of the turns it
+  saw, and `JobResult.usage_known` says whether the totals are the
+  coder's. Reading the totals back from opencode's own store is parked
+  in TODO.
 - **Workflows are Python, not YAML.** Graphs are code; a data-driven DAG
   interpreter can be added later if needed. Beads is an input source and
   an output target, not the internal state store.

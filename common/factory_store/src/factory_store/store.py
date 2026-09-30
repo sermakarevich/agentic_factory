@@ -17,6 +17,18 @@ def _now() -> datetime:
 
 
 @dataclass(frozen=True)
+class StoredSession:
+    """One `session` row: what the job was, as it started."""
+
+    id: str
+    provider: str
+    model: str
+    workdir: str
+    prompt: str
+    created_at: datetime
+
+
+@dataclass(frozen=True)
 class StoredEvent:
     """One `event` row: the order (`id`) and try it belongs to, plus the event as stored."""
 
@@ -117,6 +129,15 @@ class Store:
                     "created_at": _now(),
                 },
             )
+
+    async def load_session(self, session_id: str) -> StoredSession | None:
+        """The session row, or None when no job started it."""
+        async with self.engine.begin() as conn:
+            result = await conn.execute(
+                select(schema.session).where(schema.session.c.id == session_id)
+            )
+            row = result.mappings().first()
+            return _stored_session(row) if row is not None else None
 
     async def start_try(self, session_id: str, attempt: int) -> None:
         """Insert the try as running. If a row for (session_id, attempt) already exists,
@@ -307,6 +328,17 @@ def _stored_try(row: RowMapping) -> StoredTry:
         failure=row["failure"],
         totals=Totals.of_row(row),
         result=row["result"],
+    )
+
+
+def _stored_session(row: RowMapping) -> StoredSession:
+    return StoredSession(
+        id=row["id"],
+        provider=row["provider"],
+        model=row["model"],
+        workdir=row["workdir"],
+        prompt=row["prompt"],
+        created_at=_as_utc(row["created_at"]),
     )
 
 

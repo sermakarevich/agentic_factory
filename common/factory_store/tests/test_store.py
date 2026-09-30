@@ -20,6 +20,10 @@ async def test_session_and_try_round_trip() -> None:
     try:
         await store.start_session("s1", "opencode", "m", "/w", "do it")
         await store.start_session("s1", "opencode", "m", "/w", "do it")
+        session = await store.load_session("s1")
+        assert session is not None and session.prompt == "do it"
+        assert session.provider == "opencode" and session.created_at.tzinfo is not None
+        assert await store.load_session("nobody") is None
         await store.start_try("s1", 1)
         await store.finish_try("s1", 1, Outcome.DONE)
         async with store.engine.connect() as conn:

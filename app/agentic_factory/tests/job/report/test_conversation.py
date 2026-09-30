@@ -45,8 +45,8 @@ def test_render_marks_tries_and_clips_tool_output() -> None:
         usage=Tokens(input=10, output=5),
         cost_usd=0.5,
     )
-    text = render([_row(1, 1, ai), _row(2, 1, tool), _row(3, 2, finished)])
-    assert text.startswith("===== try 1 =====")
+    text = render("do it", [_row(1, 1, ai), _row(2, 1, tool), _row(3, 2, finished)])
+    assert text.startswith("user: do it\n===== try 1 =====\nassistant: plan")
     assert text.count("===== try 2 =====") == 1
     assert '-> bash({"cmd": "ls"})' in text
     tool_line = next(line for line in text.splitlines() if line.startswith("tool bash:"))
@@ -56,4 +56,5 @@ def test_render_marks_tries_and_clips_tool_output() -> None:
 
 
 def test_render_empty_is_empty() -> None:
-    assert render([]) == ""
+    assert render("", []) == ""
+    assert render("do it", []) == "user: do it"

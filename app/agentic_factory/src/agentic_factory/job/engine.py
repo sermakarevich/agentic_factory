@@ -211,6 +211,7 @@ def _job_result(ledger: Ledger, summary: JobSummary | None, duration_sec: float)
         session_id=ledger.finished.session_id,
         tokens=ledger.tokens,
         cost_usd=ledger.cost_usd,
+        usage_known=ledger.usage_known,
         duration_sec=duration_sec,
         stats=ledger.stats,
         summary_text=ledger.summary_block,

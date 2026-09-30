@@ -17,6 +17,12 @@ class Ledger:
         self.summary_block = ""
         self.finished: Event | None = None
 
+    @property
+    def usage_known(self) -> bool:
+        """True once `finished` brought the coder's own totals. Without them
+        the tokens are the sum of the turns that carried usage, or zero."""
+        return self.finished is not None and self.finished.usage is not None
+
     def add(self, event: Event) -> None:
         self.stats.add(event)
         match event.kind:
