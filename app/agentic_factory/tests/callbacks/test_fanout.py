@@ -1,5 +1,7 @@
 from datetime import UTC, datetime
 
+import pytest
+
 from agentic_factory.callback import Callback, JobEnd
 from agentic_factory.callbacks.fanout import Fanout
 from agentic_factory.event import Event, EventKind
@@ -37,3 +39,16 @@ async def test_the_base_callback_ignores_everything() -> None:
     await callback.on_start(Job(prompt="p", workdir="."))
     await callback.on_event(Event(kind=EventKind.AI, at=datetime.now(UTC)))
     await callback.on_end(JobEnd(tokens=Tokens(), cost_usd=0, duration_sec=0, stats=JobStats()))
+
+
+class Broken(Callback):
+    async def on_event(self, event: Event) -> None:
+        raise RuntimeError("journal down")
+
+
+async def test_a_raising_callback_does_not_silence_the_others() -> None:
+    log: list[str] = []
+    fanout = Fanout(Broken(), Recorder("b", log))
+    with pytest.raises(RuntimeError, match="journal down"):
+        await fanout.on_event(Event(kind=EventKind.AI, at=datetime.now(UTC)))
+    assert log == ["b ai"]

@@ -109,3 +109,18 @@ def test_failed_tool_call_is_flagged() -> None:
     )
     tool = next(e for e in events if e.kind == EventKind.TOOL)
     assert tool.error and tool.content == "exit 1" and tool.name == "shell"
+
+
+def test_end_of_stream_after_a_tool_calls_step_is_not_finished() -> None:
+    """The stream stopped where the model was about to start another step."""
+    harness = OpencodeHarness()
+    lines = FIXTURE.read_text().splitlines()[:3]  # step_start, tool_use, step_finish tool-calls
+    parse_all(harness, "\n".join(lines))
+    assert [e.kind for e in harness.end_of_stream()] == []
+
+
+def test_end_of_stream_with_a_pending_tool_call_flushes_the_turn_unfinished() -> None:
+    harness = OpencodeHarness()
+    parse_all(harness, "\n".join(CUT.read_text().splitlines()[:3]))  # a tool call, no step_finish
+    tail = harness.end_of_stream()
+    assert [e.kind for e in tail] == [EventKind.AI, EventKind.TOOL]

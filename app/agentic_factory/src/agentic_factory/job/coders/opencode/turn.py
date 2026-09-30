@@ -14,3 +14,8 @@ class Turn(BaseModel):
     @property
     def is_empty(self) -> bool:
         return not self.text and not self.calls
+
+    @property
+    def is_final_answer(self) -> bool:
+        """Text and no tool calls: the turn a run ends on."""
+        return bool(self.text) and not self.calls

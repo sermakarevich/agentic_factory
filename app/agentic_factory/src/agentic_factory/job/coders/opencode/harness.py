@@ -27,8 +27,9 @@ class OpencodeHarness(Harness):
     emits `finished` with tokens and cost summed over turns.
 
     opencode sometimes exits before writing the last `step_finish` (seen on
-    v2.0.12 with `--standalone`), so `end_of_stream()` flushes a buffered turn
-    and emits `finished` from the totals seen so far.
+    v2.0.12 with `--standalone`), so `end_of_stream()` takes a trailing turn
+    of text alone for the final answer and emits `finished` from the totals
+    seen so far; a stream that stops anywhere else is left unfinished.
     """
 
     default_model = settings.harness.opencode.default_model
@@ -97,10 +98,15 @@ class OpencodeHarness(Harness):
         return []
 
     def end_of_stream(self) -> list[Event]:
-        if self._finished:
-            return []  # the stream had its final step_finish; nothing was lost
-        if not self._session_id:
-            return []  # never started: no session, no finished; the engine reports a crash
+        """What the stream still holds when it closes. A turn of text alone is
+        the final answer whose `step_finish` opencode dropped: it is emitted
+        with `finished` from the totals so far. Anything else (no session, a
+        turn with tool calls, nothing buffered after a tool-calls step) means
+        the coder stopped mid-work, so no `finished`: the engine reports a crash."""
+        if self._finished or not self._session_id:
+            return []
+        if not self._turn.is_final_answer:
+            return self._flush_turn(self._last_at, usage=None, cost=0.0, raw={})
         events = self._flush_turn(self._last_at, usage=None, cost=0.0, raw={})
         self._finished = True
         events.append(self._finished_event(self._last_at, raw={}))

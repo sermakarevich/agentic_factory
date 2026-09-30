@@ -5,6 +5,7 @@ class JobSettings(BaseModel):
     provider: str
     timeout_sec: int
     stall_sec: int
+    exit_wait_sec: int
     compact_at_tokens: int
     context_limit_tokens: int
     line_limit_bytes: int

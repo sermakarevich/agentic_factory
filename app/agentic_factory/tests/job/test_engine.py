@@ -1,4 +1,6 @@
+import asyncio
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -247,3 +249,68 @@ async def test_failed_compaction_is_reported_and_the_run_goes_on(tmp_path: Path)
     compactions = [e for e in observer.events if e.kind == EventKind.COMPACTION]
     assert compactions[0].content == "compaction failed: boom"
     assert result.session_id
+
+
+def alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    return True
+
+
+async def child_pid(pid_file: Path) -> int:
+    for _ in range(50):
+        if pid_file.exists() and pid_file.read_text().strip():
+            return int(pid_file.read_text())
+        await asyncio.sleep(0.1)
+    raise AssertionError("the coder never wrote its child's pid")
+
+
+async def test_a_stall_kills_the_coder_and_its_children(tmp_path: Path) -> None:
+    pid_file = tmp_path / "child.pid"
+    script = f"sleep 60 & echo $! > {pid_file}; wait"
+    with pytest.raises(Stalled):
+        await run(job(stall_sec=1), Recorder(), repair=no_repair, harness=ScriptedCoder(script))
+    assert not alive(await child_pid(pid_file))
+
+
+async def test_a_callback_error_kills_the_coder_and_reaches_on_end(tmp_path: Path) -> None:
+    class Broken(Recorder):
+        async def on_event(self, event: Event) -> None:
+            raise RuntimeError("journal down")
+
+    pid_file = tmp_path / "child.pid"
+    observer = Broken()
+    script = f"sleep 60 & echo $! > {pid_file}; cat {FIXTURE}; wait"
+    with pytest.raises(RuntimeError, match="journal down"):
+        await run(job(), observer, repair=no_repair, harness=ScriptedCoder(script))
+    (end,) = observer.ends
+    assert end.failure == "RuntimeError: journal down"
+    assert not alive(await child_pid(pid_file))
+
+
+async def test_a_cancelled_run_kills_the_coder_and_reaches_on_end(tmp_path: Path) -> None:
+    pid_file = tmp_path / "child.pid"
+    observer = Recorder()
+    script = f"sleep 60 & echo $! > {pid_file}; wait"
+    task = asyncio.create_task(
+        run(job(), observer, repair=no_repair, harness=ScriptedCoder(script))
+    )
+    pid = await child_pid(pid_file)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    (end,) = observer.ends
+    assert end.failure == "cancelled"
+    assert not alive(pid)
+
+
+async def test_exit_zero_without_finished_is_a_crash() -> None:
+    lines = FIXTURE.read_text().splitlines()[:3]  # ends on a tool-calls step
+    (tmp := Path(FIXTURE.parent) / "cut_short.tmp").write_text("\n".join(lines))
+    try:
+        with pytest.raises(CoderCrashed, match="without saying it finished"):
+            await run(job(), Recorder(), repair=no_repair, harness=ScriptedCoder(f"cat {tmp}"))
+    finally:
+        tmp.unlink()

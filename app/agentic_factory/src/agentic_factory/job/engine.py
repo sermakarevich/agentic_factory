@@ -1,17 +1,17 @@
 import asyncio
-import contextlib
 from asyncio.subprocess import Process
 from collections.abc import Awaitable, Callable
 from time import monotonic
 
 from agentic_factory.callback import Callback, JobEnd
 from agentic_factory.event import Event
-from agentic_factory.failure import CoderCrashed, JobFailed, Stalled, TimedOut
+from agentic_factory.failure import CoderCrashed, Stalled, TimedOut
 from agentic_factory.job.coders.harness import Harness
 from agentic_factory.job.context import ContextWatch, compact
 from agentic_factory.job.contract import Job, JobResult
 from agentic_factory.job.defaults import with_default_model
 from agentic_factory.job.ledger import Ledger
+from agentic_factory.job.process.kill import kill_process
 from agentic_factory.job.process.spawn import start_process
 from agentic_factory.job.process.tail import tail_of
 from agentic_factory.job.process.workdir import ensure_workdir
@@ -32,10 +32,11 @@ async def run(job: Job, callback: Callback, harness: Harness, repair: Repair) ->
     tell the callback it starts, compact a large session before resuming it,
     run the coder while feeding every event to the callback, and either return
     the result or raise the `JobFailed` subclass that says why there is none.
-    The callback hears the end either way, with the totals so far. A summary
-    block that does not parse goes to `repair`, one model step, before the
-    result is made. The caller picks the harness (`harness_for`) and the
-    repair (`repair_summary`)."""
+    The callback hears the end either way, with the totals so far: on a
+    result, on a `JobFailed`, on any other error and on a cancellation. A
+    summary block that does not parse goes to `repair`, one model step,
+    before the result is made. The caller picks the harness (`harness_for`)
+    and the repair (`repair_summary`)."""
     job = with_default_model(job, harness)
     ensure_workdir(job)
     job = await _with_session(job, harness)
@@ -43,20 +44,20 @@ async def run(job: Job, callback: Callback, harness: Harness, repair: Repair) ->
     ledger = Ledger()
     started = monotonic()
     try:
-        result = await _result_of_run(job, harness, callback, repair, ledger, started)
-    except (JobFailed, asyncio.CancelledError) as failure:
+        result = await _coder_result(job, harness, callback, repair, ledger, started)
+    except (Exception, asyncio.CancelledError) as failure:
         await callback.on_end(_end_of(ledger, started, failure=_failure_text(failure)))
         raise
     await callback.on_end(_end_of(ledger, started, result=result))
     return result
 
 
-async def _result_of_run(
+async def _coder_result(
     job: Job, harness: Harness, callback: Callback, repair: Repair, ledger: Ledger, started: float
 ) -> JobResult:
     """The run itself: the compaction, the coder to its end, the summary, the result."""
     await _compact_if_large(job, harness, callback)
-    await _run_coder(job, harness, callback, started, ledger)
+    await _read_coder(job, harness, callback, started, ledger)
     summary = await _parse_or_repair_summary(ledger, repair)
     return _job_result(ledger, summary, monotonic() - started)
 
@@ -94,21 +95,43 @@ async def _compact_if_large(job: Job, harness: Harness, callback: Callback) -> N
         await compact(harness, job, job.session_id, callback)
 
 
-async def _run_coder(
+async def _read_coder(
     job: Job, harness: Harness, callback: Callback, started: float, ledger: Ledger
 ) -> None:
-    """Start the coder and read it to the end into the ledger, killing it on
-    any failure or cancellation. Raises `CoderCrashed` when it died or never
-    said it finished."""
+    """Start the coder and read it to its end into the ledger. Whatever ends
+    the read, the coder is killed with its children, unless it has exited,
+    and nothing waits for it longer than `exit_wait_sec`. Raises `CoderCrashed`
+    when it died, hung after closing its output, or never said it finished."""
     proc = await _start_coder(job, harness)
     stderr_task = asyncio.create_task(_stderr_tail(proc))
     try:
         await _read_events(proc, job, harness, callback, started, ledger)
-        exit_code = await proc.wait()
-    except (JobFailed, asyncio.CancelledError):
-        await _kill_coder(proc)
-        raise
-    _raise_unless_finished(exit_code, await stderr_task, ledger)
+        exit_code = await _exit_code_within_limit(proc)
+        stderr = await _stderr_within_limit(stderr_task)
+    finally:
+        await kill_process(proc, settings.job.exit_wait_sec)  # nothing once it has exited
+        stderr_task.cancel()  # nothing once it is done
+    _raise_unless_finished(exit_code, stderr, ledger)
+
+
+async def _exit_code_within_limit(proc: Process) -> int:
+    """The coder's exit code once its output has closed; `CoderCrashed` when
+    it stays alive past `exit_wait_sec` (it is killed by the caller)."""
+    try:
+        return await asyncio.wait_for(proc.wait(), settings.job.exit_wait_sec)
+    except TimeoutError:
+        raise CoderCrashed(
+            -1, f"still running {settings.job.exit_wait_sec}s after its output closed"
+        ) from None
+
+
+async def _stderr_within_limit(stderr_task: asyncio.Task[str]) -> str:
+    """The tail of stderr; empty when something still holds the pipe open past
+    `exit_wait_sec` after the coder exited."""
+    try:
+        return await asyncio.wait_for(asyncio.shield(stderr_task), settings.job.exit_wait_sec)
+    except TimeoutError:
+        return ""
 
 
 async def _start_coder(job: Job, harness: Harness) -> Process:
@@ -193,12 +216,3 @@ def _job_result(ledger: Ledger, summary: JobSummary | None, duration_sec: float)
 async def _stderr_tail(proc: Process) -> str:
     assert proc.stderr is not None
     return tail_of(await proc.stderr.read())
-
-
-async def _kill_coder(proc: Process) -> None:
-    if proc.returncode is not None:
-        return
-    with contextlib.suppress(ProcessLookupError):
-        proc.kill()
-    with contextlib.suppress(asyncio.CancelledError):
-        await proc.wait()
