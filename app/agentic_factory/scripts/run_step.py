@@ -10,7 +10,6 @@ from options import given_options
 
 from agentic_factory.failure import JobFailed
 from agentic_factory.observe.log import LogObserver, configure_logging
-from agentic_factory.settings.load import settings
 from agentic_factory.step.catalog import client_for
 from agentic_factory.step.client import Client
 from agentic_factory.step.contract import Reasoning, Step
@@ -50,8 +49,9 @@ def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     configure_logging(logging.DEBUG if args.debug else logging.INFO)
     _quiet_http_logs()
-    client = client_for(args.provider or settings.step.provider)
-    step = with_default_model(_step_from_args(args), client)
+    step = _step_from_args(args)
+    client = client_for(step.provider)
+    step = with_default_model(step, client)
     log.info("step      %s %s", step.provider, step.model)
     return _run_and_print(step, client, as_json=args.json)
 

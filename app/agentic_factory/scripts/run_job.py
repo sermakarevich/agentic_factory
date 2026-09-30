@@ -42,8 +42,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     configure_logging(logging.DEBUG if args.debug else logging.INFO)
-    harness = harness_for(args.provider or settings.job.provider)
-    job = with_default_model(_job_from_args(args), harness)
+    job = _job_from_args(args)
+    harness = harness_for(job.provider)
+    job = with_default_model(job, harness)
     log.info("job       %s %s in %s", job.provider, job.model, job.workdir)
     return _run_and_log(job, harness, as_json=args.json)
 
