@@ -1,16 +1,16 @@
 import asyncio
 import contextlib
-import os
 from asyncio.subprocess import DEVNULL, PIPE, Process
 from collections.abc import Awaitable, Callable
-from datetime import UTC, datetime
 from pathlib import Path
 from time import monotonic
 
-from agentic_factory.event import Event, EventKind, Observer
-from agentic_factory.failure import CoderCrashed, ContextPressure, JobFailed, Stalled, TimedOut
+from agentic_factory.event import Observer
+from agentic_factory.failure import CoderCrashed, JobFailed, Stalled, TimedOut
 from agentic_factory.job.catalog import harness_for
+from agentic_factory.job.context import ContextWatch, compact
 from agentic_factory.job.contract import Job, JobResult
+from agentic_factory.job.environment import environment
 from agentic_factory.job.harness import Harness
 from agentic_factory.job.ledger import Ledger
 from agentic_factory.job.repair import repair_summary
@@ -28,35 +28,42 @@ async def run(
     harness: Harness | None = None,
     repair: Repair = repair_summary,
 ) -> JobResult:
-    """Run one llm job to its end: start the coder, feed every event to the
-    observer, enforce the job's limits, and either return the result or raise
-    the `JobFailed` subclass that says why there is none. A summary block that
-    does not parse goes to `repair`, one model step, before the result is made.
-    The coder always runs in a named session: the job's, or one made here
-    when the job has none (a direct run; a workflow makes it before try 1)."""
+    """Run one llm job to its end: prepare it, compact a large session before
+    resuming it, drive the coder while feeding every event to the observer, and
+    either return the result or raise the `JobFailed` subclass that says why
+    there is none. A summary block that does not parse goes to `repair`, one
+    model step, before the result is made."""
     harness = harness or harness_for(job.provider)
+    job = await _prepare(job, harness)
+    started = monotonic()
+    if job.session_tokens >= settings.job.compact_at_tokens:
+        await compact(harness, job, job.session_id, observer)
+    ledger = await _drive(job, harness, observer, started)
+    summary = await _summarize(ledger, repair)
+    return _result(ledger, summary, monotonic() - started)
+
+
+async def _prepare(job: Job, harness: Harness) -> Job:
+    """The job as the coder will get it: the harness's model when none is named,
+    an existing workdir, and a session. The session is the job's, or one made
+    here when it has none (a direct run; a workflow makes it before try 1)."""
     if not job.model:
         job = job.model_copy(update={"model": harness.default_model})
-    started = monotonic()
     Path(job.workdir).mkdir(parents=True, exist_ok=True)
-    env = {**os.environ, "PWD": job.workdir}  # opencode reads PWD, not the real cwd
     if not job.session_id:
         job = job.model_copy(update={"session_id": await create_session(job, harness)})
-    if job.session_tokens >= settings.job.compact_at_tokens:
-        await compact(harness, job, job.session_id, env, observer)
+    return job
+
+
+async def _drive(job: Job, harness: Harness, observer: Observer, started: float) -> Ledger:
+    """Start the coder and read it to the end, killing it on any failure or
+    cancellation. Returns the ledger of what it said; raises `CoderCrashed`
+    when it died or never said it finished."""
     ledger = Ledger()
-    proc = await asyncio.create_subprocess_exec(
-        *harness.command(job.model_copy(update={"prompt": wrap_prompt(job.prompt)})),
-        cwd=job.workdir,
-        env=env,
-        stdin=DEVNULL,  # claude waits for piped input when stdin is open
-        stdout=PIPE,
-        stderr=PIPE,
-        limit=settings.job.line_limit_bytes,
-    )
+    proc = await _spawn(job, harness)
     stderr_task = asyncio.create_task(_stderr_tail(proc, settings.job.failure_tail_chars))
     try:
-        await _read_events(proc, job, harness, observer, started, env, ledger)
+        await _read_events(proc, job, harness, observer, started, ledger)
         exit_code = await proc.wait()
     except (JobFailed, asyncio.CancelledError):
         await _kill(proc)
@@ -66,17 +73,19 @@ async def run(
         raise CoderCrashed(exit_code, stderr)
     if ledger.finished is None:
         raise CoderCrashed(exit_code, f"exited without saying it finished\n{stderr}")
-    summary = parse_summary(ledger.summary_block) if ledger.summary_block else None
-    if ledger.summary_block and summary is None:
-        summary = await repair(ledger.summary_block)
-    return JobResult(
-        session_id=ledger.finished.session_id,
-        tokens=ledger.finished.usage or Tokens(),
-        cost_usd=ledger.finished.cost_usd,
-        duration_sec=monotonic() - started,
-        stats=ledger.stats,
-        summary_text=ledger.summary_block,
-        summary=summary,
+    return ledger
+
+
+async def _spawn(job: Job, harness: Harness) -> Process:
+    """The coder process, in the workdir, with the wrapped prompt and closed stdin."""
+    return await asyncio.create_subprocess_exec(
+        *harness.command(job.model_copy(update={"prompt": wrap_prompt(job.prompt)})),
+        cwd=job.workdir,
+        env=environment(job.workdir),
+        stdin=DEVNULL,  # claude waits for piped input when stdin is open
+        stdout=PIPE,
+        stderr=PIPE,
+        limit=settings.job.line_limit_bytes,
     )
 
 
@@ -86,85 +95,57 @@ async def _read_events(
     harness: Harness,
     observer: Observer,
     started: float,
-    env: dict[str, str],
     ledger: Ledger,
 ) -> None:
-    """Read stdout until it closes, feeding every event to the observer and the ledger.
-    Watches the context of every model turn: asks for a compaction once it
-    passes the `compact_at_tokens` setting (when the coder allows that during a run) and
-    kills the run above `context_limit_tokens`."""
-    assert proc.stdout is not None
+    """Read stdout until it closes: every line becomes events for the observer,
+    the ledger and the context watch. Stops on the job's timeout or stall."""
     deadline = started + job.timeout_sec
-    session_id = job.session_id
-    compaction_pending = False
+    watch = ContextWatch(job, harness, observer)
     while True:
-        remaining = deadline - monotonic()
-        if remaining <= 0:
-            raise TimedOut(f"exceeded {job.timeout_sec}s")
-        try:
-            data = await asyncio.wait_for(
-                proc.stdout.readline(), timeout=min(job.stall_sec, remaining)
-            )
-        except TimeoutError:
-            if monotonic() >= deadline:
-                raise TimedOut(f"exceeded {job.timeout_sec}s") from None
-            raise Stalled(f"no output for {job.stall_sec}s") from None
-        if data:
-            events = harness.parse_line(data.decode(errors="replace"))
-        else:
-            events = harness.end_of_stream()
+        data = await _next_line(proc, job, deadline)
+        text = data.decode(errors="replace")
+        events = harness.parse_line(text) if data else harness.end_of_stream()
         for event in events:
             await observer.on_event(event)
             ledger.add(event)
-            if event.kind == EventKind.SESSION:
-                session_id = event.session_id
-            elif event.kind == EventKind.AI and (context := context_of(event)) is not None:
-                if context > job.context_limit_tokens:
-                    raise ContextPressure(
-                        f"context {context} tokens > limit {job.context_limit_tokens}"
-                    )
-                if context < settings.job.compact_at_tokens:
-                    compaction_pending = False  # it shrank; the next crossing may ask again
-                elif not compaction_pending and harness.compacts_while_running and session_id:
-                    compaction_pending = True
-                    await compact(harness, job, session_id, env, observer)
+            await watch.on_event(event)
         if not data:
             return
 
 
-def context_of(event: Event) -> int | None:
-    """The context size of a model turn: what it read, from the prompt or the cache."""
-    if event.usage is None:
+async def _next_line(proc: Process, job: Job, deadline: float) -> bytes:
+    """One line of stdout, or empty bytes at its end. Raises `TimedOut` past
+    the deadline and `Stalled` when nothing arrives for `stall_sec`."""
+    assert proc.stdout is not None
+    remaining = deadline - monotonic()
+    if remaining <= 0:
+        raise TimedOut(f"exceeded {job.timeout_sec}s")
+    try:
+        return await asyncio.wait_for(proc.stdout.readline(), timeout=min(job.stall_sec, remaining))
+    except TimeoutError:
+        if monotonic() >= deadline:
+            raise TimedOut(f"exceeded {job.timeout_sec}s") from None
+        raise Stalled(f"no output for {job.stall_sec}s") from None
+
+
+async def _summarize(ledger: Ledger, repair: Repair) -> JobSummary | None:
+    """The coder's summary block parsed, repaired by a step when it does not
+    parse, or None when the coder wrote none."""
+    if not ledger.summary_block:
         return None
-    return event.usage.input + event.usage.cache_read + event.usage.cache_write
+    return parse_summary(ledger.summary_block) or await repair(ledger.summary_block)
 
 
-async def compact(
-    harness: Harness, job: Job, session_id: str, env: dict[str, str], observer: Observer
-) -> None:
-    """Ask the coder to compact the session. Best effort: a failure is reported
-    as an event and the run goes on, since the context limit still guards it."""
-    proc = await asyncio.create_subprocess_exec(
-        *harness.compact_command(session_id),
-        cwd=job.workdir,
-        env=env,
-        stdin=DEVNULL,
-        stdout=DEVNULL,
-        stderr=PIPE,
-    )
-    _, stderr = await proc.communicate()
-    if proc.returncode == 0:
-        outcome = "requested"
-    else:
-        tail = stderr[-settings.job.failure_tail_chars :].decode(errors="replace").strip()
-        outcome = f"failed: {tail}"
-    await observer.on_event(
-        Event(
-            kind=EventKind.COMPACTION,
-            at=datetime.now(UTC),
-            session_id=session_id,
-            content=f"compaction {outcome}",
-        )
+def _result(ledger: Ledger, summary: JobSummary | None, duration_sec: float) -> JobResult:
+    assert ledger.finished is not None
+    return JobResult(
+        session_id=ledger.finished.session_id,
+        tokens=ledger.finished.usage or Tokens(),
+        cost_usd=ledger.finished.cost_usd,
+        duration_sec=duration_sec,
+        stats=ledger.stats,
+        summary_text=ledger.summary_block,
+        summary=summary,
     )
 
 

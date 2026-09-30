@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 from temporalio import activity
 
 from agentic_factory.event import Event, EventKind
-from agentic_factory.job.engine import context_of
+from agentic_factory.job.context import context_of
 
 
 class Heartbeat(BaseModel):

@@ -1,5 +1,4 @@
 import asyncio
-import os
 from asyncio.subprocess import DEVNULL, PIPE
 from pathlib import Path
 from uuid import uuid4
@@ -7,6 +6,7 @@ from uuid import uuid4
 from agentic_factory.failure import CoderCrashed
 from agentic_factory.job.catalog import harness_for
 from agentic_factory.job.contract import Job
+from agentic_factory.job.environment import environment
 from agentic_factory.job.harness import Harness
 from agentic_factory.settings.load import settings
 
@@ -23,7 +23,7 @@ async def create_session(job: Job, harness: Harness | None = None) -> str:
     proc = await asyncio.create_subprocess_exec(
         *argv,
         cwd=job.workdir,
-        env={**os.environ, "PWD": job.workdir},  # opencode reads PWD, not the real cwd
+        env=environment(job.workdir),
         stdin=DEVNULL,
         stdout=PIPE,
         stderr=PIPE,
