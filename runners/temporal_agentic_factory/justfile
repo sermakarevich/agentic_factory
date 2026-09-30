@@ -60,9 +60,10 @@ temporal ui_ip=temporal_ip:
     exec temporal server start-dev --ip {{temporal_ip}} --port {{temporal_port}} \
         --ui-ip {{ui_ip}} --ui-port {{temporal_ui_port}} --db-filename "{{temporal_data}}/temporal.db"
 
-# same, with the UI reachable from other tailnet devices at http://<tailscale ip>:8233 (gRPC stays local)
+# same, with the UI on every interface: http://127.0.0.1:8233 here, http://<tailscale ip>:8233 from
+# other tailnet devices (gRPC stays on 127.0.0.1)
 temporal-tailscale:
-    just temporal "$(tailscale ip -4)"
+    just temporal 0.0.0.0
 
 # is the dev server up?
 temporal-health:

@@ -43,7 +43,7 @@ def render_event(event: Event) -> str:
         text = f"tool {event.name}{marker}: {output}"
     elif event.kind == EventKind.RATE_LIMIT:
         resets = event.resets_at.isoformat() if event.resets_at is not None else "?"
-        text = f"rate limit until {resets}"
+        text = f"rate limit warning (not blocking), resets {resets}"
     elif event.kind == EventKind.FINISHED:
         usage = f"in={event.usage.input} out={event.usage.output}" if event.usage else "no usage"
         text = f"finished: {usage}, cost ${event.cost_usd:.4f}"

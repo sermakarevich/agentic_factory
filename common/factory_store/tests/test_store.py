@@ -109,3 +109,24 @@ async def test_conversation_and_report_replace_earlier_rows() -> None:
         assert dict(report_rows[0]["summary"]) == summary_dict
     finally:
         await store.dispose()
+
+
+async def test_starting_a_later_try_abandons_one_left_running() -> None:
+    store = await make_store()
+    try:
+        await store.start_session("s1", "opencode", "m", "/w", "do it")
+        await store.start_try("s1", 1)
+        await store.start_try("s1", 2)
+        async with store.engine.connect() as conn:
+            result = await conn.execute(
+                select(schema.attempt)
+                .where(schema.attempt.c.session_id == "s1")
+                .order_by(schema.attempt.c.attempt)
+            )
+            first, second = result.mappings().all()
+        assert first["outcome"] == "failed"
+        assert first["failure"].startswith("abandoned")
+        assert first["ended_at"] is not None
+        assert second["outcome"] == "running"
+    finally:
+        await store.dispose()

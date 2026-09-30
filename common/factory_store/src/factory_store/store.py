@@ -13,6 +13,9 @@ def _now() -> datetime:
     return datetime.now(UTC)
 
 
+ABANDONED = "abandoned: a later try started while this one was still running"
+
+
 @dataclass(frozen=True)
 class StoredEvent:
     """One `event` row: the order (`id`) and try it belongs to, plus the event as stored."""
@@ -68,8 +71,16 @@ class Store:
     async def start_try(self, session_id: str, attempt: int) -> None:
         """Insert the try as running. If a row for (session_id, attempt) already exists,
         set it back to running with a new started_at, ended_at None, failure "" (same
-        idempotence reason)."""
+        idempotence reason). An earlier try of the session still marked running died
+        with its runner and could never close itself: it is closed as abandoned here."""
         async with self.engine.begin() as conn:
+            await conn.execute(
+                update(schema.attempt)
+                .where(schema.attempt.c.session_id == session_id)
+                .where(schema.attempt.c.attempt < attempt)
+                .where(schema.attempt.c.outcome == Outcome.RUNNING.value)
+                .values(ended_at=_now(), outcome=Outcome.FAILED.value, failure=ABANDONED)
+            )
             existing = await conn.execute(
                 select(schema.attempt.c.id)
                 .where(schema.attempt.c.session_id == session_id)

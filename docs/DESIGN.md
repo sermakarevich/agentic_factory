@@ -338,7 +338,9 @@ Tables, one job = one session:
 - `attempt` — one row per try: attempt number, started_at, ended_at,
   outcome `running | done | failed`, failure text. Opened by the job
   activity before the engine starts, closed after it, on success, on a
-  `JobFailed` and on cancellation.
+  `JobFailed` and on cancellation. A try still marked running when a later
+  try of the session starts died with its runner; the store closes it as
+  abandoned then.
 - `event` — one row per event, the whole `Event` as json (`raw` line
   included), with the try it belongs to and the coder's timestamp. Written
   by `JournalObserver` (`observe/journal.py`), one of the job activity's
@@ -440,8 +442,8 @@ process state. No task.json, no attempts log, no signal files.
 - Runs on the user's laptop / server. Temporal is the `temporal` CLI dev
   server, not docker: one binary, history in a SQLite file under
   `~/.local/share/agentic_factory/`, web UI on :8233. `just temporal-install`,
-  `just temporal`, `just temporal-health`; `just temporal-tailscale` binds the UI
-  to the machine's Tailscale IP for other tailnet devices. Clients use `127.0.0.1:7233`, never
+  `just temporal`, `just temporal-health`; `just temporal-tailscale` also opens the UI
+  to other tailnet devices at the machine's Tailscale IP. Clients use `127.0.0.1:7233`, never
   `localhost`: on macOS that resolves to IPv6 first and the server is IPv4
   only, so gRPC hangs. Postgres, for the store, runs from the repo's
   docker compose (`just db`); the runner keeps running on the host either

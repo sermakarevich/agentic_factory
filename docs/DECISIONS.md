@@ -230,8 +230,10 @@ queues.
   first and the server is IPv4 only, so gRPC hangs. Postgres for the
   store is the one docker service; the runner stays on the host because
   it needs the coder CLIs, their auth stores and the worktrees.
-- **UI on the tailnet.** `just temporal-tailscale` binds the UI to the
-  machine's Tailscale IP and keeps gRPC local. `tailscale serve` would be
+- **UI on the tailnet.** `just temporal-tailscale` binds the UI to every
+  interface (localhost and the Tailscale IP) and keeps gRPC on 127.0.0.1.
+  Binding the UI to the Tailscale IP alone was tried first and lost
+  localhost, since the dev server takes one UI address. `tailscale serve` would be
   cleaner (HTTPS, a name) but needs the feature enabled on the tailnet by
   its admin.
 - **Proven by the restart test.** Runner killed mid-job and restarted:
