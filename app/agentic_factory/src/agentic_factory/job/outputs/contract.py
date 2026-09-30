@@ -1,3 +1,4 @@
+from enum import StrEnum
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -6,6 +7,13 @@ Schema = dict[str, Any]
 """A JSON schema of the outputs a job must state: an object with named fields,
 usually `SomeModel.model_json_schema()`. The caller owns the model; the
 job only ever sees the schema."""
+
+
+class Source(StrEnum):
+    """Where the outputs were found; stored beside them."""
+
+    LAST_MESSAGE = "last_message"  # the coder's last message, where the prompt asked for them
+    CONVERSATION = "conversation"  # the whole rendered conversation, when the last message had none
 
 
 class Extraction(BaseModel):

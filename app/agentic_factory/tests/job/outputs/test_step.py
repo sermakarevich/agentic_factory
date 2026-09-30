@@ -5,7 +5,12 @@ from pydantic import BaseModel, ConfigDict
 
 from agentic_factory.failure import JobFailed
 from agentic_factory.job.outputs.contract import Extraction
-from agentic_factory.job.outputs.step import SYSTEM_PROMPT, extract, extraction_schema, prompt_for
+from agentic_factory.job.outputs.step import (
+    SYSTEM_PROMPT,
+    extract,
+    extraction_schema,
+    prompt_for,
+)
 from agentic_factory.settings.load import settings
 from agentic_factory.step.contract import Step
 from agentic_factory.step.providers.client import Answer, Client
@@ -71,6 +76,21 @@ def test_the_wrapped_schema_allows_null_and_lifts_the_defs() -> None:
 def test_a_schema_with_no_defs_wraps_without_them() -> None:
     plain = {"type": "object", "properties": {"urls": {"type": "array"}}}
     assert "$defs" not in extraction_schema(plain)
+
+
+def test_a_hand_written_schema_is_made_strict_at_every_level() -> None:
+    loose = {
+        "type": "object",
+        "properties": {
+            "path": {"type": "string"},
+            "pages": {"type": "array", "items": {"type": "object", "properties": {"url": {}}}},
+        },
+    }
+    inner, _ = extraction_schema(loose)["properties"]["outputs"]["anyOf"]
+    assert inner["required"] == ["path", "pages"] and inner["additionalProperties"] is False
+    page = inner["properties"]["pages"]["items"]
+    assert page["required"] == ["url"] and page["additionalProperties"] is False
+    assert "required" not in loose  # the input is untouched
 
 
 def test_prompt_clips_a_long_text(monkeypatch: pytest.MonkeyPatch) -> None:

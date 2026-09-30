@@ -1,4 +1,5 @@
 import logging
+from typing import Any
 
 from agentic_factory.callback import Callback
 from agentic_factory.job.outputs.contract import Extraction, Schema
@@ -28,8 +29,9 @@ def extraction_schema(schema: Schema) -> Schema:
     """The step's output schema: the job's outputs or null, plus the fields
     not stated. Strict mode wants every field, so without the null branch a
     model that found nothing would fill the outputs in. The outputs' own
-    `$defs` move to the top, where their refs resolve."""
-    inner = dict(schema)
+    `$defs` move to the top, where their refs resolve, and every object in
+    them is made strict, so a hand-written schema works like a pydantic one."""
+    inner = strict(schema)
     defs = inner.pop("$defs", {})
     top: Schema = {
         "type": "object",
@@ -43,6 +45,21 @@ def extraction_schema(schema: Schema) -> Schema:
     if defs:
         top["$defs"] = defs
     return top
+
+
+def strict(node: Any) -> Any:
+    """A copy of the schema in the shape strict mode wants: every object
+    names every property as required and allows no other. Optional fields
+    are expressed as `anyOf` with null, not by leaving them out."""
+    if isinstance(node, list):
+        return [strict(item) for item in node]
+    if not isinstance(node, dict):
+        return node
+    copy = {key: strict(value) for key, value in node.items()}
+    if "properties" in copy:
+        copy["required"] = list(copy["properties"])
+        copy["additionalProperties"] = False
+    return copy
 
 
 async def extract(text: str, schema: Schema, client: Client) -> Extraction:

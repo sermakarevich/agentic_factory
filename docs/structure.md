@@ -24,8 +24,8 @@ common/factory_settings            the settings loader
 
 | Component | What it does |
 |---|---|
-| `schema` | The tables: session, attempt (one try), event, conversation, job, report. |
-| `Store` | The async API over them. One method is one short transaction: start a session or try, append an event, finish a try, save the job, conversation and report, load any of them back. |
+| `schema` | The tables: session, attempt (one try), event, conversation, job, report, outputs. |
+| `Store` | The async API over them. One method is one short transaction: start a session or try, append an event, finish a try, save the job, conversation, report and outputs, load any of them back. |
 | `clean` | Makes text safe for Postgres (no NUL characters). |
 | `migrations/` | Alembic migrations that create and change the tables. |
 

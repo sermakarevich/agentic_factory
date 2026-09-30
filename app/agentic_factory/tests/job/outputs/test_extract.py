@@ -1,4 +1,5 @@
 from datetime import UTC, datetime
+from typing import Any
 
 import pytest
 from factory_store.store import StoredEvent, StoredSession
@@ -18,6 +19,12 @@ NOT_FOUND = Extraction(outputs=None, missing=["urls"])
 class FakeStore:
     def __init__(self, events: list[StoredEvent]) -> None:
         self.events = events
+        self.saved: list[tuple[str, Schema, dict[str, Any], str]] = []
+
+    async def save_outputs(
+        self, session_id: str, schema: Schema, outputs: dict[str, Any], source: str
+    ) -> None:
+        self.saved.append((session_id, schema, outputs, str(source)))
 
     async def load_session(self, session_id: str) -> StoredSession | None:
         return StoredSession(
@@ -74,9 +81,11 @@ async def test_the_last_message_is_enough_when_it_states_the_outputs(
 ) -> None:
     step = Scripted(FOUND)
     monkeypatch.setattr(module, "extract", step)
-    outputs = await extract_outputs(FakeStore(ROWS), "s1", SCHEMA, client=None)  # type: ignore[arg-type]
+    db = FakeStore(ROWS)
+    outputs = await extract_outputs(db, "s1", SCHEMA, client=None)  # type: ignore[arg-type]
     assert outputs == {"urls": ["u"]}
     assert step.texts == ["urls: [u]"]
+    assert db.saved == [("s1", SCHEMA, {"urls": ["u"]}, "last_message")]
 
 
 async def test_the_conversation_is_read_when_the_last_message_does_not_state_them(
@@ -84,8 +93,10 @@ async def test_the_conversation_is_read_when_the_last_message_does_not_state_the
 ) -> None:
     step = Scripted(NOT_FOUND, FOUND)
     monkeypatch.setattr(module, "extract", step)
-    outputs = await extract_outputs(FakeStore(ROWS), "s1", SCHEMA, client=None)  # type: ignore[arg-type]
+    db = FakeStore(ROWS)
+    outputs = await extract_outputs(db, "s1", SCHEMA, client=None)  # type: ignore[arg-type]
     assert outputs == {"urls": ["u"]}
+    assert db.saved == [("s1", SCHEMA, {"urls": ["u"]}, "conversation")]
     assert len(step.texts) == 2
     assert step.texts[1].startswith("user: fetch\n===== try 1 =====\nassistant: urls: [a]")
     assert "===== try 2 =====" in step.texts[1]
@@ -105,6 +116,8 @@ async def test_not_stated_anywhere_fails_and_names_the_fields(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(module, "extract", Scripted(NOT_FOUND, NOT_FOUND))
+    db = FakeStore(ROWS)
     with pytest.raises(OutputsNotStated, match="did not state: urls"):
-        await extract_outputs(FakeStore(ROWS), "s1", SCHEMA, client=None)  # type: ignore[arg-type]
+        await extract_outputs(db, "s1", SCHEMA, client=None)  # type: ignore[arg-type]
     assert not OutputsNotStated.retryable
+    assert db.saved == []

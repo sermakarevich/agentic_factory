@@ -7,7 +7,7 @@ from sqlalchemy.dialects.postgresql import insert as postgres_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_engine
 
-from factory_store import schema
+from factory_store import schema as schema_
 from factory_store.clean import without_nul
 from factory_store.schema import Outcome
 
@@ -38,6 +38,17 @@ class StoredEvent:
     at: datetime
     kind: str
     payload: dict[str, Any]
+
+
+@dataclass(frozen=True)
+class StoredOutputs:
+    """One `outputs` row: what the workflow asked for, what was found, and where."""
+
+    session_id: str
+    created_at: datetime
+    source: str
+    schema: dict[str, Any]
+    outputs: dict[str, Any]
 
 
 @dataclass(frozen=True)
@@ -106,7 +117,7 @@ class Store:
     async def create_all(self) -> None:
         """Tables from the schema, for tests. Deployments run the migrations."""
         async with self.engine.begin() as conn:
-            await conn.run_sync(schema.metadata.create_all)
+            await conn.run_sync(schema_.metadata.create_all)
 
     async def dispose(self) -> None:
         await self.engine.dispose()
@@ -119,7 +130,7 @@ class Store:
         async with self.engine.begin() as conn:
             await _insert_if_absent(
                 conn,
-                schema.session,
+                schema_.session,
                 {"id": session_id},
                 {
                     "provider": provider,
@@ -134,7 +145,7 @@ class Store:
         """The session row, or None when no job started it."""
         async with self.engine.begin() as conn:
             result = await conn.execute(
-                select(schema.session).where(schema.session.c.id == session_id)
+                select(schema_.session).where(schema_.session.c.id == session_id)
             )
             row = result.mappings().first()
             return _stored_session(row) if row is not None else None
@@ -148,7 +159,7 @@ class Store:
             await _abandon_running_before(conn, session_id, attempt)
             await _upsert(
                 conn,
-                schema.attempt,
+                schema_.attempt,
                 {"session_id": session_id, "attempt": attempt},
                 {
                     "started_at": _now(),
@@ -166,7 +177,7 @@ class Store:
         """Insert one event; return its row id (the session-wide order)."""
         async with self.engine.begin() as conn:
             result = await conn.execute(
-                insert(schema.event).values(
+                insert(schema_.event).values(
                     session_id=session_id,
                     attempt=attempt,
                     at=at,
@@ -182,9 +193,9 @@ class Store:
         """Every event of the session, ordered by id ascending."""
         async with self.engine.begin() as conn:
             result = await conn.execute(
-                select(schema.event)
-                .where(schema.event.c.session_id == session_id)
-                .order_by(schema.event.c.id)
+                select(schema_.event)
+                .where(schema_.event.c.session_id == session_id)
+                .order_by(schema_.event.c.id)
             )
             return [_stored_event(row) for row in result.mappings().all()]
 
@@ -201,9 +212,9 @@ class Store:
         on the try row."""
         async with self.engine.begin() as conn:
             await conn.execute(
-                update(schema.attempt)
-                .where(schema.attempt.c.session_id == session_id)
-                .where(schema.attempt.c.attempt == attempt)
+                update(schema_.attempt)
+                .where(schema_.attempt.c.session_id == session_id)
+                .where(schema_.attempt.c.attempt == attempt)
                 .values(
                     outcome=outcome.value,
                     failure=without_nul(failure),
@@ -217,9 +228,9 @@ class Store:
         """Every try of the session, in try order."""
         async with self.engine.begin() as conn:
             result = await conn.execute(
-                select(schema.attempt)
-                .where(schema.attempt.c.session_id == session_id)
-                .order_by(schema.attempt.c.attempt)
+                select(schema_.attempt)
+                .where(schema_.attempt.c.session_id == session_id)
+                .order_by(schema_.attempt.c.attempt)
             )
             return [_stored_try(row) for row in result.mappings().all()]
 
@@ -227,7 +238,7 @@ class Store:
         """Insert or replace the job row."""
         async with self.engine.begin() as conn:
             await _upsert(
-                conn, schema.job, {"session_id": session_id}, _job_values(_job_without_nul(job))
+                conn, schema_.job, {"session_id": session_id}, _job_values(_job_without_nul(job))
             )
 
     async def save_conversation(self, session_id: str, text: str, events_count: int) -> None:
@@ -235,7 +246,7 @@ class Store:
         async with self.engine.begin() as conn:
             await _upsert(
                 conn,
-                schema.conversation,
+                schema_.conversation,
                 {"session_id": session_id},
                 {"built_at": _now(), "events_count": events_count, "text": without_nul(text)},
             )
@@ -247,7 +258,7 @@ class Store:
         async with self.engine.begin() as conn:
             await _upsert(
                 conn,
-                schema.report,
+                schema_.report,
                 {"session_id": session_id},
                 {
                     "created_at": _now(),
@@ -257,6 +268,32 @@ class Store:
                 },
             )
 
+    async def save_outputs(
+        self, session_id: str, schema: dict[str, Any], outputs: dict[str, Any], source: str
+    ) -> None:
+        """Insert or replace the outputs row (created_at = now UTC)."""
+        async with self.engine.begin() as conn:
+            await _upsert(
+                conn,
+                schema_.outputs,
+                {"session_id": session_id},
+                {
+                    "created_at": _now(),
+                    "source": source,
+                    "schema": without_nul(schema),
+                    "outputs": without_nul(outputs),
+                },
+            )
+
+    async def load_outputs(self, session_id: str) -> StoredOutputs | None:
+        """The outputs row, or None when the job was not asked for any."""
+        async with self.engine.begin() as conn:
+            result = await conn.execute(
+                select(schema_.outputs).where(schema_.outputs.c.session_id == session_id)
+            )
+            row = result.mappings().first()
+            return _stored_outputs(row) if row is not None else None
+
 
 ABANDONED = "abandoned: a later try started while this one was still running"
 
@@ -265,10 +302,10 @@ async def _abandon_running_before(conn: AsyncConnection, session_id: str, attemp
     """Close every earlier try of the session still marked running: it died with
     its runner and could never close itself."""
     await conn.execute(
-        update(schema.attempt)
-        .where(schema.attempt.c.session_id == session_id)
-        .where(schema.attempt.c.attempt < attempt)
-        .where(schema.attempt.c.outcome == Outcome.RUNNING.value)
+        update(schema_.attempt)
+        .where(schema_.attempt.c.session_id == session_id)
+        .where(schema_.attempt.c.attempt < attempt)
+        .where(schema_.attempt.c.outcome == Outcome.RUNNING.value)
         .values(ended_at=_now(), outcome=Outcome.FAILED.value, failure=ABANDONED)
     )
 
@@ -339,6 +376,16 @@ def _stored_session(row: RowMapping) -> StoredSession:
         workdir=row["workdir"],
         prompt=row["prompt"],
         created_at=_as_utc(row["created_at"]),
+    )
+
+
+def _stored_outputs(row: RowMapping) -> StoredOutputs:
+    return StoredOutputs(
+        session_id=row["session_id"],
+        created_at=_as_utc(row["created_at"]),
+        source=row["source"],
+        schema=row["schema"],
+        outputs=row["outputs"],
     )
 
 

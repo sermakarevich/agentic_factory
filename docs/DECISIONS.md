@@ -202,7 +202,8 @@ queues.
   `OutputsNotStated`, a final failure: the workflow stops, as fleet's did on
   a missing outputs file. `job/outputs/` in the app (contract, prompt,
   step, extract), `OutputsActivity` and `run_job_with_outputs` in the
-  runner. Nothing new in the store or the job engine.
+  runner. The outputs are saved in their own `outputs` row with the schema
+  and which pass found them; the job engine is untouched.
 - **Why a step over the stored events.** The events are already stored
   and the step engine already exists; the outputs are a lookup in the
   text, not an inference, once the prompt asked for them. The null branch

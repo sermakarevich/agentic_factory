@@ -22,7 +22,7 @@ agentic_factory/
           process/            # spawn, kill, environment, workdir, tail: the coder process
           summary/            # contract, prompt, block, parse, repair: the coder's own summary
           report/             # contract, conversation, step, build: the report a model writes over the run
-          outputs/            # contract, prompt, step, extract: typed outputs asked for in the prompt, picked out by a step
+          outputs/            # contract, prompt, step, extract: typed outputs asked for in the prompt, picked out by a step, saved
         step/                 # contract, reasoning, engine, defaults
           providers/          # client base, catalog; opencode/ (client)
         callbacks/            # log, json_lines, fanout, journal: the callbacks a run's start, events and end go to

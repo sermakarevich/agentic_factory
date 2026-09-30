@@ -386,10 +386,16 @@ summary block the engine asks for. After the job, one step with a schema
 built around the workflow's picks them out of the coder's last message. The
 schema is the outputs or null, plus the fields not stated: strict mode
 requires every field, and without the null branch a model that found nothing
-would fill the outputs in. "Not stated" is an answer, not a `BadOutput`: it
+would fill the outputs in. The workflow's schema is made strict the same way
+(every object requires all its properties and allows no other), so a
+hand-written one works like a pydantic one; an optional field is `anyOf`
+with null. "Not stated" is an answer, not a `BadOutput`: it
 triggers a second step over the whole rendered conversation. Not stated
 there either raises `OutputsNotStated`, final, and the workflow stops.
-No second JSON-block parser: extraction is the only path.
+No second JSON-block parser: extraction is the only path. Found outputs are
+saved in the `outputs` table with the schema and the pass that found them,
+so a later workflow, or a person, can read them without the Temporal
+history.
 
 ## Materialization
 
@@ -428,6 +434,11 @@ Tables, one job = one session:
   rate limits, compactions, the finish line. Clip sizes are settings.
 - `report` — the `JobResult` as json (empty when every try failed), the
   `JobReport` the model wrote, and its verdict as a column.
+- `outputs` — for a job a workflow asked for typed outputs: the JSON
+  schema it asked for, the outputs the extraction step found, and where
+  (`last_message | conversation`). Written by the `extract_outputs`
+  activity once the step found them; a job whose outputs were not stated
+  has no row.
 - `job` — one row per workflow run, written last: first try's start, end
   time, number of tries, outcome `done | failed`, failure text, the
   totals summed over every try (same columns as `attempt`), the result as
