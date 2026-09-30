@@ -6,7 +6,8 @@ responsibility each. Concepts are defined in [DESIGN.md](DESIGN.md).
 ```
 agentic_factory/
   pyproject.toml            # uv workspace root: lists members, shared dev tools
-  justfile                  # delegates to each package's justfile (check, test, run, temporal)
+  justfile                  # delegates to each package's justfile (check, test, run, temporal, db)
+  docker-compose.yml        # Postgres for the store: `just db`
   docs/
     DESIGN.md               # abstractions, needs, decisions
     CODEBASE.md             # this file
@@ -14,7 +15,7 @@ agentic_factory/
     agentic_factory/          # the application: everything that is not an engine
       pyproject.toml        # package `agentic_factory`
       justfile
-      src/agentic_factory/    # job/ and step/ (contract, engine, providers); settings/settings.toml holds every default
+      src/agentic_factory/    # job/, step/, observe/ (log, fanout, journal); settings/settings.toml holds every default
       scripts/              # run_job.py, run_step.py: dev entry points behind `just`
       tests/
   runners/
@@ -25,10 +26,11 @@ agentic_factory/
       tests/
     argo_agentic_factory/     # NOT built. README only, see "Why runners/"
   common/
-    <package>/              # libraries reused by more than one app, one per folder
-      pyproject.toml
-      src/<package>/
-      tests/
+    factory_store/          # the database: schema.py (tables), store.py (async API), migrations/ (alembic)
+      pyproject.toml        # package `factory_store`
+      justfile              # check, migrate, revision
+      src/factory_store/
+      tests/                # on in-memory sqlite
 ```
 
 ## Responsibilities
@@ -41,7 +43,10 @@ It holds the atomic abstractions as plain Python:
 - **job**: one headless coder run (`Job`, `JobResult`, `Event`, failures,
   the harness per coder, the engine that runs one, the session made before
   the first try, continuation for retries, stats, the coder's summary and
-  its repair by a step).
+  its repair by a step, the conversation rendered from stored events, the
+  report step over it).
+- **observe**: the observers a run's events go to (log, fanout, the
+  journal that writes them to the store).
 - **tools**: the tools exposed to steps and jobs (ask_human, web fetch,
   and any MCP server config the harness is handed).
 - plain functions a workflow needs around a job (worktree, bead update),
@@ -64,8 +69,9 @@ Workflows on Kubernetes, Prefect, plain cron), only a new folder under
 `runners/` is written and `app/` is untouched. It is not on the roadmap.
 
 **common/** holds libraries that two or more apps need, one named
-package per folder (for example `ask_human`, `beads_client`,
-`x_client`). A module moves here only when a second app needs it,
+package per folder. Today: `factory_store`, the database (schema,
+migrations, async API) that both the app's observers and the runner's
+activities write through. A module moves here only when a second app needs it,
 never speculatively. `common/` is a folder of packages, not a Python
 module named `common`; the rule against `common.py` files still holds
 inside every package.
@@ -131,3 +137,7 @@ How to apply when reviewing or refactoring:
   pytest). Each package's `justfile` is self-contained so a package can
   be checked alone.
 - Tests mirror `src/` folder for folder inside each package.
+- `just db` starts Postgres (docker compose) and applies the store's
+  migrations; `just db-migrate` applies them alone. A schema change is
+  `just revision "<what changed>"` in `common/factory_store`, then a
+  review of the generated file under `migrations/versions/`.

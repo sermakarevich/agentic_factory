@@ -48,10 +48,11 @@ watcher, or by a schedule.
    - `Stalled` (no output for N min) → kill, retry
    - `Blocked` (coder asked for a human) → non-retryable, wait for signal
    - unknown → bounded generic retry, then escalate via hil
-4. **Observability.** The report shows how the model understood the
-   task, the plan and why, what was done, assumptions and open items.
-   Temporal UI shows graph, timing, retries. Langfuse (fed by the same
-   stream parser) shows turns, tool calls and tokens.
+4. **Observability.** Every event of every try is a row in the store
+   (Postgres), the session's conversation is built from them when the job
+   ends, and a report step reads that conversation and writes a structured
+   verdict. Temporal UI shows graph, timing, retries. Langfuse (fed by the
+   same stream) is planned for turns, tool calls and tokens.
 
 ## llm job contract
 
@@ -200,15 +201,20 @@ the two engines; workflows compose them; retries never appear in workflow code.
   activity never makes another.
 - `execute_job(job)` — reads its attempt number and the previous try's last
   heartbeat (context size) from `activity.info()`, applies `continue_job`,
-  runs the job engine with a heartbeat observer plus the log observer, and
+  opens the try in the store, runs the job engine with the heartbeat, log
+  and journal observers, closes the try, and
   maps each `JobFailed` to an `ApplicationError` typed by the class name.
   `RateLimited` sets `next_retry_delay` to the reset time. Heartbeat details
   are our `Heartbeat` model: time of the last event, event count, context
   size of the last model turn.
 - `execute_step(step)` — the step engine, same error mapping, no heartbeat.
   For workflows that turn a job's output into typed data between jobs.
-- `JobWorkflow` (`workflows/job.py`, type name `job`) — one job, one result.
-  Its `run_job(job)` helper makes the session first when the job has none,
+- `build_report(request)` — after the job's last try: the stored events
+  become the conversation, saved, and the report step reads it; the report
+  is saved and returned. Uses the step activity's timeout and retries.
+- `JobWorkflow` (`workflows/job.py`, type name `job`) — one job, then its
+  report; returns a `JobOutcome`. Its `run_job(job)` helper makes the
+  session first when the job has none,
   then carries the activity policy for any workflow
   with a job in it: heartbeat timeout `stall_sec` plus a margin,
   start-to-close `timeout_sec` plus a margin, so the engine kills first and
@@ -299,21 +305,68 @@ to a model reading text. Lives in `job/stats.py`, `job/summary.py`,
    step's tokens as the coder's context. Any step failure logs and yields
    `summary=None`; the job still succeeds. The schema is sent in strict
    mode, so `JobSummary` forbids extra fields.
-6. **Infer from the session** (open). No block at all, or a killed run: a
-   call reads a condensed trace (turn text, tool names and arguments, error
-   flags, no tool outputs) and produces the summary. Needs the stream
-   persisted across tries, which is not done yet: today a retry only gets
-   the session id and the context size from the heartbeat, and the events of
-   the killed try are gone.
+6. **The report from the whole session.** After the last try, whatever
+   its end, a step reads the rendered conversation of every try (see
+   Materialization) and writes a `JobReport`: task, done (with the evidence
+   seen), not done, problems, and a verdict `done | partial | failed |
+   unknown`. It is told that a claim by the coder is not evidence and a
+   command output is. The coder's summary block, when there is one, or the
+   last failure text goes in after the transcript. This replaces the
+   earlier plan of inferring only the summary from a condensed trace.
 
-The verdict is then a small deterministic rule in the workflow: the run
-finished, the summary says success and the stats are plausible. Verified
-Sep 2026: both opencode and claude returned a valid block on a two-tool job.
+Verified Sep 2026: both opencode and claude returned a valid block on a
+two-tool job.
 
 Verified on both coders: opencode's queued compaction was applied mid-run in
 3 s (19 messages to 4, a structured summary first); claude's `/compact` in
 print mode took the context from 22.9k to 2.6k tokens and the next resume
 answered from the summary.
+
+## Materialization
+
+What a job did must outlive the try that did it: a retry, a runner restart
+or a judgement after the fact all need the events of every try. They live in
+Postgres, through `common/factory_store` (package `factory_store`): the
+schema (SQLAlchemy Core), the migrations (alembic) and one small async
+`Store` API. The app and the runner both write through it; it imports
+neither.
+
+Tables, one job = one session:
+
+- `session` — the coder's session id (the job's key), provider, model,
+  workdir, prompt, created_at. Written by the `create_session` activity.
+- `attempt` — one row per try: attempt number, started_at, ended_at,
+  outcome `running | done | failed`, failure text. Opened by the job
+  activity before the engine starts, closed after it, on success, on a
+  `JobFailed` and on cancellation.
+- `event` — one row per event, the whole `Event` as json (`raw` line
+  included), with the try it belongs to and the coder's timestamp. Written
+  by `JournalObserver` (`observe/journal.py`), one of the job activity's
+  observers next to heartbeat and log. The row id is the order of the
+  session across tries and runner restarts; a sequence number kept in
+  memory would restart with the process, and timestamps from two tries
+  can overlap when an orphaned coder is still writing.
+- `conversation` — the session rendered as one transcript, built once at
+  the end by `job/conversation.py`: a header per try, the model's text,
+  its tool calls with clipped arguments, tool outputs clipped in the middle,
+  rate limits, compactions, the finish line. Clip sizes are settings.
+- `report` — the `JobResult` as json (empty when every try failed), the
+  `JobReport` the model wrote, and its verdict as a column.
+
+The flow in the runner: `create_session` → `start_session`; each
+`execute_job` try → `start_try`, events, `finish_try`; then the
+`build_report` activity loads every event, renders and saves the
+conversation, runs the report step and saves the report. The workflow runs
+it after the job activity whatever happened to the job: a permanently failed
+job gets a report on its failure. A failed report step is not fatal, the
+outcome just has no report. `JobWorkflow` returns a `JobOutcome`: session
+id, result or failure text, report.
+
+Postgres runs from `docker-compose.yml` (`just db` starts it and applies the
+migrations, `just db-stop` stops it, the data stays in a volume). Tests use an
+in-memory SQLite through the same schema, so no test needs the database.
+The url is the app setting `store.url`; migrations read `FACTORY_STORE_URL`
+or default to the same local database.
 
 ## Settings
 
@@ -323,6 +376,8 @@ the Go base url and user agent, reasoning and token limits of steps.
 `settings/load.py` loads it with dynaconf and validates it into the pydantic
 models of `settings/model.py`, so code reads `settings.step.max_tokens`, never a bare key.
 The runner package repeats the pattern for its own `[temporal]` and activity tables.
+The store's url is `[store]`, the conversation's clip sizes `[conversation]`,
+the report's transcript limit `[report]`.
 Overrides, in order: `settings.local.toml` next to it (git-ignored), a
 `.env` found walking up from the package (repo root or `~/.env`), and
 environment variables `AF_<TABLE>__<KEY>`. `Job` and `Step` take their
@@ -387,9 +442,9 @@ process state. No task.json, no attempts log, no signal files.
   `~/.local/share/agentic_factory/`, web UI on :8233. `just temporal-install`,
   `just temporal`, `just temporal-health`. Clients use `127.0.0.1:7233`, never
   `localhost`: on macOS that resolves to IPv6 first and the server is IPv4
-  only, so gRPC hangs. Docker compose with Postgres only when this moves to
-  an always-on server; the runner keeps running on the host either way,
-  since it needs the coder CLIs, their auth stores and the worktrees.
+  only, so gRPC hangs. Postgres, for the store, runs from the repo's
+  docker compose (`just db`); the runner keeps running on the host either
+  way, since it needs the coder CLIs, their auth stores and the worktrees.
 - Harness calls preferred over API calls for cost; both are activities.
 - Steps go to the OpenCode Go API (`https://opencode.ai/zen/go/v1`),
   covered by the same subscription as the opencode CLI. Key in

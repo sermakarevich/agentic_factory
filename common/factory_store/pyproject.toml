@@ -24,6 +24,9 @@ asyncio_mode = "auto"
 extend = "../../pyproject.toml"
 src = ["src", "tests"]
 
+[tool.ruff.lint.isort]
+known-first-party = ["factory_store"]  # migrations/ sits outside src, so ruff would sort it as third-party
+
 [tool.mypy]
 python_version = "3.13"
 strict = true

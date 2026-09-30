@@ -20,10 +20,3 @@ child) outlives the runner. Two cases:
 
 Do both together. Test 1 with a fake coder that spawns a child and check the
 child is gone after a `Stalled`; test 2 by killing a fake parent.
-
-## Outcome layer 6: infer the summary from the trace
-
-No block at all, or a killed run: a step reads a condensed trace (turn text,
-tool names and arguments, error flags, no tool outputs) and produces the
-summary. Needs the events persisted across tries first: a journal observer
-appending events as jsonl per session id under the data dir.
