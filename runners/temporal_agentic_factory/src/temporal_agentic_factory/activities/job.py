@@ -25,12 +25,12 @@ async def execute_job(job: Job) -> JobResult:
     The try and every event of it go to the store, so nothing is lost when
     a try fails or the runner dies."""
     info = activity.info()
-    previous = Heartbeat.last(info.heartbeat_details)
-    job = continue_job(job, info.attempt, previous.context_tokens if previous else 0)
+    job = _this_try(job, info)
     db = store()
     await db.start_try(job.session_id, info.attempt)
-    journal = JournalObserver(db, job.session_id, info.attempt)
-    observer = Fanout(HeartbeatObserver(), LogObserver(), journal)
+    observer = Fanout(
+        HeartbeatObserver(), LogObserver(), JournalObserver(db, job.session_id, info.attempt)
+    )
     try:
         result = await jobs.run(job, observer)
     except JobFailed as failure:
@@ -41,3 +41,10 @@ async def execute_job(job: Job) -> JobResult:
         raise
     await db.finish_try(job.session_id, info.attempt, Outcome.DONE)
     return result
+
+
+def _this_try(job: Job, info: activity.Info) -> Job:
+    """The job as this try runs it: continued from the earlier tries, with the
+    session size the last heartbeat of the previous try reported."""
+    previous = Heartbeat.last(info.heartbeat_details)
+    return continue_job(job, info.attempt, previous.context_tokens if previous else 0)

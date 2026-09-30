@@ -20,19 +20,25 @@ async def create_session(job: Job, harness: Harness | None = None) -> str:
     if not argv:
         return str(uuid4())
     Path(job.workdir).mkdir(parents=True, exist_ok=True)
+    output = await _run(argv, job.workdir)
+    try:
+        return harness.parse_session(output)
+    except ValueError as err:
+        raise CoderCrashed(0, f"could not create a session: {err}") from None
+
+
+async def _run(argv: list[str], workdir: str) -> str:
+    """The command's stdout; `CoderCrashed` with the tail of its output when it fails."""
     proc = await asyncio.create_subprocess_exec(
         *argv,
-        cwd=job.workdir,
-        env=environment(job.workdir),
+        cwd=workdir,
+        env=environment(workdir),
         stdin=DEVNULL,
         stdout=PIPE,
         stderr=PIPE,
     )
     stdout, stderr = await proc.communicate()
-    output = (stderr + stdout)[-settings.job.failure_tail_chars :].decode(errors="replace")
     if proc.returncode != 0:
-        raise CoderCrashed(proc.returncode or 1, output)
-    try:
-        return harness.parse_session(stdout.decode(errors="replace"))
-    except ValueError as err:
-        raise CoderCrashed(0, f"could not create a session: {err}") from None
+        tail = (stderr + stdout)[-settings.job.failure_tail_chars :].decode(errors="replace")
+        raise CoderCrashed(proc.returncode or 1, tail)
+    return stdout.decode(errors="replace")

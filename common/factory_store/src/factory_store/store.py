@@ -2,8 +2,8 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import insert, select, update
-from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
+from sqlalchemy import RowMapping, Table, insert, select, update
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_engine
 
 from factory_store import schema
 from factory_store.schema import Outcome
@@ -74,41 +74,18 @@ class Store:
         idempotence reason). An earlier try of the session still marked running died
         with its runner and could never close itself: it is closed as abandoned here."""
         async with self.engine.begin() as conn:
-            await conn.execute(
-                update(schema.attempt)
-                .where(schema.attempt.c.session_id == session_id)
-                .where(schema.attempt.c.attempt < attempt)
-                .where(schema.attempt.c.outcome == Outcome.RUNNING.value)
-                .values(ended_at=_now(), outcome=Outcome.FAILED.value, failure=ABANDONED)
+            await _abandon_running_before(conn, session_id, attempt)
+            await _upsert(
+                conn,
+                schema.attempt,
+                {"session_id": session_id, "attempt": attempt},
+                {
+                    "started_at": _now(),
+                    "ended_at": None,
+                    "outcome": Outcome.RUNNING.value,
+                    "failure": "",
+                },
             )
-            existing = await conn.execute(
-                select(schema.attempt.c.id)
-                .where(schema.attempt.c.session_id == session_id)
-                .where(schema.attempt.c.attempt == attempt)
-            )
-            if existing.first() is None:
-                await conn.execute(
-                    insert(schema.attempt).values(
-                        session_id=session_id,
-                        attempt=attempt,
-                        started_at=_now(),
-                        ended_at=None,
-                        outcome=Outcome.RUNNING.value,
-                        failure="",
-                    )
-                )
-            else:
-                await conn.execute(
-                    update(schema.attempt)
-                    .where(schema.attempt.c.session_id == session_id)
-                    .where(schema.attempt.c.attempt == attempt)
-                    .values(
-                        started_at=_now(),
-                        ended_at=None,
-                        outcome=Outcome.RUNNING.value,
-                        failure="",
-                    )
-                )
 
     async def append_event(
         self, session_id: str, attempt: int, at: datetime, kind: str, payload: dict[str, Any]
@@ -136,25 +113,7 @@ class Store:
                 .where(schema.event.c.session_id == session_id)
                 .order_by(schema.event.c.id)
             )
-            events: list[StoredEvent] = []
-            for row in result.mappings().all():
-                at = row["at"]
-                assert isinstance(at, datetime)
-                if at.tzinfo is None:
-                    at = at.replace(tzinfo=UTC)
-                payload = row["payload"]
-                assert isinstance(payload, dict)
-                events.append(
-                    StoredEvent(
-                        id=int(row["id"]),
-                        session_id=str(row["session_id"]),
-                        attempt=int(row["attempt"]),
-                        at=at,
-                        kind=str(row["kind"]),
-                        payload=dict(payload),
-                    )
-                )
-            return events
+            return [_stored_event(row) for row in result.mappings().all()]
 
     async def finish_try(
         self, session_id: str, attempt: int, outcome: Outcome, failure: str = ""
@@ -171,48 +130,64 @@ class Store:
     async def save_conversation(self, session_id: str, text: str, events_count: int) -> None:
         """Insert or replace the conversation row (built_at = now UTC)."""
         async with self.engine.begin() as conn:
-            existing = await conn.execute(
-                select(schema.conversation.c.session_id).where(
-                    schema.conversation.c.session_id == session_id
-                )
+            await _upsert(
+                conn,
+                schema.conversation,
+                {"session_id": session_id},
+                {"built_at": _now(), "events_count": events_count, "text": text},
             )
-            if existing.first() is None:
-                await conn.execute(
-                    insert(schema.conversation).values(
-                        session_id=session_id,
-                        built_at=_now(),
-                        events_count=events_count,
-                        text=text,
-                    )
-                )
-            else:
-                await conn.execute(
-                    update(schema.conversation)
-                    .where(schema.conversation.c.session_id == session_id)
-                    .values(built_at=_now(), events_count=events_count, text=text)
-                )
 
     async def save_report(
         self, session_id: str, result: dict[str, Any], summary: dict[str, Any], verdict: str
     ) -> None:
         """Insert or replace the report row (created_at = now UTC)."""
         async with self.engine.begin() as conn:
-            existing = await conn.execute(
-                select(schema.report.c.session_id).where(schema.report.c.session_id == session_id)
+            await _upsert(
+                conn,
+                schema.report,
+                {"session_id": session_id},
+                {"created_at": _now(), "result": result, "summary": summary, "verdict": verdict},
             )
-            if existing.first() is None:
-                await conn.execute(
-                    insert(schema.report).values(
-                        session_id=session_id,
-                        created_at=_now(),
-                        result=result,
-                        summary=summary,
-                        verdict=verdict,
-                    )
-                )
-            else:
-                await conn.execute(
-                    update(schema.report)
-                    .where(schema.report.c.session_id == session_id)
-                    .values(created_at=_now(), result=result, summary=summary, verdict=verdict)
-                )
+
+
+async def _abandon_running_before(conn: AsyncConnection, session_id: str, attempt: int) -> None:
+    """Close every earlier try of the session still marked running: it died with
+    its runner and could never close itself."""
+    await conn.execute(
+        update(schema.attempt)
+        .where(schema.attempt.c.session_id == session_id)
+        .where(schema.attempt.c.attempt < attempt)
+        .where(schema.attempt.c.outcome == Outcome.RUNNING.value)
+        .values(ended_at=_now(), outcome=Outcome.FAILED.value, failure=ABANDONED)
+    )
+
+
+async def _upsert(
+    conn: AsyncConnection, table: Table, key: dict[str, Any], values: dict[str, Any]
+) -> None:
+    """Insert the row identified by `key` with `values`, or set `values` on it
+    when it exists. Plain select-then-write: the store has one writer per row."""
+    condition = [table.c[column] == value for column, value in key.items()]
+    existing = await conn.execute(select(table.c[next(iter(key))]).where(*condition))
+    if existing.first() is None:
+        await conn.execute(insert(table).values(**key, **values))
+    else:
+        await conn.execute(update(table).where(*condition).values(**values))
+
+
+def _stored_event(row: RowMapping) -> StoredEvent:
+    """One event row as a `StoredEvent`; sqlite drops the tz, so UTC is put back."""
+    at = row["at"]
+    assert isinstance(at, datetime)
+    if at.tzinfo is None:
+        at = at.replace(tzinfo=UTC)
+    payload = row["payload"]
+    assert isinstance(payload, dict)
+    return StoredEvent(
+        id=int(row["id"]),
+        session_id=str(row["session_id"]),
+        attempt=int(row["attempt"]),
+        at=at,
+        kind=str(row["kind"]),
+        payload=dict(payload),
+    )

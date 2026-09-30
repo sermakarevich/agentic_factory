@@ -8,6 +8,7 @@ with workflow.unsafe.imports_passed_through():
 
     from agentic_factory.job.contract import Job, JobResult
     from agentic_factory.job.outcome import JobOutcome
+    from agentic_factory.job.report import JobReport
     from temporal_agentic_factory.activities.job import execute_job
     from temporal_agentic_factory.activities.report import ReportRequest, build_report
     from temporal_agentic_factory.activities.session import create_session
@@ -82,23 +83,34 @@ async def run_job_with_report(job: Job) -> JobOutcome:
     job still gets its report, then the outcome carries the failure instead of
     a result. A failed report step is not fatal: the outcome has none."""
     job = await _with_session(job)
-    try:
-        result = await _execute(job)
-        request = ReportRequest(session_id=job.session_id, result=result)
-    except ActivityError as error:
-        request = ReportRequest(session_id=job.session_id, failure=_describe(error))
-    try:
-        report = await workflow.execute_activity(
-            build_report,
-            request,
-            start_to_close_timeout=timedelta(seconds=settings.step_activity.timeout_sec),
-            retry_policy=RetryPolicy(maximum_attempts=settings.step_activity.max_attempts),
-        )
-    except ActivityError:
-        report = None
+    request = await _execute_for_report(job)
+    report = await _report(request)
     return JobOutcome(
         session_id=job.session_id,
         result=request.result,
         failure=request.failure,
         report=report,
     )
+
+
+async def _execute_for_report(job: Job) -> ReportRequest:
+    """The job run, as the report step wants it: its result, or the failure
+    that ended it after every try."""
+    try:
+        return ReportRequest(session_id=job.session_id, result=await _execute(job))
+    except ActivityError as error:
+        return ReportRequest(session_id=job.session_id, failure=_describe(error))
+
+
+async def _report(request: ReportRequest) -> JobReport | None:
+    """The report activity with the step policy; None when it failed for good."""
+    cfg = settings.step_activity
+    try:
+        return await workflow.execute_activity(
+            build_report,
+            request,
+            start_to_close_timeout=timedelta(seconds=cfg.timeout_sec),
+            retry_policy=RetryPolicy(maximum_attempts=cfg.max_attempts),
+        )
+    except ActivityError:
+        return None
