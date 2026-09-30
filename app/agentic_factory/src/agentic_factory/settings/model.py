@@ -54,6 +54,10 @@ class ConversationSettings(BaseModel):
     tool_args_chars: int
 
 
+class ReportSettings(BaseModel):
+    max_chars: int
+
+
 class Settings(BaseModel):
     """Typed view of settings.toml after dynaconf merged the overrides."""
 
@@ -63,3 +67,4 @@ class Settings(BaseModel):
     log: LogSettings
     store: StoreSettings
     conversation: ConversationSettings
+    report: ReportSettings
