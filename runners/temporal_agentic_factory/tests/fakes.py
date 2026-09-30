@@ -1,12 +1,15 @@
 from datetime import datetime
 from typing import Any
 
+from factory_store.store import StoredEvent
+
 
 class FakeStore:
     """Records every call; stands in for factory_store.store.Store."""
 
     def __init__(self) -> None:
         self.calls: list[tuple[Any, ...]] = []
+        self.events: list[StoredEvent] = []
 
     async def start_session(
         self, session_id: str, provider: str, model: str, workdir: str, prompt: str
@@ -26,3 +29,15 @@ class FakeStore:
         self, session_id: str, attempt: int, outcome: str, failure: str = ""
     ) -> None:
         self.calls.append(("finish_try", session_id, attempt, str(outcome), failure))
+
+    async def load_events(self, session_id: str) -> list[StoredEvent]:
+        self.calls.append(("load_events", session_id))
+        return self.events
+
+    async def save_conversation(self, session_id: str, text: str, events_count: int) -> None:
+        self.calls.append(("save_conversation", session_id, text, events_count))
+
+    async def save_report(
+        self, session_id: str, result: dict[str, Any], summary: dict[str, Any], verdict: str
+    ) -> None:
+        self.calls.append(("save_report", session_id, result, summary, str(verdict)))

@@ -6,7 +6,8 @@ from uuid import uuid4
 
 import typer
 
-from agentic_factory.job.contract import Job, JobResult
+from agentic_factory.job.contract import Job
+from agentic_factory.job.outcome import JobOutcome
 from agentic_factory.observe.log import configure_logging
 from temporal_agentic_factory.client import connect
 from temporal_agentic_factory.runner import serve
@@ -48,7 +49,7 @@ def run(
     typer.echo(result.model_dump_json(indent=2))
 
 
-async def _run(job: Job) -> JobResult:
+async def _run(job: Job) -> JobOutcome:
     client = await connect()
     handle = await client.start_workflow(
         JobWorkflow.run,
