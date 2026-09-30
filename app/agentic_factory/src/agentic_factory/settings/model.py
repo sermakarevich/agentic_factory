@@ -49,6 +49,11 @@ class StoreSettings(BaseModel):
     url: str
 
 
+class ConversationSettings(BaseModel):
+    tool_output_chars: int
+    tool_args_chars: int
+
+
 class Settings(BaseModel):
     """Typed view of settings.toml after dynaconf merged the overrides."""
 
@@ -57,3 +62,4 @@ class Settings(BaseModel):
     step: StepSettings
     log: LogSettings
     store: StoreSettings
+    conversation: ConversationSettings
