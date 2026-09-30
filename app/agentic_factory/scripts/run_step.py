@@ -10,11 +10,11 @@ from options import given_options
 
 from agentic_factory.failure import JobFailed
 from agentic_factory.observe.log import LogObserver, configure_logging
-from agentic_factory.step.catalog import client_for
-from agentic_factory.step.client import Client
 from agentic_factory.step.contract import Reasoning, Step
 from agentic_factory.step.defaults import with_default_model
 from agentic_factory.step.engine import run
+from agentic_factory.step.providers.catalog import client_for
+from agentic_factory.step.providers.client import Client
 
 log = logging.getLogger("agentic_factory.step")
 

@@ -1,11 +1,11 @@
 from uuid import uuid4
 
 from agentic_factory.failure import CoderCrashed, SessionNotCreated
+from agentic_factory.job.coders.harness import Harness
 from agentic_factory.job.contract import Job
-from agentic_factory.job.harness import Harness
-from agentic_factory.job.spawn import start_process
-from agentic_factory.job.tail import tail_of
-from agentic_factory.job.workdir import ensure_workdir
+from agentic_factory.job.process.spawn import start_process
+from agentic_factory.job.process.tail import tail_of
+from agentic_factory.job.process.workdir import ensure_workdir
 
 
 async def create_session(job: Job, harness: Harness) -> str:

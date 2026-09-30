@@ -7,19 +7,19 @@ from temporalio import activity
 from agentic_factory.event import Observer
 from agentic_factory.failure import JobFailed
 from agentic_factory.job import engine as jobs
-from agentic_factory.job.catalog import harness_for
+from agentic_factory.job.coders.catalog import harness_for
 from agentic_factory.job.continuation import continue_job
 from agentic_factory.job.contract import Job, JobResult
-from agentic_factory.job.repair import repair_summary
-from agentic_factory.job.summary import JobSummary
+from agentic_factory.job.summary.contract import JobSummary
+from agentic_factory.job.summary.repair import repair_summary
 from agentic_factory.observe.fanout import Fanout
 from agentic_factory.observe.journal import JournalObserver
 from agentic_factory.observe.log import LogObserver
 from agentic_factory.settings.load import settings
-from agentic_factory.step.catalog import client_for
-from temporal_agentic_factory.failure import to_application_error
-from temporal_agentic_factory.heartbeat import Heartbeat, HeartbeatObserver
-from temporal_agentic_factory.store import store
+from agentic_factory.step.providers.catalog import client_for
+from temporal_agentic_factory.activities.failure import to_application_error
+from temporal_agentic_factory.activities.heartbeat import Heartbeat, HeartbeatObserver
+from temporal_agentic_factory.activities.store import store
 
 CANCELLED = "cancelled"
 

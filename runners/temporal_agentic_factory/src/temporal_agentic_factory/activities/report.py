@@ -3,14 +3,14 @@ from pydantic import BaseModel
 from temporalio import activity
 
 from agentic_factory.failure import JobFailed
-from agentic_factory.job import conversation
-from agentic_factory.job import report as reports
 from agentic_factory.job.contract import JobResult
-from agentic_factory.job.report import JobReport
+from agentic_factory.job.report import conversation
+from agentic_factory.job.report import step as reports
+from agentic_factory.job.report.contract import JobReport
 from agentic_factory.settings.load import settings
-from agentic_factory.step.catalog import client_for
-from temporal_agentic_factory.failure import to_application_error
-from temporal_agentic_factory.store import store
+from agentic_factory.step.providers.catalog import client_for
+from temporal_agentic_factory.activities.failure import to_application_error
+from temporal_agentic_factory.activities.store import store
 
 
 class ReportRequest(BaseModel):

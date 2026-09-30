@@ -7,16 +7,16 @@ from pathlib import Path
 from options import given_options
 
 from agentic_factory.failure import JobFailed
-from agentic_factory.job.catalog import harness_for
+from agentic_factory.job.coders.catalog import harness_for
+from agentic_factory.job.coders.harness import Harness
 from agentic_factory.job.contract import Job
 from agentic_factory.job.defaults import with_default_model
 from agentic_factory.job.engine import run
-from agentic_factory.job.harness import Harness
-from agentic_factory.job.repair import repair_summary
-from agentic_factory.job.summary import JobSummary
+from agentic_factory.job.summary.contract import JobSummary
+from agentic_factory.job.summary.repair import repair_summary
 from agentic_factory.observe.log import LogObserver, configure_logging
 from agentic_factory.settings.load import settings
-from agentic_factory.step.catalog import client_for
+from agentic_factory.step.providers.catalog import client_for
 
 log = logging.getLogger("agentic_factory.job")
 

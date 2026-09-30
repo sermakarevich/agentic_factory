@@ -16,14 +16,26 @@ agentic_factory/
     agentic_factory/          # the application: everything that is not an engine
       pyproject.toml        # package `agentic_factory`
       justfile
-      src/agentic_factory/    # job/, step/, observe/ (log, fanout, journal); settings/settings.toml holds every default
+      src/agentic_factory/    # event.py, failure.py, tokens.py: the vocabulary every layer shares
+        job/                  # contract, engine, session, continuation, ledger, stats, context, outcome, defaults
+          coders/             # harness base, catalog, decode; claude/ and opencode/ (harness, stream)
+          process/            # spawn, environment, workdir, tail: the coder process
+          summary/            # contract, prompt, block, parse, repair: the coder's own summary
+          report/             # contract, conversation, step: the report a model writes over the run
+        step/                 # contract, engine, defaults
+          providers/          # client base, catalog; opencode/ (client)
+        observe/              # log, fanout, journal, silent: the observers a run's events go to
+        settings/             # settings.toml holds every default; model.py types it; load.py reads it
       scripts/              # run_job.py, run_step.py: dev entry points behind `just`
       tests/
   runners/
     temporal_agentic_factory/ # Temporal binding: installs `agentic_factory`
       pyproject.toml        # package `temporal_agentic_factory`
       justfile
-      src/temporal_agentic_factory/  # activities/, workflows/, settings/ (server address, activity limits)
+      src/temporal_agentic_factory/  # cli, client, runner
+        activities/           # job, session, step, report; failure, heartbeat, store: what only activities need
+        workflows/            # job: the workflows composing the activities
+        settings/             # server address, activity limits
       tests/
     argo_agentic_factory/     # NOT built. README only, see "Why runners/"
   common/
@@ -103,6 +115,11 @@ package here:
   nested under one caller.
 - One file, one job. Small files. Add a sibling file instead of a
   second responsibility.
+- Files are grouped by what they are about, one folder per group, as
+  soon as a folder holds more than a dozen files or a group of siblings
+  share a prefix (`summary_*.py` is a `summary/` folder). The folder's
+  `__init__.py` docstring names the group; the modules keep their plain
+  names inside it (`summary/parse.py`, not `summary/summary_parse.py`).
 - Name files by behavior in one or two plain words. Never `utils.py`,
   `helpers.py` or `common.py`.
 - Directories are namespaces only. Code lives in a named module inside

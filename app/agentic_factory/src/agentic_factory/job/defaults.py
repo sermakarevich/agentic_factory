@@ -1,5 +1,5 @@
+from agentic_factory.job.coders.harness import Harness
 from agentic_factory.job.contract import Job
-from agentic_factory.job.harness import Harness
 
 
 def with_default_model(job: Job, harness: Harness) -> Job:

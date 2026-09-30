@@ -1,7 +1,7 @@
 from pydantic import BaseModel, Field
 
 from agentic_factory.job.contract import JobResult
-from agentic_factory.job.report import JobReport
+from agentic_factory.job.report.contract import JobReport
 
 
 class JobOutcome(BaseModel):

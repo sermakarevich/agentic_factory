@@ -81,7 +81,7 @@ Lives in `agentic_factory/tokens.py`, `event.py`, `failure.py` (shared with call
   tool output. A line the harness has no rule for becomes `unknown` with
   the text as content, so a changed stream can be debugged from the log.
   A run that ends without `finished` means the coder died.
-- `Harness` (`job/harness.py`) — abstract base, one subclass per coder, one instance per run: `command(job)` builds
+- `Harness` (`job/coders/harness.py`) — abstract base, one subclass per coder, one instance per run: `command(job)` builds
   the command line, `parse_line(text)` turns one stdout line into events and
   raises a failure when the coder cannot continue, `end_of_stream()` is called once
   stdout closes and returns whatever the stream left unsaid (default
@@ -99,7 +99,7 @@ Lives in `agentic_factory/tokens.py`, `event.py`, `failure.py` (shared with call
   `NetworkError`, `CoderCrashed(exit_code, stderr)`. Raised only when no
   result exists.
 - `run(job, observer) -> JobResult` in `job/engine.py` — the single entry point.
-  Picks the harness by provider (`job/catalog.py`), fills the default model, starts the
+  Picks the harness by provider (`job/coders/catalog.py`), fills the default model, starts the
   process in workdir (both as cwd and as `PWD` in the environment), feeds
   every event to the observer, kills the process on stall, timeout,
   context over limit, a harness failure or cancellation. Exit without a
@@ -171,7 +171,7 @@ Per coder, checked live:
   fails with "already in use" on a second run; `--resume <id>` continues one
   and fails with "No conversation found" on a new id; both together are
   refused. The harness picks the flag by whether claude has a transcript
-  for the id (`job/claude/store.py`: `<config dir>/projects/*/<id>.jsonl`,
+  for the id (`job/coders/claude/store.py`: `<config dir>/projects/*/<id>.jsonl`,
   honouring `CLAUDE_CONFIG_DIR`). A try that died before claude wrote the
   transcript starts the session again, which is right.
 - opencode `--session` must name an existing session (`Session not found`
@@ -271,7 +271,7 @@ it compacts:
 
 The engine only knows whether the run completed. Whether the work is done is
 judged from what the run left behind, in layers from cheap and deterministic
-to a model reading text. Lives in `job/stats.py`, `job/summary.py`,
+to a model reading text. Lives in `job/stats.py`, `job/summary/contract.py`,
 `job/ledger.py`.
 
 1. **Stats.** The ledger counts every event as it flows past: model turns,
@@ -297,7 +297,7 @@ to a model reading text. Lives in `job/stats.py`, `job/summary.py`,
    must still validate as `JobSummary`, with or without the outer key.
    `JobResult.summary` on success; `summary_text` keeps the raw block either
    way.
-5. **Repair with a step.** `job/repair.py`: a block that was found but did
+5. **Repair with a step.** `job/summary/repair.py`: a block that was found but did
    not parse goes to the step engine with the summary schema and a system
    prompt that forbids inventing facts. It runs inside the job engine, right
    before the result is made, with a silent observer: the step's events stay
@@ -349,7 +349,7 @@ Tables, one job = one session:
   memory would restart with the process, and timestamps from two tries
   can overlap when an orphaned coder is still writing.
 - `conversation` — the session rendered as one transcript, built once at
-  the end by `job/conversation.py`: a header per try, the model's text,
+  the end by `job/report/conversation.py`: a header per try, the model's text,
   its tool calls with clipped arguments, tool outputs clipped in the middle,
   rate limits, compactions, the finish line. Clip sizes are settings.
 - `report` — the `JobResult` as json (empty when every try failed), the
@@ -389,8 +389,8 @@ default is repeated in Python.
 ## step contract
 
 Lives in `agentic_factory/step/`, shaped like `job/`: `contract.py` is the
-contract, `client.py` the client base (as `job/harness.py` is the coder
-base), `catalog.py` picks a client by provider name, `engine.py` runs one
+contract, `providers/client.py` the client base (as `job/coders/harness.py` is the coder
+base), `providers/catalog.py` picks a client by provider name, `engine.py` runs one
 step, and one folder per provider holds the wire code. One request, one JSON
 answer, no tools. Used inside workflows to turn events or artifacts into
 typed data (a report from a job's stream, a status from a helper's notes).
@@ -415,7 +415,7 @@ Renamed from "llm call" Sep 2026.
   `ai` event with the answer text and one `finished` event to the observer,
   reads the text as a JSON object (`BadOutput` otherwise), and returns the
   result.
-- `OpencodeGo` in `opencode/client.py` — the OpenCode Go API through the
+- `OpencodeGo` in `providers/opencode/client.py` — the OpenCode Go API through the
   `openai` SDK. Picks the wire protocol from the model name (chat
   completions by default, Responses for muse-spark, grok and gpt) and sends
   the schema as a strict `json_schema` format. Default model

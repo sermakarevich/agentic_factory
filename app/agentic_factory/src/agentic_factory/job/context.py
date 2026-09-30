@@ -3,10 +3,10 @@ from datetime import UTC, datetime
 
 from agentic_factory.event import Event, EventKind, Observer
 from agentic_factory.failure import ContextPressure
+from agentic_factory.job.coders.harness import Harness
 from agentic_factory.job.contract import Job
-from agentic_factory.job.harness import Harness
-from agentic_factory.job.spawn import start_process
-from agentic_factory.job.tail import tail_of
+from agentic_factory.job.process.spawn import start_process
+from agentic_factory.job.process.tail import tail_of
 from agentic_factory.settings.load import settings
 
 

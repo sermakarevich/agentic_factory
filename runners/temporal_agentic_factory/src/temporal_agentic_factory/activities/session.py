@@ -2,12 +2,12 @@ from temporalio import activity
 
 from agentic_factory.failure import JobFailed
 from agentic_factory.job import session as sessions
-from agentic_factory.job.catalog import harness_for
+from agentic_factory.job.coders.catalog import harness_for
+from agentic_factory.job.coders.harness import Harness
 from agentic_factory.job.contract import Job
 from agentic_factory.job.defaults import with_default_model
-from agentic_factory.job.harness import Harness
-from temporal_agentic_factory.failure import to_application_error
-from temporal_agentic_factory.store import store
+from temporal_agentic_factory.activities.failure import to_application_error
+from temporal_agentic_factory.activities.store import store
 
 
 @activity.defn

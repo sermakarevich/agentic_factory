@@ -4,8 +4,8 @@ from uuid import UUID
 import pytest
 
 from agentic_factory.failure import CoderCrashed, SessionNotCreated
+from agentic_factory.job.coders.opencode.harness import OpencodeHarness
 from agentic_factory.job.contract import Job
-from agentic_factory.job.opencode.harness import OpencodeHarness
 from agentic_factory.job.session import create_session
 
 JOB = Job(provider="opencode", model="m", prompt="p", workdir="/tmp")

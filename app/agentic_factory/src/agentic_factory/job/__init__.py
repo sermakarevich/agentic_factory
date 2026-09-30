@@ -1,1 +1,2 @@
-"""Coder harnesses: how to start each coder and how to read its stream."""
+"""Jobs: one headless coder run. The contract and the engine that runs one; below
+them the coders, the process plumbing, the coder's summary and the report."""

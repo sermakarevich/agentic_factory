@@ -6,9 +6,9 @@ from pydantic import BaseModel
 
 from agentic_factory.event import Event, EventKind
 from agentic_factory.failure import BadOutput, TimedOut
-from agentic_factory.step.client import Answer, Client
 from agentic_factory.step.contract import Step
 from agentic_factory.step.engine import run
+from agentic_factory.step.providers.client import Answer, Client
 from agentic_factory.tokens import Tokens
 
 

@@ -1,0 +1,30 @@
+import pytest
+from temporalio.exceptions import ApplicationError
+from temporalio.testing import ActivityEnvironment
+
+from agentic_factory.event import Observer
+from agentic_factory.failure import BadOutput
+from agentic_factory.step.contract import Step, StepResult
+from agentic_factory.step.providers.client import Client
+from temporal_agentic_factory.activities import step as activity
+
+CALL = Step(prompt="p", output_schema={"type": "object"}, provider="opencode")
+
+
+async def test_call_returns_the_engine_result(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def fake_run(step: Step, observer: Observer, client: Client) -> StepResult:
+        return StepResult(output={"ok": True}, model=step.model)
+
+    monkeypatch.setattr(activity.steps, "run", fake_run)
+    result = await ActivityEnvironment().run(activity.execute_step, CALL)
+    assert result.output == {"ok": True}
+
+
+async def test_bad_output_is_a_typed_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def fake_run(step: Step, observer: Observer, client: Client) -> StepResult:
+        raise BadOutput("not json")
+
+    monkeypatch.setattr(activity.steps, "run", fake_run)
+    with pytest.raises(ApplicationError) as err:
+        await ActivityEnvironment().run(activity.execute_step, CALL)
+    assert err.value.type == "BadOutput"

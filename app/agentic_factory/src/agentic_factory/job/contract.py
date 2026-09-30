@@ -1,7 +1,7 @@
 from pydantic import BaseModel, Field
 
 from agentic_factory.job.stats import JobStats
-from agentic_factory.job.summary import JobSummary
+from agentic_factory.job.summary.contract import JobSummary
 from agentic_factory.settings.load import settings
 from agentic_factory.tokens import Tokens
 

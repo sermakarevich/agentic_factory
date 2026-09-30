@@ -302,6 +302,15 @@ harness is its job.
   constants beside their one user. A test asserts every knob is a setting.
 - **One file, one job; empty `__init__.py`; no `utils.py`.** From the
   knowledge-base recipe `coding/structure`, applied to every package.
+- **Folders by subject, not by kind.** `job/` groups its files as
+  `coders/` (the harness base, the catalog and one folder per coder),
+  `process/` (spawning, environment, workdir, output tail), `summary/`
+  (the coder's own summary: shape, prompt, block, parse, repair) and
+  `report/` (the conversation and the step that judges it); `step/` has
+  `providers/`; the runner keeps what only activities use under
+  `activities/`. A prefix shared by siblings (`summary_*.py`) is the sign
+  a folder is due. Rejected: `models/`, `utils/`, `helpers/` folders that
+  group by kind and put one subject in three places.
 - **Harness calls preferred over API calls for cost**; both are activities.
   Jobs ride the coder subscriptions; steps ride the same subscription
   through the Go API.

@@ -6,18 +6,18 @@ from time import monotonic
 
 from agentic_factory.event import Event, Observer
 from agentic_factory.failure import CoderCrashed, JobFailed, Stalled, TimedOut
+from agentic_factory.job.coders.harness import Harness
 from agentic_factory.job.context import ContextWatch, compact
 from agentic_factory.job.contract import Job, JobResult
 from agentic_factory.job.defaults import with_default_model
-from agentic_factory.job.harness import Harness
 from agentic_factory.job.ledger import Ledger
+from agentic_factory.job.process.spawn import start_process
+from agentic_factory.job.process.tail import tail_of
+from agentic_factory.job.process.workdir import ensure_workdir
 from agentic_factory.job.session import create_session
-from agentic_factory.job.spawn import start_process
-from agentic_factory.job.summary import JobSummary
-from agentic_factory.job.summary_parse import parse_summary
-from agentic_factory.job.summary_prompt import wrap_prompt
-from agentic_factory.job.tail import tail_of
-from agentic_factory.job.workdir import ensure_workdir
+from agentic_factory.job.summary.contract import JobSummary
+from agentic_factory.job.summary.parse import parse_summary
+from agentic_factory.job.summary.prompt import wrap_prompt
 from agentic_factory.settings.load import settings
 from agentic_factory.tokens import Tokens
 

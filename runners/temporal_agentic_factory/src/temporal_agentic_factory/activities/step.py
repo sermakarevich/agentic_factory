@@ -3,9 +3,9 @@ from temporalio import activity
 from agentic_factory.failure import JobFailed
 from agentic_factory.observe.log import LogObserver
 from agentic_factory.step import engine as steps
-from agentic_factory.step.catalog import client_for
 from agentic_factory.step.contract import Step, StepResult
-from temporal_agentic_factory.failure import to_application_error
+from agentic_factory.step.providers.catalog import client_for
+from temporal_agentic_factory.activities.failure import to_application_error
 
 
 @activity.defn

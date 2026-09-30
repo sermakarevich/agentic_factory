@@ -8,7 +8,7 @@ with workflow.unsafe.imports_passed_through():
 
     from agentic_factory.job.contract import Job, JobResult
     from agentic_factory.job.outcome import JobOutcome
-    from agentic_factory.job.report import JobReport
+    from agentic_factory.job.report.contract import JobReport
     from temporal_agentic_factory.activities.job import execute_job
     from temporal_agentic_factory.activities.report import ReportRequest, build_report
     from temporal_agentic_factory.activities.session import create_session

@@ -7,9 +7,9 @@ from typing import Any
 from agentic_factory.event import Event, EventKind, Observer
 from agentic_factory.failure import BadOutput, TimedOut
 from agentic_factory.settings.load import settings
-from agentic_factory.step.client import Answer, Client
 from agentic_factory.step.contract import Step, StepResult
 from agentic_factory.step.defaults import with_default_model
+from agentic_factory.step.providers.client import Answer, Client
 
 
 async def run(step: Step, observer: Observer, client: Client) -> StepResult:

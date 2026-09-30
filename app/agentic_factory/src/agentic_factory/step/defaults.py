@@ -1,5 +1,5 @@
-from agentic_factory.step.client import Client
 from agentic_factory.step.contract import Step
+from agentic_factory.step.providers.client import Client
 
 
 def with_default_model(step: Step, client: Client) -> Step:
