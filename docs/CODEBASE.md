@@ -17,7 +17,7 @@ agentic_factory/
       pyproject.toml        # package `agentic_factory`
       justfile
       src/agentic_factory/    # event.py, failure.py, tokens.py, callback.py, logging_setup.py: what every layer shares
-        job/                  # contract, callback, engine, session, continuation, ledger, stats, context, outcome, record, defaults
+        job/                  # contract, callback, engine, session, continuation, ledger, usage, stats, context, outcome, record, defaults
           coders/             # harness base, catalog, decode; claude/ and opencode/ (harness, stream)
           process/            # spawn, kill, environment, workdir, tail: the coder process
           summary/            # contract, prompt, block, parse, repair: the coder's own summary

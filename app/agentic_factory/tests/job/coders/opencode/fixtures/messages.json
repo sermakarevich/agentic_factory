@@ -1,0 +1,11 @@
+{"data": [
+  {"id": "msg_5", "type": "idle", "time": {"created": 1790778787479}},
+  {"id": "msg_4", "type": "assistant", "time": {"created": 1790778786258, "streamed": 1790778787477, "completed": 1790778787478},
+   "finish": "stop", "cost": 0.000354482,
+   "tokens": {"input": 3264, "output": 11, "reasoning": 31, "cache": {"read": 9841, "write": 0}}},
+  {"id": "msg_3", "type": "system", "time": {"created": 1790778786249}},
+  {"id": "msg_2", "type": "assistant", "time": {"created": 1790778775367, "streamed": 1790778786240, "completed": 1790778786241},
+   "finish": "tool-calls", "cost": 0.0011444,
+   "tokens": {"input": 9862, "output": 69, "reasoning": 722, "cache": {"read": 0, "write": 0}}},
+  {"id": "msg_1", "type": "user", "time": {"created": 1790778775351}}
+], "cursor": null}

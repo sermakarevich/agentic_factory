@@ -2,7 +2,7 @@ from datetime import UTC, datetime
 
 from agentic_factory.event import Event, EventKind
 from agentic_factory.job.ledger import Ledger
-from agentic_factory.tokens import Tokens
+from agentic_factory.tokens import Tokens, Usage
 
 NOW = datetime(2026, 9, 30, tzinfo=UTC)
 
@@ -27,3 +27,12 @@ def test_a_finished_without_usage_keeps_the_sum() -> None:
     assert not ledger.usage_known
     ledger.add(Event(kind=EventKind.FINISHED, at=NOW))
     assert ledger.tokens == Tokens(input=10) and not ledger.usage_known
+
+
+def test_usage_taken_from_the_coders_record_replaces_the_sum() -> None:
+    ledger = Ledger()
+    ledger.add(Event(kind=EventKind.AI, at=NOW, usage=Tokens(input=10), cost_usd=0.1))
+    ledger.add(Event(kind=EventKind.FINISHED, at=NOW))
+    ledger.take(Usage(tokens=Tokens(input=12, output=3), cost_usd=0.25))
+    assert ledger.tokens == Tokens(input=12, output=3) and ledger.cost_usd == 0.25
+    assert ledger.usage_known

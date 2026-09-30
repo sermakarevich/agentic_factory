@@ -1,3 +1,4 @@
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -6,9 +7,11 @@ from agentic_factory.event import Event, EventKind
 from agentic_factory.failure import ContextPressure
 from agentic_factory.job.coders.opencode.harness import OpencodeHarness
 from agentic_factory.job.contract import Job
+from agentic_factory.tokens import Tokens, Usage
 
 FIXTURE = Path(__file__).parent / "fixtures" / "echo.jsonl"
 CUT = Path(__file__).parent / "fixtures" / "cut.jsonl"  # last step_finish dropped by opencode
+MESSAGES = Path(__file__).parent / "fixtures" / "messages.json"  # what session.message.list prints
 
 
 def parse_all(harness: OpencodeHarness, text: str) -> list[Event]:
@@ -34,6 +37,34 @@ def test_session_creation_command_and_its_answer() -> None:
     assert harness.parse_session('{"data": {"id": "ses_1", "cost": 0}}') == "ses_1"
     with pytest.raises(ValueError, match="no session"):
         harness.parse_session('{"_tag": "InvalidRequestError", "message": "bad"}')
+
+
+def test_usage_command_lists_the_sessions_messages() -> None:
+    command = OpencodeHarness().usage_command("ses_1")
+    assert command[:2] == ["opencode", "api"] and "session.message.list" in command
+    assert command[-2:] == ["--param", "sessionID=ses_1"]
+
+
+def test_usage_is_summed_over_the_assistant_messages_since_a_moment() -> None:
+    """Two model turns in the fixture, at 1790778775367 and 1790778786258 ms;
+    reasoning tokens are left out, as the stream leaves them out."""
+    harness = OpencodeHarness()
+    before_both = datetime.fromtimestamp(1790778775.0, UTC)
+    between = datetime.fromtimestamp(1790778780.0, UTC)
+    after_both = datetime.fromtimestamp(1790778790.0, UTC)
+    text = MESSAGES.read_text()
+    assert harness.parse_usage(text, between) == Usage(
+        tokens=Tokens(input=3264, output=11, cache_read=9841), cost_usd=0.000354482
+    )
+    both = harness.parse_usage(text, before_both)
+    assert both.tokens == Tokens(input=9862 + 3264, output=69 + 11, cache_read=9841)
+    assert both.cost_usd == pytest.approx(0.0011444 + 0.000354482)
+    assert harness.parse_usage(text, after_both) == Usage()
+
+
+def test_usage_of_something_else_than_messages_is_an_error() -> None:
+    with pytest.raises(ValueError, match="no messages"):
+        OpencodeHarness().parse_usage('{"_tag": "NotFoundError"}', datetime.now(UTC))
 
 
 def test_captured_stream_becomes_events() -> None:

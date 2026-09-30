@@ -1,6 +1,7 @@
 import asyncio
 import json
 import os
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -14,8 +15,10 @@ from agentic_factory.job.engine import run
 from agentic_factory.job.summary.contract import JobSummary
 from agentic_factory.job.summary.prompt import INSTRUCTION
 from agentic_factory.settings.load import settings
+from agentic_factory.tokens import Tokens
 
 FIXTURE = Path(__file__).parent / "coders" / "opencode" / "fixtures" / "echo.jsonl"
+MESSAGES = FIXTURE.parent / "messages.json"
 
 
 async def no_repair(block: str) -> None:
@@ -50,6 +53,26 @@ class ScriptedCoder(OpencodeHarness):
 
     def command(self, job: Job) -> list[str]:
         return ["sh", "-c", self.script]
+
+
+class CoderWithRecord(ScriptedCoder):
+    """A scripted coder whose usage record is another shell script."""
+
+    def __init__(self, script: str, record_script: str) -> None:
+        super().__init__(script)
+        self.record_script = record_script
+
+    def usage_command(self, session_id: str) -> list[str]:
+        return ["sh", "-c", self.record_script]
+
+
+def messages_made_now(path: Path) -> None:
+    """The messages fixture with its turns re-dated to just after now, so
+    that they count as this try's."""
+    data = json.loads(MESSAGES.read_text())
+    for message in data["data"]:
+        message["time"]["created"] = int(datetime.now(UTC).timestamp() * 1000) + 1000
+    path.write_text(json.dumps(data))
 
 
 def job(**overrides: object) -> Job:
@@ -324,3 +347,33 @@ async def test_a_dropped_last_line_gives_a_result_with_usage_unknown() -> None:
     result = await run(job(), Recorder(), repair=no_repair, harness=ScriptedCoder(f"cat {cut}"))
     assert not result.usage_known
     assert result.tokens.input > 0  # the earlier turns carried their usage
+
+
+async def test_usage_lost_at_exit_is_read_back_from_the_coders_record(tmp_path: Path) -> None:
+    cut = FIXTURE.parent / "cut.jsonl"
+    messages_made_now(record := tmp_path / "messages.json")
+    harness = CoderWithRecord(f"cat {cut}", f"cat {record}")
+    result = await run(job(), Recorder(), repair=no_repair, harness=harness)
+    assert result.usage_known
+    assert result.tokens == Tokens(input=9862 + 3264, output=69 + 11, cache_read=9841)
+    assert result.cost_usd == pytest.approx(0.0011444 + 0.000354482)
+
+
+async def test_a_failed_read_back_leaves_the_usage_unknown() -> None:
+    cut = FIXTURE.parent / "cut.jsonl"
+    harness = CoderWithRecord(f"cat {cut}", "echo nope >&2; exit 3")
+    result = await run(job(), Recorder(), repair=no_repair, harness=harness)
+    assert not result.usage_known and result.tokens.input > 0
+
+
+async def test_a_read_back_that_is_not_the_record_leaves_the_usage_unknown() -> None:
+    cut = FIXTURE.parent / "cut.jsonl"
+    harness = CoderWithRecord(f"cat {cut}", "echo not json")
+    result = await run(job(), Recorder(), repair=no_repair, harness=harness)
+    assert not result.usage_known
+
+
+async def test_a_stream_with_totals_does_not_read_back(tmp_path: Path) -> None:
+    harness = CoderWithRecord(f"cat {FIXTURE}", "exit 9")  # would fail if it ran
+    result = await run(job(), Recorder(), repair=no_repair, harness=harness)
+    assert result.usage_known and result.tokens.input == 8847 + 11718

@@ -11,6 +11,8 @@ from agentic_factory.job.coders.opencode.stream import (
     Created,
     Line,
     LineType,
+    Message,
+    MessageList,
     Reason,
     StepTokens,
     ToolStatus,
@@ -18,7 +20,7 @@ from agentic_factory.job.coders.opencode.stream import (
 from agentic_factory.job.coders.opencode.turn import Turn
 from agentic_factory.job.contract import Job
 from agentic_factory.settings.load import settings
-from agentic_factory.tokens import Tokens
+from agentic_factory.tokens import Tokens, Usage
 
 
 class OpencodeHarness(Harness):
@@ -74,6 +76,23 @@ class OpencodeHarness(Harness):
         run's stream; the context shrinks at the next step."""
         argv = ["opencode", "api", "--standalone", "session.compact"]
         return [*argv, "--param", f"sessionID={session_id}", "-d", "{}"]
+
+    def usage_command(self, session_id: str) -> list[str]:
+        """The session's messages with their tokens and cost, from opencode's
+        own store: the source of the totals its stream drops at exit (see
+        `end_of_stream`). Must run in the workdir, like every session call."""
+        argv = ["opencode", "api", "--standalone", "session.message.list"]
+        return [*argv, "--param", f"sessionID={session_id}"]
+
+    def parse_usage(self, stdout: str, since: datetime) -> Usage:
+        """The assistant messages created at or after `since`, summed."""
+        try:
+            messages = MessageList.model_validate_json(stdout).data
+        except ValidationError:
+            clip = settings.job.error_clip_chars
+            raise ValueError(f"no messages in: {stdout.strip()[:clip]}") from None
+        turns = [m for m in messages if m.type == "assistant" and _at_or_after(m, since)]
+        return sum((_usage_of(m) for m in turns), Usage())
 
     def parse_line(self, text: str) -> list[Event]:
         if not text.strip():
@@ -209,6 +228,15 @@ class OpencodeHarness(Harness):
 def _raise_if_length_reached(reason: str) -> None:
     if reason == Reason.LENGTH:
         raise ContextPressure("opencode stopped: output or context length reached")
+
+
+def _at_or_after(message: Message, since: datetime) -> bool:
+    return message.time.created >= int(since.timestamp() * 1000)
+
+
+def _usage_of(message: Message) -> Usage:
+    tokens = _to_tokens(message.tokens) if message.tokens is not None else Tokens()
+    return Usage(tokens=tokens, cost_usd=message.cost)
 
 
 def _to_tokens(step: StepTokens) -> Tokens:

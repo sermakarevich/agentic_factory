@@ -1,8 +1,10 @@
 from abc import ABC, abstractmethod
+from datetime import datetime
 from typing import ClassVar
 
 from agentic_factory.event import Event
 from agentic_factory.job.contract import Job
+from agentic_factory.tokens import Usage
 
 
 class Harness(ABC):
@@ -45,6 +47,18 @@ class Harness(ABC):
         event of a normal run is `finished` with the totals; a stream that
         ends without it means the coder died.
         """
+
+    def usage_command(self, session_id: str) -> list[str]:
+        """Command that prints the coder's own record of the session, with
+        each model turn's usage, for `parse_usage`. Empty when the coder
+        keeps none (its stream is then the only source of the totals)."""
+        return []
+
+    def parse_usage(self, stdout: str, since: datetime) -> Usage:
+        """The usage of the turns made at or after `since`, summed, from what
+        `usage_command` printed. Raises `ValueError` when the output is not
+        that record."""
+        raise NotImplementedError(f"{type(self).__name__} keeps no usage record")
 
     def end_of_stream(self) -> list[Event]:
         """Called once stdout closed: whatever the stream left unsaid.

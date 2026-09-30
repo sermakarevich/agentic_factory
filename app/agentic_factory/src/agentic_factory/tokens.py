@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class Tokens(BaseModel):
@@ -16,3 +16,13 @@ class Tokens(BaseModel):
             cache_read=self.cache_read + other.cache_read,
             cache_write=self.cache_write + other.cache_write,
         )
+
+
+class Usage(BaseModel):
+    """Tokens with what they cost: what a run, or part of one, was billed."""
+
+    tokens: Tokens = Field(default_factory=Tokens)
+    cost_usd: float = 0.0
+
+    def __add__(self, other: "Usage") -> "Usage":
+        return Usage(tokens=self.tokens + other.tokens, cost_usd=self.cost_usd + other.cost_usd)

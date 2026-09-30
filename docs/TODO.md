@@ -17,18 +17,6 @@ exits. Pure Python, works on macOS and Linux. The retry on the next runner
 then resumes the session with no leftover coder writing to the workdir.
 Test it by killing a fake parent.
 
-## Recover usage opencode lost at exit
-
-When opencode drops its last `step_finish` (a race with process exit,
-see DESIGN quirks) the result has `usage_known=False` and the tokens of
-the last turn are missing. opencode keeps every session, with per-message
-tokens and cost, in its own store on disk. After the process has exited,
-read the session back through `opencode api session.messages` (or the
-files) and fill the totals from there. Read only; the store is opencode's.
-Do it in the harness after `end_of_stream()`, behind a setting, and test it
-against a session created by a smoke run. Until then, sum `usage_known`
-rows separately from the rest when reporting cost.
-
 ## Store: pool size and a batched journal
 
 `JournalCallback.on_event` is one transaction per event, and the store's

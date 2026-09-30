@@ -316,8 +316,20 @@ queues.
   got, and the ledger took those zeros as the coder's own. `finished` now
   carries no usage in that case, the ledger keeps the sum of the turns it
   saw, and `JobResult.usage_known` says whether the totals are the
-  coder's. Reading the totals back from opencode's own store is parked
-  in TODO.
+  coder's.
+- **Usage is read back from opencode after a lost last line** (Sep 30).
+  The loss is not a rare race: opencode's run client exits on the
+  session going idle before it drains the final `step-finish`, so the
+  last turn's tokens are lost on nearly every run. opencode keeps every
+  message with its tokens and cost, so after a run whose `finished` has
+  no usage the engine asks `session.message.list` and sums the assistant
+  messages created since the try began. The harness gives the command
+  and the parser (`usage_command`, `parse_usage`); `job/usage.py` runs it
+  under `usage_wait_sec` and gives up quietly on any failure, so the
+  result never waits on or fails for the accounting. Reading opencode's
+  store through its own API is fine; writing into it is not. The time
+  fence is the try's start, not the session's: a retried job shares
+  the session and must not count the earlier tries twice.
 - **Workflows are Python, not YAML.** Graphs are code; a data-driven DAG
   interpreter can be added later if needed. Beads is an input source and
   an output target, not the internal state store.

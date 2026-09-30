@@ -113,12 +113,18 @@ Lives in `agentic_factory/tokens.py`, `event.py`, `failure.py` (shared with call
 
 Coder quirks learned from smoke runs (opencode v2.0.12):
 - `opencode run` needs `--standalone`, else the last `step_finish` line
-  never arrives. Even with it the final line is sometimes lost in a race
-  with process exit, so the harness finishes the run in `end_of_stream()`.
-  That lost line carried the last turn's tokens, so `finished` then has
-  no usage, the result keeps the sum of the earlier turns (zero for a
-  one-turn answer) and `JobResult.usage_known` is false: a 0 there is
-  "not known", never "free". Seen live on Sep 30 (`job-ef580a12`).
+  never arrives. Even with it the final line is nearly always lost (7 of
+  7 runs on Sep 30, with stdout a file too): the run client exits on the
+  session going idle before it has drained the last `step-finish` part
+  (upstream issues #26855, #31435, #31365). So the harness finishes the
+  run in `end_of_stream()`, and `finished` then has no usage. The engine
+  reads the try's usage back from opencode's own record of the session
+  (`job/usage.py`: `opencode api --standalone session.message.list`, the
+  assistant messages created since the try began, summed; reasoning
+  tokens left out as the stream leaves them out). When that read-back
+  fails too, the result keeps the sum of the turns the stream carried
+  (zero for a one-turn answer) and `JobResult.usage_known` is false: a 0
+  there is "not known", never "free". Seen live on Sep 30 (`job-ef580a12`).
 - opencode takes its working directory from `$PWD`, not from the real
   cwd. The engine sets both.
 - The first standalone start can take ~45 s (plugins and MCP servers
@@ -146,6 +152,13 @@ The session is chosen before the first try, so every try starts the coder
 the same way: `--session <id>` (opencode) or the session flags of claude.
 Nothing on our side decides between "resume" and "start over"; the coder's
 session holds whatever the earlier try did, possibly nothing.
+
+`job/usage.py`: `recover_usage(harness, job, since)` is the read-back
+above, for any coder whose `usage_command` is not empty. Best effort and
+bounded by `job.usage_wait_sec`: a failure, a timeout or an answer that
+is not the record leaves the usage unknown; the result does not depend
+on it. It runs only for a run that reached a result; a crashed or killed
+try reports the sum it saw.
 
 `job/session.py`: `create_session(job)` makes that session. For a coder that
 takes any id we choose (claude: `new_session_command` is empty) it is a
@@ -292,7 +305,7 @@ it compacts:
 The engine only knows whether the run completed. Whether the work is done is
 judged from what the run left behind, in layers from cheap and deterministic
 to a model reading text. Lives in `job/stats.py`, `job/summary/contract.py`,
-`job/ledger.py`.
+`job/ledger.py`, `job/usage.py`.
 
 1. **Stats.** The ledger counts every event as it flows past: model turns,
    tool calls and failed tool calls (the coders' error flag becomes

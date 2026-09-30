@@ -8,6 +8,7 @@ provider = "opencode"         # the harness that runs it: claude | opencode
 timeout_sec = 3600
 stall_sec = 600               # no output for this long = kill
 exit_wait_sec = 30            # how long a coder may take to exit after its output closed, or after a kill
+usage_wait_sec = 60           # how long reading a try's usage back from the coder may take, when its stream lost the totals
 compact_at_tokens = 150000     # the coder is asked to compact its context at this size; not a job option
 context_limit_tokens = 200000  # kill and retry above this; the backstop when compaction did not happen
 line_limit_bytes = 16777216    # longest stdout line the engine reads; a tool output can be one very long line

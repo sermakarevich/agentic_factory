@@ -1,7 +1,7 @@
 from agentic_factory.event import Event, EventKind
 from agentic_factory.job.stats import JobStats
 from agentic_factory.job.summary.block import find_summary_block
-from agentic_factory.tokens import Tokens
+from agentic_factory.tokens import Tokens, Usage
 
 
 class Ledger:
@@ -16,12 +16,7 @@ class Ledger:
         self.cost_usd = 0.0
         self.summary_block = ""
         self.finished: Event | None = None
-
-    @property
-    def usage_known(self) -> bool:
-        """True once `finished` brought the coder's own totals. Without them
-        the tokens are the sum of the turns that carried usage, or zero."""
-        return self.finished is not None and self.finished.usage is not None
+        self.usage_known = False  # True once the totals are the coder's own, not our sum
 
     def add(self, event: Event) -> None:
         self.stats.add(event)
@@ -43,3 +38,11 @@ class Ledger:
         if finished.usage is not None:
             self.tokens = finished.usage
             self.cost_usd = finished.cost_usd
+            self.usage_known = True
+
+    def take(self, usage: Usage) -> None:
+        """The coder's own record of the try, read back after a run whose
+        stream lost its totals; it replaces the sum like `finished` would."""
+        self.tokens = usage.tokens
+        self.cost_usd = usage.cost_usd
+        self.usage_known = True

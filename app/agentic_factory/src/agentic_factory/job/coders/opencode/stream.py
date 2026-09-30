@@ -82,6 +82,24 @@ class Line(BaseModel):
         return datetime.fromtimestamp(self.timestamp / 1000, tz=UTC)
 
 
+class Message(BaseModel):
+    """One message of `session.message.list`; usage is on `assistant` ones."""
+
+    class Time(BaseModel):
+        created: int  # unix milliseconds
+
+    type: str
+    time: Time
+    tokens: StepTokens | None = None
+    cost: float = 0.0
+
+
+class MessageList(BaseModel):
+    """What `session.message.list` prints: the messages under `data`."""
+
+    data: list[Message]
+
+
 class Created(BaseModel):
     """What `session.create` prints: the new session under `data`."""
 
