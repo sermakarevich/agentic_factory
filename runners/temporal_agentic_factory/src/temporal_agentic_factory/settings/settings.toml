@@ -23,6 +23,10 @@ min_retry_delay_sec = 1     # the shortest wait after a rate limit whose reset t
 close_margin_sec = 60   # start-to-close = the app's step.timeout_sec + this; the step's own timeout fires first
 max_attempts = 3        # tries of the report step before the workflow gives it up
 
+[outputs_activity]
+close_margin_sec = 60   # start-to-close = two of the app's step.timeout_sec (last message, then the conversation) + this
+max_attempts = 3        # tries of the extraction before the workflow fails; "not stated" is final and skips them
+
 [record_activity]
 timeout_sec = 30    # two store queries: the tries read, the job row written
 max_attempts = 5    # tries before the workflow gives the row up and logs it

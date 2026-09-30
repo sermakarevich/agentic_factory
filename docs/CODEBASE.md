@@ -22,6 +22,7 @@ agentic_factory/
           process/            # spawn, kill, environment, workdir, tail: the coder process
           summary/            # contract, prompt, block, parse, repair: the coder's own summary
           report/             # contract, conversation, step, build: the report a model writes over the run
+          outputs/            # contract, prompt, step, extract: typed outputs asked for in the prompt, picked out by a step
         step/                 # contract, reasoning, engine, defaults
           providers/          # client base, catalog; opencode/ (client)
         callbacks/            # log, json_lines, fanout, journal: the callbacks a run's start, events and end go to
@@ -33,8 +34,8 @@ agentic_factory/
       pyproject.toml        # package `temporal_agentic_factory`
       justfile
       src/temporal_agentic_factory/  # cli, client, runner, identity (host:pid:sha), search_attributes (the ui's columns)
-        activities/           # session, job, report, record: one class each; failure, heartbeat: what only activities need
-        workflows/            # job: the workflows composing the activities
+        activities/           # session, job, report, outputs, record: one class each; failure, heartbeat: what only activities need
+        workflows/            # job, outputs: the workflows composing the activities
         settings/             # server address, activity limits
       tests/
     argo_agentic_factory/     # NOT built. README only, see "Why runners/"
@@ -62,7 +63,7 @@ It holds the atomic abstractions as plain Python:
   the harness per coder, the engine that runs one, the session made before
   the first try, continuation for retries, stats, the coder's summary and
   its repair by a step, the conversation rendered from stored events, the
-  report step over it).
+  report step over it, the typed outputs picked out of the coder's text).
 - **callbacks**: the callbacks a run's start, events and end go to (log,
   fanout, the journal that records the try in the store).
 - **tools**: the tools exposed to steps and jobs (ask_human, web fetch,

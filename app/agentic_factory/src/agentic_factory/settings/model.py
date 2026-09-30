@@ -60,6 +60,10 @@ class ReportSettings(Table):
     max_chars: int
 
 
+class OutputsSettings(Table):
+    max_chars: int
+
+
 class Settings(Table):
     """Typed view of settings.toml after dynaconf merged the overrides."""
 
@@ -69,3 +73,4 @@ class Settings(Table):
     log: LogSettings
     conversation: ConversationSettings
     report: ReportSettings
+    outputs: OutputsSettings

@@ -55,3 +55,11 @@ class SessionNotCreated(JobFailed):
 
 class BadOutput(JobFailed):
     """The answer of a call was cut off, not JSON, or did not match the schema."""
+
+
+class OutputsNotStated(JobFailed):
+    """The coder ended without stating the outputs the job asked for, in its
+    last message or anywhere in the conversation; another try of the same
+    extraction would read the same text."""
+
+    retryable = False

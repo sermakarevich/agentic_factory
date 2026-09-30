@@ -31,6 +31,11 @@ class ReportActivitySettings(Table):
     max_attempts: int
 
 
+class OutputsActivitySettings(Table):
+    close_margin_sec: int
+    max_attempts: int
+
+
 class RecordActivitySettings(Table):
     timeout_sec: int
     max_attempts: int
@@ -42,4 +47,5 @@ class Settings(Table):
     cli: CliSettings
     job_activity: JobActivitySettings
     report_activity: ReportActivitySettings
+    outputs_activity: OutputsActivitySettings
     record_activity: RecordActivitySettings

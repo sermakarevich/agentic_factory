@@ -191,6 +191,32 @@ queues.
   facts, run with a plain `Callback()` so its tokens do not pollute the
   heartbeat's context reading.
 
+### Typed outputs: asked in the prompt, picked out by a step
+
+- **Chosen.** A workflow that needs typed data out of a job gives its JSON
+  schema. The prompt gets a request to state each field plainly in the
+  final message, before the summary block. After the job, one step with
+  the schema wrapped as "the outputs or null, plus the fields not stated"
+  reads the coder's last message; when it says not stated, a second step
+  reads the whole rendered conversation. Not stated there either is
+  `OutputsNotStated`, a final failure: the workflow stops, as fleet's did on
+  a missing outputs file. `job/outputs/` in the app (contract, prompt,
+  step, extract), `OutputsActivity` and `run_job_with_outputs` in the
+  runner. Nothing new in the store or the job engine.
+- **Why a step over the stored events.** The events are already stored
+  and the step engine already exists; the outputs are a lookup in the
+  text, not an inference, once the prompt asked for them. The null branch
+  in the schema is what keeps strict mode from forcing invented values.
+- **Rejected: an outputs file in the workdir** (fleet). Ties the job to a
+  filesystem the workflow must reach and to a path convention; a job with
+  no workdir of its own has nowhere to write.
+- **Rejected: a tool or a store write by the coder.** An MCP tool or a
+  `set_outputs` command the coder calls puts a write path into the coder's
+  hands and needs per-coder tool plumbing; the coder's words are enough.
+- **Rejected: a second JSON-block parser** next to the summary's. One
+  fenced block per message is what coders manage; a second one competes
+  with it, and the summary parser already carries five layers of repair.
+
 ## 2. Step: structured output that is useful
 
 - **Chosen.** `Step` carries a prompt, a system prompt and a JSON schema
@@ -214,7 +240,8 @@ queues.
   leave room, and a reasoning effort of `low` cut glm-5.3-flash from 30 s
   to 6 s. No retries in the client: Temporal retries.
 - **Where steps are used.** Repairing a coder's summary block, the report
-  over a session, and, planned, any typed judgement between two jobs.
+  over a session, the typed outputs picked out of a job's text, and,
+  planned, any typed judgement between two jobs.
   Renamed from "llm call" to "step" in Sep 2026 so the vocabulary matches
   the workflow's building blocks.
 

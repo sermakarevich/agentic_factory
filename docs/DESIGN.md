@@ -239,6 +239,13 @@ the two engines; workflows compose them; retries never appear in workflow code.
   saves it, has the report step read it, saves the report and returns it.
   Given the app's step timeout plus a margin, with the `report_activity`
   retries.
+- `extract_outputs(request)` — after a job that must state typed outputs:
+  the app's `job/outputs/extract.py` reads the session's stored events,
+  runs the extraction step over the coder's last message and, when that
+  says "not stated", over the whole conversation; returns the outputs as
+  a dict matching the schema in the request. Given two step timeouts plus
+  a margin, with the `outputs_activity` retries. `OutputsNotStated` is
+  final: another try would read the same text.
 - Activities are methods of small classes (`SessionActivity`,
   `JobActivity`, `ReportActivity`, `RecordActivity`) that take the store in
   their constructor: `runner.py` makes one `Store` per process, gives it to
@@ -258,6 +265,15 @@ the two engines; workflows compose them; retries never appear in workflow code.
   Temporal is the backstop, and the retry policy from settings. App code is
   imported inside `imports_passed_through()`, because settings load on
   import and the sandbox would rerun that.
+- `JobWithOutputsWorkflow` (`workflows/outputs.py`, type name
+  `job_with_outputs`) — a job plus the JSON schema of the outputs it must
+  state; returns a `JobWithOutputs`: the outcome and the outputs as a dict.
+  Its `run_job_with_outputs(job, schema)` helper is for any workflow that
+  needs typed data out of a job: it appends the outputs request to the
+  prompt (`job/outputs/prompt.py`), runs `run_job_with_report`, then the
+  extraction activity. A job that failed for good, or outputs the coder
+  never stated, fail the workflow: nothing downstream can run on made-up
+  values. The caller owns the model and validates the dict with it.
 - Defaults: job fields stay in the app's `settings.toml`, since they describe a
   job whatever engine runs it. The runner has its own `settings/settings.toml`
   for the engine's part: server address, namespace, task queue, activity
@@ -359,6 +375,22 @@ Verified on both coders: opencode's queued compaction was applied mid-run in
 print mode took the context from 22.9k to 2.6k tokens and the next resume
 answered from the summary.
 
+## Typed outputs
+
+A workflow that chains jobs needs typed data out of one job to start the
+next (fleet's summarise flow reads the urls one job fetched from a file the
+coder wrote). Here the coder writes no file and calls no tool: the workflow
+appends a request to the prompt naming each output field with its type and
+description, and asks for them plainly in the final message, before the
+summary block the engine asks for. After the job, one step with a schema
+built around the workflow's picks them out of the coder's last message. The
+schema is the outputs or null, plus the fields not stated: strict mode
+requires every field, and without the null branch a model that found nothing
+would fill the outputs in. "Not stated" is an answer, not a `BadOutput`: it
+triggers a second step over the whole rendered conversation. Not stated
+there either raises `OutputsNotStated`, final, and the workflow stops.
+No second JSON-block parser: extraction is the only path.
+
 ## Materialization
 
 What a job did must outlive the try that did it: a retry, a runner restart
@@ -433,7 +465,7 @@ values more than one package needs: the store's url in `[store]`. Every
 settings model is a `Table` with `extra="forbid"`, so a misspelled key in a
 toml file or an `AF_` variable is refused on load instead of ignored.
 The conversation's clip sizes are `[conversation]`, the report's transcript
-limit `[report]`.
+limit `[report]`, the outputs extraction's text limit `[outputs]`.
 Overrides, in order: `settings.local.toml` next to it (git-ignored), a
 `.env` found walking up from the package (repo root or `~/.env`), and
 environment variables `AF_<TABLE>__<KEY>`. `Job` and `Step` take their
