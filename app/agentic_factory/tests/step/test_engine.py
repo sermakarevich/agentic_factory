@@ -4,6 +4,7 @@ import json
 import pytest
 from pydantic import BaseModel
 
+from agentic_factory.callback import Callback
 from agentic_factory.event import Event, EventKind
 from agentic_factory.failure import BadOutput, TimedOut
 from agentic_factory.step.contract import Step
@@ -17,7 +18,7 @@ class Report(BaseModel):
     summary: str
 
 
-class Recorder:
+class Recorder(Callback):
     def __init__(self) -> None:
         self.events: list[Event] = []
 

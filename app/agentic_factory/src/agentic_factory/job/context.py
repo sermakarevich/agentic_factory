@@ -1,7 +1,8 @@
 from asyncio.subprocess import DEVNULL
 from datetime import UTC, datetime
 
-from agentic_factory.event import Event, EventKind, Observer
+from agentic_factory.callback import Callback
+from agentic_factory.event import Event, EventKind
 from agentic_factory.failure import ContextPressure
 from agentic_factory.job.coders.harness import Harness
 from agentic_factory.job.contract import Job
@@ -17,11 +18,11 @@ def context_of(event: Event) -> int | None:
     return event.usage.input + event.usage.cache_read + event.usage.cache_write
 
 
-async def compact(harness: Harness, job: Job, session_id: str, observer: Observer) -> None:
+async def compact(harness: Harness, job: Job, session_id: str, callback: Callback) -> None:
     """Ask the coder to compact the session. Best effort: a failure is reported
     as an event and the run goes on, since the context limit still guards it."""
     outcome = await _compaction_outcome(harness, job, session_id)
-    await observer.on_event(_compaction_event(session_id, outcome))
+    await callback.on_event(_compaction_event(session_id, outcome))
 
 
 async def _compaction_outcome(harness: Harness, job: Job, session_id: str) -> str:
@@ -47,10 +48,10 @@ class ContextWatch:
     compaction once it passes `compact_at_tokens` (when the coder allows that
     during a run) and raises `ContextPressure` above the job's limit."""
 
-    def __init__(self, job: Job, harness: Harness, observer: Observer) -> None:
+    def __init__(self, job: Job, harness: Harness, callback: Callback) -> None:
         self.job = job
         self.harness = harness
-        self.observer = observer
+        self.callback = callback
         self.session_id = job.session_id
         self.pending = False  # a compaction was asked for and the context has not dropped since
 
@@ -76,4 +77,4 @@ class ContextWatch:
             self.pending = False  # it shrank; the next crossing may ask again
         elif not self.pending and self.harness.compacts_while_running and self.session_id:
             self.pending = True
-            await compact(self.harness, self.job, self.session_id, self.observer)
+            await compact(self.harness, self.job, self.session_id, self.callback)

@@ -1,8 +1,8 @@
 import logging
 
+from agentic_factory.callbacks.silent import Silent
 from agentic_factory.failure import JobFailed
 from agentic_factory.job.summary.contract import SUMMARY_KEY, JobSummary
-from agentic_factory.observe.silent import Silent
 from agentic_factory.step import engine as steps
 from agentic_factory.step.contract import Step
 from agentic_factory.step.providers.client import Client

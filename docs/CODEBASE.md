@@ -16,15 +16,15 @@ agentic_factory/
     agentic_factory/          # the application: everything that is not an engine
       pyproject.toml        # package `agentic_factory`
       justfile
-      src/agentic_factory/    # event.py, failure.py, tokens.py: the vocabulary every layer shares
-        job/                  # contract, engine, session, continuation, ledger, stats, context, outcome, defaults
+      src/agentic_factory/    # event.py, failure.py, tokens.py, callback.py: the vocabulary every layer shares
+        job/                  # contract, engine, session, continuation, ledger, stats, context, outcome, record, defaults
           coders/             # harness base, catalog, decode; claude/ and opencode/ (harness, stream)
           process/            # spawn, environment, workdir, tail: the coder process
           summary/            # contract, prompt, block, parse, repair: the coder's own summary
           report/             # contract, conversation, step: the report a model writes over the run
         step/                 # contract, engine, defaults
           providers/          # client base, catalog; opencode/ (client)
-        observe/              # log, fanout, journal, silent: the observers a run's events go to
+        callbacks/            # log, fanout, journal, silent: the callbacks a run's start, events and end go to
         settings/             # settings.toml holds every default; model.py types it; load.py reads it
       scripts/              # run_job.py, run_step.py: dev entry points behind `just`
       tests/
@@ -58,8 +58,8 @@ It holds the atomic abstractions as plain Python:
   the first try, continuation for retries, stats, the coder's summary and
   its repair by a step, the conversation rendered from stored events, the
   report step over it).
-- **observe**: the observers a run's events go to (log, fanout, the
-  journal that writes them to the store).
+- **callbacks**: the callbacks a run's start, events and end go to (log,
+  fanout, the journal that records the try in the store).
 - **tools**: the tools exposed to steps and jobs (ask_human, web fetch,
   and any MCP server config the harness is handed).
 - plain functions a workflow needs around a job (worktree, bead update),
@@ -83,7 +83,7 @@ Workflows on Kubernetes, Prefect, plain cron), only a new folder under
 
 **common/** holds libraries that two or more apps need, one named
 package per folder. Today: `factory_store`, the database (schema,
-migrations, async API) that both the app's observers and the runner's
+migrations, async API) that both the app's callbacks and the runner's
 activities write through. A module moves here only when a second app needs it,
 never speculatively. `common/` is a folder of packages, not a Python
 module named `common`; the rule against `common.py` files still holds

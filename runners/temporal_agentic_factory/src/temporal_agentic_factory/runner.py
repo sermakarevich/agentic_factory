@@ -1,6 +1,7 @@
 from temporalio.worker import Worker
 
 from temporal_agentic_factory.activities.job import execute_job
+from temporal_agentic_factory.activities.record import record_job
 from temporal_agentic_factory.activities.report import build_report
 from temporal_agentic_factory.activities.session import create_session
 from temporal_agentic_factory.activities.step import execute_step
@@ -16,7 +17,7 @@ async def serve() -> None:
         client,
         task_queue=settings.temporal.task_queue,
         workflows=[JobWorkflow],
-        activities=[create_session, execute_job, execute_step, build_report],
+        activities=[create_session, execute_job, execute_step, build_report, record_job],
         max_concurrent_activities=settings.runner.max_concurrent_activities,
     )
     await worker.run()

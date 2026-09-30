@@ -1,3 +1,4 @@
+from dataclasses import replace
 from datetime import UTC, datetime
 from typing import Any
 
@@ -5,7 +6,7 @@ from sqlalchemy import select
 
 from factory_store import schema
 from factory_store.schema import Outcome
-from factory_store.store import Store
+from factory_store.store import JobRecord, Store, Totals
 
 
 async def make_store() -> Store:
@@ -128,5 +129,67 @@ async def test_starting_a_later_try_abandons_one_left_running() -> None:
         assert first["failure"].startswith("abandoned")
         assert first["ended_at"] is not None
         assert second["outcome"] == "running"
+    finally:
+        await store.dispose()
+
+
+async def test_a_finished_try_keeps_its_totals_and_result() -> None:
+    store = await make_store()
+    try:
+        await store.start_session("s1", "opencode", "m", "/w", "do it")
+        await store.start_try("s1", 1)
+        totals = Totals(input_tokens=10, output_tokens=5, cost_usd=0.25, duration_sec=1.5, turns=2)
+        await store.finish_try("s1", 1, Outcome.DONE, totals=totals, result={"ok": True})
+        await store.start_try("s1", 2)
+        await store.finish_try("s1", 2, Outcome.FAILED, "Stalled: quiet", Totals(turns=1))
+        first, second = await store.load_tries("s1")
+        assert first.totals == totals and first.result == {"ok": True}
+        assert first.outcome == "done" and first.ended_at is not None
+        assert second.totals == Totals(turns=1) and second.result == {}
+        assert second.failure == "Stalled: quiet"
+        assert first.totals + second.totals == Totals(
+            input_tokens=10, output_tokens=5, cost_usd=0.25, duration_sec=1.5, turns=3
+        )
+    finally:
+        await store.dispose()
+
+
+async def test_a_restarted_try_forgets_its_totals() -> None:
+    store = await make_store()
+    try:
+        await store.start_session("s1", "opencode", "m", "/w", "do it")
+        await store.start_try("s1", 1)
+        await store.finish_try("s1", 1, Outcome.DONE, totals=Totals(turns=3), result={"ok": True})
+        await store.start_try("s1", 1)
+        (row,) = await store.load_tries("s1")
+        assert row.totals == Totals() and row.result == {}
+    finally:
+        await store.dispose()
+
+
+async def test_the_job_row_is_replaced_not_duplicated() -> None:
+    store = await make_store()
+    try:
+        await store.start_session("s1", "opencode", "m", "/w", "do it")
+        at = datetime(2026, 9, 30, 12, 0, 0, tzinfo=UTC)
+        record = JobRecord(
+            started_at=at,
+            ended_at=at,
+            tries=2,
+            outcome=Outcome.DONE,
+            failure="",
+            totals=Totals(cost_usd=0.5),
+            result={"ok": True},
+            verdict="done",
+        )
+        await store.save_job("s1", record)
+        await store.save_job("s1", replace(record, tries=3, verdict="partial"))
+        async with store.engine.connect() as conn:
+            result = await conn.execute(select(schema.job).where(schema.job.c.session_id == "s1"))
+            rows = result.mappings().all()
+        assert len(rows) == 1
+        assert rows[0]["tries"] == 3 and rows[0]["verdict"] == "partial"
+        assert rows[0]["outcome"] == "done" and rows[0]["cost_usd"] == 0.5
+        assert dict(rows[0]["result"]) == {"ok": True}
     finally:
         await store.dispose()

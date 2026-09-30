@@ -78,15 +78,31 @@ queues.
 - **Kept as its own module.** `job/continuation.py` stays in the app, not
   the runner, because the header is prompt wording the coder sees.
 
-### Callbacks: observers, not return values
+### Callbacks: three hooks, not return values
 
-- **Chosen.** The engine takes one `Observer` with one method,
-  `on_event(Event)`, and does not know who listens. The runner fans out to
-  a heartbeat observer (Temporal liveness plus the context size of the
-  last turn), a log observer and a journal observer (the store).
+- **Chosen.** The engine takes one `Callback`, a base class with three
+  no-op methods: `on_start(job)` after the session is known and before
+  the coder starts, `on_event(event)` per event, `on_end(JobEnd)` once on
+  every ending (result, `JobFailed`, cancellation) with the result or the
+  failure text and the ledger's totals so far. The engine does not know
+  who listens. The runner fans out to a heartbeat callback (Temporal
+  liveness plus the context size of the last turn), a log callback and a
+  journal callback (the store).
 - **Why.** The engine stays engine-agnostic and testable with no Temporal
-  and no database. Adding Langfuse later is one more observer on the same
+  and no database. Adding Langfuse later is one more callback on the same
   stream.
+- **Why start and end, not just events.** The try's row needs opening
+  before the coder runs and closing with its totals whatever way the run
+  ended; done from the activity, that was domain logic (what a try is,
+  what it adds up to) in the runner. As callback hooks the journal owns
+  the whole try and the activity only wires. A base class, not a
+  Protocol, so a callback overrides the hooks it cares about.
+- **The `job` row is summed in the app.** `job/record.py` reads the
+  session's tries from the store and writes one row; the runner's
+  `record_job` activity is one line that hands it the store. The
+  aggregation is domain logic, so it lives beside the engine and is unit
+  tested there; the activity keeps only Temporal's concerns (timeout,
+  retries, not fatal).
 - **Heartbeat details are our own model** (time of last event, event
   count, context size), so the next try can read the previous try's
   context size from `activity.info()` and decide whether to compact
@@ -115,9 +131,12 @@ queues.
 
 - **Chosen.** `common/factory_store`: SQLAlchemy Core tables, alembic
   migrations, one async `Store` API. Tables `session`, `attempt`,
-  `event`, `conversation`, `report`. The `event` row holds the whole
+  `event`, `conversation`, `report`, `job`. The `event` row holds the whole
   `Event` as json (raw line included) with the try number and the coder's
-  timestamp. Written live by a `JournalObserver`.
+  timestamp. Written live by a `JournalCallback`, which also opens and
+  closes the `attempt` row. Totals (tokens, cost, duration, turns, tool
+  calls and failures) are flat columns on `attempt` and `job`, the same on
+  both, so sql can sum and compare them without unpacking json.
 - **Why a database and not files.** A retry, a runner restart or a
   judgement after the fact all need the events of every try, and a
   workflow's tries can run on different processes. Files keyed by run id
@@ -133,7 +152,7 @@ queues.
   Tests run on `sqlite+aiosqlite:///:memory:` through the same schema, so
   no test needs the database. Postgres runs from the repo's docker compose
   (`just db`).
-- **Where it lives.** `common/` because both the app (journal observer)
+- **Where it lives.** `common/` because both the app (journal callback)
   and the runner (activities) write through it. Dependency direction is
   runners → app → common; common imports neither.
 - **Considered and parked.** Reusing Langfuse's database as the store:
@@ -169,7 +188,7 @@ queues.
   is strictest first, then a lenient pass for the mistakes seen (bare key,
   trailing commas, Python literals). A block that was found but did not
   parse is repaired by a step with a system prompt that forbids inventing
-  facts, run with a silent observer so its tokens do not pollute the
+  facts, run with a silent callback so its tokens do not pollute the
   heartbeat's context reading.
 
 ## 2. Step: structured output that is useful
@@ -185,7 +204,7 @@ queues.
 - **Same shape as the job package.** `contract.py`, `client.py` (the base,
   as `harness.py` is for coders), `catalog.py`, `engine.py`, one folder per
   provider. The step engine emits the same events (`ai`, `finished`) to
-  the same observers, so a step and a job look alike to whoever listens.
+  the same callbacks, so a step and a job look alike to whoever listens.
 - **Provider.** The OpenCode Go API, covered by the same subscription as
   the opencode CLI, through the `openai` SDK. The protocol is picked from
   the model name: chat completions by default, Responses for muse-spark,

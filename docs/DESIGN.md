@@ -90,18 +90,23 @@ Lives in `agentic_factory/tokens.py`, `event.py`, `failure.py` (shared with call
   live run. `new_session_command(workdir)` creates an empty session and
   `parse_session(stdout)` reads its id; an empty command means the coder
   takes an id we choose. All sync: pure translation, no process is started
-  here. The engine and observers are async. Each harness names its `default_model`. Implemented: opencode,
+  here. The engine and callbacks are async. Each harness names its `default_model`. Implemented: opencode,
   claude.
-- `Observer` — one method, `on_event(Event)`. The runner passes a heartbeat
-  observer and a Langfuse observer; the engine does not know who listens.
+- `Callback` (`callback.py`) — a base with three no-op methods: `on_start(job)`
+  once the session is known and before the coder starts, `on_event(event)`
+  per event, `on_end(JobEnd)` once, on a result, a `JobFailed` and a
+  cancellation alike. `JobEnd` carries the result or the failure text
+  (`Kind: message`, or `cancelled`) and what the ledger counted so far:
+  tokens, cost, duration, stats. The runner fans out to a heartbeat, a log
+  and a journal callback; the engine does not know who listens.
 - Failures — `JobFailed` subclasses, one per retry rule: `RateLimited
   (resets_at)`, `ContextPressure`, `Stalled`, `TimedOut`, `ProviderError`,
   `NetworkError`, `CoderCrashed(exit_code, stderr)`. Raised only when no
   result exists.
-- `run(job, observer) -> JobResult` in `job/engine.py` — the single entry point.
-  Picks the harness by provider (`job/coders/catalog.py`), fills the default model, starts the
+- `run(job, callback, harness, repair) -> JobResult` in `job/engine.py` — the single entry point.
+  Takes the harness the caller picked (`job/coders/catalog.py`), fills the default model, starts the
   process in workdir (both as cwd and as `PWD` in the environment), feeds
-  every event to the observer, kills the process on stall, timeout,
+  every event to the callback, kills the process on stall, timeout,
   context over limit, a harness failure or cancellation. Exit without a
   `finished` event or with a non-zero code is `CoderCrashed`.
 
@@ -201,9 +206,10 @@ the two engines; workflows compose them; retries never appear in workflow code.
   activity never makes another.
 - `execute_job(job)` — reads its attempt number and the previous try's last
   heartbeat (context size) from `activity.info()`, applies `continue_job`,
-  opens the try in the store, runs the job engine with the heartbeat, log
-  and journal observers, closes the try, and
+  runs the job engine with the heartbeat, log and journal callbacks, and
   maps each `JobFailed` to an `ApplicationError` typed by the class name.
+  The try's row is the journal callback's: opened on `on_start`, closed
+  on `on_end` with the outcome, failure, totals and result.
   `RateLimited` sets `next_retry_delay` to the reset time. Heartbeat details
   are our `Heartbeat` model: time of the last event, event count, context
   size of the last model turn.
@@ -212,6 +218,10 @@ the two engines; workflows compose them; retries never appear in workflow code.
 - `build_report(request)` — after the job's last try: the stored events
   become the conversation, saved, and the report step reads it; the report
   is saved and returned. Uses the step activity's timeout and retries.
+- `record_job(outcome)` — after the report: the app's `job/record.py`
+  reads the session's tries, sums them and writes the `job` row. One store
+  write behind the `record_activity` timeout and retries; a write that
+  failed for good is logged, the workflow still returns the outcome.
 - `JobWorkflow` (`workflows/job.py`, type name `job`) — one job, then its
   report; returns a `JobOutcome`. Its `run_job(job)` helper makes the
   session first when the job has none,
@@ -300,8 +310,8 @@ to a model reading text. Lives in `job/stats.py`, `job/summary/contract.py`,
 5. **Repair with a step.** `job/summary/repair.py`: a block that was found but did
    not parse goes to the step engine with the summary schema and a system
    prompt that forbids inventing facts. It runs inside the job engine, right
-   before the result is made, with a silent observer: the step's events stay
-   out of the job's stream, since the heartbeat observer would read the
+   before the result is made, with a silent callback: the step's events stay
+   out of the job's stream, since the heartbeat callback would read the
    step's tokens as the coder's context. Any step failure logs and yields
    `summary=None`; the job still succeeds. The schema is sent in strict
    mode, so `JobSummary` forbids extra fields.
@@ -336,15 +346,18 @@ Tables, one job = one session:
 - `session` — the coder's session id (the job's key), provider, model,
   workdir, prompt, created_at. Written by the `create_session` activity.
 - `attempt` — one row per try: attempt number, started_at, ended_at,
-  outcome `running | done | failed`, failure text. Opened by the job
-  activity before the engine starts, closed after it, on success, on a
-  `JobFailed` and on cancellation. A try still marked running when a later
-  try of the session starts died with its runner; the store closes it as
-  abandoned then.
+  outcome `running | done | failed`, failure text, the try's totals
+  (input, output, cache read and cache write tokens, cost, duration,
+  turns, tool calls, tool failures; flat columns so sql can sum them) and
+  the `JobResult` as json (`{}` on failure). Opened by the journal
+  callback's `on_start`, closed by its `on_end`, on success, on a
+  `JobFailed` and on cancellation, with what the engine's ledger counted
+  so far. A try still marked running when a later try of the session
+  starts died with its runner; the store closes it as abandoned then.
 - `event` — one row per event, the whole `Event` as json (`raw` line
   included), with the try it belongs to and the coder's timestamp. Written
-  by `JournalObserver` (`observe/journal.py`), one of the job activity's
-  observers next to heartbeat and log. The row id is the order of the
+  by `JournalCallback` (`callbacks/journal.py`), one of the job activity's
+  callbacks next to heartbeat and log. The row id is the order of the
   session across tries and runner restarts; a sequence number kept in
   memory would restart with the process, and timestamps from two tries
   can overlap when an orphaned coder is still writing.
@@ -354,15 +367,22 @@ Tables, one job = one session:
   rate limits, compactions, the finish line. Clip sizes are settings.
 - `report` — the `JobResult` as json (empty when every try failed), the
   `JobReport` the model wrote, and its verdict as a column.
+- `job` — one row per workflow run, written last: first try's start, end
+  time, number of tries, outcome `done | failed`, failure text, the
+  totals summed over every try (same columns as `attempt`), the result as
+  json and the report's verdict. The one row to query when the question
+  is what a job cost or how it ended; the tries are the detail.
 
 The flow in the runner: `create_session` → `start_session`; each
-`execute_job` try → `start_try`, events, `finish_try`; then the
-`build_report` activity loads every event, renders and saves the
-conversation, runs the report step and saves the report. The workflow runs
-it after the job activity whatever happened to the job: a permanently failed
-job gets a report on its failure. A failed report step is not fatal, the
-outcome just has no report. `JobWorkflow` returns a `JobOutcome`: session
-id, result or failure text, report.
+`execute_job` try → `start_try`, events, `finish_try` (all three from the
+journal callback); then the `build_report` activity loads every event,
+renders and saves the conversation, runs the report step and saves the
+report; then `record_job` sums the tries into the `job` row. The workflow
+runs the report after the job activity whatever happened to the job: a
+permanently failed job gets a report on its failure. A failed report step
+is not fatal, the outcome just has no report; a failed record is not
+fatal either. `JobWorkflow` returns a `JobOutcome`: session id, result or
+failure text, report.
 
 Postgres runs from `docker-compose.yml` (`just db` starts it and applies the
 migrations, `just db-stop` stops it, the data stays in a volume). Tests use an
@@ -409,10 +429,11 @@ Renamed from "llm call" Sep 2026.
   returns an `Answer` (text, tokens), raising `RateLimited`, `TimedOut`,
   `NetworkError`, `ProviderError` or `BadOutput` (cut off) when there is
   none. Each client names its `default_model`.
-- `run(step, observer, client=None) -> StepResult` in `step/engine.py` —
-  the single entry point, the twin of the job engine. Picks the client
-  by provider, fills the default model, enforces `timeout_sec`, emits one
-  `ai` event with the answer text and one `finished` event to the observer,
+- `run(step, callback, client) -> StepResult` in `step/engine.py` —
+  the single entry point, the twin of the job engine. Takes the client
+  the caller picked, fills the default model, enforces `timeout_sec`, emits one
+  `ai` event with the answer text and one `finished` event to the callback
+  (a step has no start and end of its own),
   reads the text as a JSON object (`BadOutput` otherwise), and returns the
   result.
 - `OpencodeGo` in `providers/opencode/client.py` — the OpenCode Go API through the

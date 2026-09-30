@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass, fields
 from datetime import UTC, datetime
 from typing import Any
 
@@ -23,6 +23,58 @@ class StoredEvent:
     at: datetime
     kind: str
     payload: dict[str, Any]
+
+
+@dataclass(frozen=True)
+class Totals:
+    """What a try, or a job over its tries, added up to. Field names are the
+    columns of `schema.totals_columns`, so a row and this convert by name."""
+
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cache_read_tokens: int = 0
+    cache_write_tokens: int = 0
+    cost_usd: float = 0.0
+    duration_sec: float = 0.0
+    turns: int = 0
+    tool_calls: int = 0
+    tool_failures: int = 0
+
+    def __add__(self, other: "Totals") -> "Totals":
+        mine, theirs = asdict(self), asdict(other)
+        return Totals(**{name: mine[name] + theirs[name] for name in mine})
+
+    @classmethod
+    def of_row(cls, row: RowMapping) -> "Totals":
+        return cls(**{field.name: row[field.name] for field in fields(cls)})
+
+
+@dataclass(frozen=True)
+class StoredTry:
+    """One `attempt` row: when it ran, how it ended and what it added up to."""
+
+    session_id: str
+    attempt: int
+    started_at: datetime
+    ended_at: datetime | None
+    outcome: str
+    failure: str
+    totals: Totals
+    result: dict[str, Any]
+
+
+@dataclass(frozen=True)
+class JobRecord:
+    """One `job` row, less its session id: the whole run summed over its tries."""
+
+    started_at: datetime
+    ended_at: datetime
+    tries: int
+    outcome: Outcome
+    failure: str
+    totals: Totals
+    result: dict[str, Any]
+    verdict: str
 
 
 class Store:
@@ -79,6 +131,8 @@ class Store:
                     "ended_at": None,
                     "outcome": Outcome.RUNNING.value,
                     "failure": "",
+                    **asdict(Totals()),
+                    "result": {},
                 },
             )
 
@@ -111,16 +165,44 @@ class Store:
             return [_stored_event(row) for row in result.mappings().all()]
 
     async def finish_try(
-        self, session_id: str, attempt: int, outcome: Outcome, failure: str = ""
+        self,
+        session_id: str,
+        attempt: int,
+        outcome: Outcome,
+        failure: str = "",
+        totals: Totals | None = None,
+        result: dict[str, Any] | None = None,
     ) -> None:
-        """Set outcome, failure and ended_at = now (UTC) on the try row."""
+        """Set outcome, failure, the totals, the result and ended_at = now (UTC)
+        on the try row."""
         async with self.engine.begin() as conn:
             await conn.execute(
                 update(schema.attempt)
                 .where(schema.attempt.c.session_id == session_id)
                 .where(schema.attempt.c.attempt == attempt)
-                .values(outcome=outcome.value, failure=failure, ended_at=_now())
+                .values(
+                    outcome=outcome.value,
+                    failure=failure,
+                    ended_at=_now(),
+                    result=result or {},
+                    **asdict(totals or Totals()),
+                )
             )
+
+    async def load_tries(self, session_id: str) -> list[StoredTry]:
+        """Every try of the session, in try order."""
+        async with self.engine.begin() as conn:
+            result = await conn.execute(
+                select(schema.attempt)
+                .where(schema.attempt.c.session_id == session_id)
+                .order_by(schema.attempt.c.attempt)
+            )
+            return [_stored_try(row) for row in result.mappings().all()]
+
+    async def save_job(self, session_id: str, job: JobRecord) -> None:
+        """Insert or replace the job row."""
+        async with self.engine.begin() as conn:
+            await _upsert(conn, schema.job, {"session_id": session_id}, _job_values(job))
 
     async def save_conversation(self, session_id: str, text: str, events_count: int) -> None:
         """Insert or replace the conversation row (built_at = now UTC)."""
@@ -184,6 +266,26 @@ async def _row_exists(conn: AsyncConnection, table: Table, key: Key) -> bool:
 
 def _matching(table: Table, key: Key) -> list[ColumnElement[bool]]:
     return [table.c[column] == value for column, value in key.items()]
+
+
+def _job_values(job: JobRecord) -> Key:
+    values = asdict(job)
+    values.update(values.pop("totals"))
+    values["outcome"] = job.outcome.value
+    return values
+
+
+def _stored_try(row: RowMapping) -> StoredTry:
+    return StoredTry(
+        session_id=row["session_id"],
+        attempt=row["attempt"],
+        started_at=_as_utc(row["started_at"]),
+        ended_at=_as_utc(row["ended_at"]) if row["ended_at"] is not None else None,
+        outcome=row["outcome"],
+        failure=row["failure"],
+        totals=Totals.of_row(row),
+        result=row["result"],
+    )
 
 
 def _stored_event(row: RowMapping) -> StoredEvent:

@@ -1,9 +1,9 @@
 import logging
 
+from agentic_factory.callbacks.silent import Silent
 from agentic_factory.job.contract import JobResult
 from agentic_factory.job.report.contract import JobReport
 from agentic_factory.job.report.conversation import clip_middle
-from agentic_factory.observe.silent import Silent
 from agentic_factory.settings.load import settings
 from agentic_factory.step import engine as steps
 from agentic_factory.step.contract import Step

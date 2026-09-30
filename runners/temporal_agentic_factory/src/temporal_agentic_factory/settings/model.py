@@ -27,8 +27,14 @@ class StepActivitySettings(BaseModel):
     max_attempts: int
 
 
+class RecordActivitySettings(BaseModel):
+    timeout_sec: int
+    max_attempts: int
+
+
 class Settings(BaseModel):
     temporal: TemporalSettings
     runner: RunnerSettings
     job_activity: JobActivitySettings
     step_activity: StepActivitySettings
+    record_activity: RecordActivitySettings

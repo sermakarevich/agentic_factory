@@ -6,9 +6,9 @@ from uuid import uuid4
 
 import typer
 
+from agentic_factory.callbacks.log import configure_logging
 from agentic_factory.job.contract import Job
 from agentic_factory.job.outcome import JobOutcome
-from agentic_factory.observe.log import configure_logging
 from temporal_agentic_factory.client import connect
 from temporal_agentic_factory.runner import serve
 from temporal_agentic_factory.settings.load import settings

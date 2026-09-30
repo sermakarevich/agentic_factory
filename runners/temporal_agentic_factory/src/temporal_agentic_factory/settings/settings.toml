@@ -19,3 +19,7 @@ min_retry_delay_sec = 1     # the shortest wait after a rate limit whose reset t
 [step_activity]
 timeout_sec = 300   # one structured-output request; no heartbeat
 max_attempts = 3    # tries per step before the workflow gives up
+
+[record_activity]
+timeout_sec = 30    # two store queries: the tries read, the job row written
+max_attempts = 5    # tries before the workflow gives the row up and logs it

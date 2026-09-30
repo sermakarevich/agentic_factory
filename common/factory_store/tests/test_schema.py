@@ -3,7 +3,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 
 from factory_store.schema import Outcome, metadata
 
-TABLES = {"session", "attempt", "event", "conversation", "report"}
+TABLES = {"session", "attempt", "event", "conversation", "report", "job"}
 
 
 async def test_every_table_is_created_on_sqlite() -> None:

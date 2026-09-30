@@ -10,6 +10,7 @@ with workflow.unsafe.imports_passed_through():
     from agentic_factory.job.outcome import JobOutcome
     from agentic_factory.job.report.contract import JobReport
     from temporal_agentic_factory.activities.job import execute_job
+    from temporal_agentic_factory.activities.record import record_job
     from temporal_agentic_factory.activities.report import ReportRequest, build_report
     from temporal_agentic_factory.activities.session import create_session
     from temporal_agentic_factory.settings.load import settings
@@ -79,19 +80,23 @@ def _failure_text(error: ActivityError) -> str:
 
 
 async def run_job_with_report(job: Job) -> JobOutcome:
-    """The job, then the report over everything it stored. A job without a
-    session gets one first, so that every try runs in it. A permanently failed
-    job still gets its report, then the outcome carries the failure instead of
-    a result. A failed report step is not fatal: the outcome has none."""
+    """The job, then the report over everything it stored, then the job's row
+    in the store. A job without a session gets one first, so that every try
+    runs in it. A permanently failed job still gets its report, then the
+    outcome carries the failure instead of a result. A failed report step is
+    not fatal: the outcome has none. Neither is a failed record: the outcome
+    is still returned."""
     job = await _with_session(job)
     request = await _job_as_report_request(job)
     report = await _report_or_none(request)
-    return JobOutcome(
+    outcome = JobOutcome(
         session_id=job.session_id,
         result=request.result,
         failure=request.failure,
         report=report,
     )
+    await _recorded(outcome)
+    return outcome
 
 
 async def _job_as_report_request(job: Job) -> ReportRequest:
@@ -115,3 +120,18 @@ async def _report_or_none(request: ReportRequest) -> JobReport | None:
         )
     except ActivityError:
         return None
+
+
+async def _recorded(outcome: JobOutcome) -> None:
+    """The record_job activity with the record policy; a write that failed
+    for good is logged, not raised: the outcome is worth more than its row."""
+    cfg = settings.record_activity
+    try:
+        await workflow.execute_activity(
+            record_job,
+            outcome,
+            start_to_close_timeout=timedelta(seconds=cfg.timeout_sec),
+            retry_policy=RetryPolicy(maximum_attempts=cfg.max_attempts),
+        )
+    except ActivityError:
+        workflow.logger.warning("job %s ended but its row was not written", outcome.session_id)

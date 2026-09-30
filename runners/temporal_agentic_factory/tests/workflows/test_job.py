@@ -7,6 +7,7 @@ from temporalio.testing import WorkflowEnvironment
 from temporalio.worker import Worker
 
 from agentic_factory.job.contract import Job, JobResult
+from agentic_factory.job.outcome import JobOutcome
 from agentic_factory.job.report.contract import JobReport, Verdict
 from temporal_agentic_factory.activities.report import ReportRequest
 from temporal_agentic_factory.workflows.job import JobWorkflow
@@ -14,6 +15,7 @@ from temporal_agentic_factory.workflows.job import JobWorkflow
 tries: list[int] = []
 sessions: list[str] = []
 report_requests: list[ReportRequest] = []
+recorded: list[JobOutcome] = []
 
 
 @activity.defn(name="create_session")
@@ -37,10 +39,16 @@ async def fake_report(request: ReportRequest) -> JobReport:
     return JobReport(task="t", done=[], not_done=[], problems=[], verdict=Verdict.DONE)
 
 
+@activity.defn(name="record_job")
+async def fake_record(outcome: JobOutcome) -> None:
+    recorded.append(outcome)
+
+
 async def test_job_workflow_retries_the_activity_and_returns_its_result() -> None:
     tries.clear()
     sessions.clear()
     report_requests.clear()
+    recorded.clear()
     async with await WorkflowEnvironment.start_time_skipping(
         data_converter=pydantic_data_converter
     ) as env:
@@ -49,7 +57,7 @@ async def test_job_workflow_retries_the_activity_and_returns_its_result() -> Non
             env.client,
             task_queue=queue,
             workflows=[JobWorkflow],
-            activities=[fake_session, fake_job, fake_report],
+            activities=[fake_session, fake_job, fake_report, fake_record],
         ):
             result = await env.client.execute_workflow(
                 JobWorkflow.run,
@@ -64,6 +72,7 @@ async def test_job_workflow_retries_the_activity_and_returns_its_result() -> Non
     assert result.report is not None and result.report.verdict == Verdict.DONE
     assert len(report_requests) == 1 and report_requests[0].result is not None
     assert report_requests[0].result.session_id == "s1"
+    assert recorded == [result]  # the job row is written from the outcome, after the report
 
 
 async def test_a_permanently_failed_job_still_gets_a_report() -> None:
@@ -80,7 +89,7 @@ async def test_a_permanently_failed_job_still_gets_a_report() -> None:
             env.client,
             task_queue=queue,
             workflows=[JobWorkflow],
-            activities=[fake_session, always_fails, fake_report],
+            activities=[fake_session, always_fails, fake_report, fake_record],
         ):
             result = await env.client.execute_workflow(
                 JobWorkflow.run,
@@ -109,7 +118,7 @@ async def test_a_failed_report_is_not_fatal() -> None:
             env.client,
             task_queue=queue,
             workflows=[JobWorkflow],
-            activities=[fake_session, fake_job, broken_report],
+            activities=[fake_session, fake_job, broken_report, fake_record],
         ):
             result = await env.client.execute_workflow(
                 JobWorkflow.run,
@@ -119,3 +128,29 @@ async def test_a_failed_report_is_not_fatal() -> None:
             )
     assert result.result is not None and result.result.session_id == "s1"
     assert result.report is None
+
+
+async def test_a_failed_record_is_not_fatal() -> None:
+    @activity.defn(name="record_job")
+    async def broken_record(outcome: JobOutcome) -> None:
+        raise ApplicationError("db down", type="OSError", non_retryable=True)
+
+    tries.clear()
+    sessions.clear()
+    async with await WorkflowEnvironment.start_time_skipping(
+        data_converter=pydantic_data_converter
+    ) as env:
+        queue = f"test-{uuid.uuid4()}"
+        async with Worker(
+            env.client,
+            task_queue=queue,
+            workflows=[JobWorkflow],
+            activities=[fake_session, fake_job, fake_report, broken_record],
+        ):
+            result = await env.client.execute_workflow(
+                JobWorkflow.run,
+                Job(prompt="hi", workdir=".", model="m"),
+                id=f"j-{uuid.uuid4()}",
+                task_queue=queue,
+            )
+    assert result.result is not None and result.report is not None

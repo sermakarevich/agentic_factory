@@ -8,8 +8,8 @@ from typing import Any
 
 from options import given_options
 
+from agentic_factory.callbacks.log import LogCallback, configure_logging
 from agentic_factory.failure import JobFailed
-from agentic_factory.observe.log import LogObserver, configure_logging
 from agentic_factory.step.contract import Reasoning, Step
 from agentic_factory.step.defaults import with_default_model
 from agentic_factory.step.engine import run
@@ -70,7 +70,7 @@ def _step_from_args(args: argparse.Namespace) -> Step:
 def _run_and_print(step: Step, client: Client, as_json: bool) -> int:
     """The engine run, its result logged and its output printed; the exit code."""
     try:
-        result = asyncio.run(run(step, LogObserver(as_json=as_json), client))
+        result = asyncio.run(run(step, LogCallback(as_json=as_json), client))
     except JobFailed as failure:
         log.error("failed    %s: %s", type(failure).__name__, failure)
         return 1

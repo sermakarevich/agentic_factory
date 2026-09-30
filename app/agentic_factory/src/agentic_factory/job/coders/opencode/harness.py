@@ -101,7 +101,7 @@ class OpencodeHarness(Harness):
             return []  # the stream had its final step_finish; nothing was lost
         if not self._session_id:
             return []  # never started: no session, no finished; the engine reports a crash
-        events = self._flush_turn(self._last_at, usage=None, raw={})
+        events = self._flush_turn(self._last_at, usage=None, cost=0.0, raw={})
         self._finished = True
         events.append(self._finished_event(self._last_at, raw={}))
         return events
@@ -142,7 +142,7 @@ class OpencodeHarness(Harness):
         usage = _to_tokens(part.tokens)
         self._add_to_totals(usage, part.cost)
         _raise_if_length_reached(part.reason)
-        events = self._flush_turn(line.at, usage, raw)
+        events = self._flush_turn(line.at, usage, part.cost, raw)
         if part.reason == Reason.STOP:
             self._finished = True
             events.append(self._finished_event(line.at, raw))
@@ -152,8 +152,11 @@ class OpencodeHarness(Harness):
         self._total = self._total + usage
         self._cost += cost
 
-    def _flush_turn(self, at: datetime, usage: Tokens | None, raw: dict[str, Any]) -> list[Event]:
-        """Emit the collected turn as `ai` plus its `tool` events; start a new one."""
+    def _flush_turn(
+        self, at: datetime, usage: Tokens | None, cost: float, raw: dict[str, Any]
+    ) -> list[Event]:
+        """Emit the collected turn as `ai`, with its tokens and cost, plus its
+        `tool` events; start a new one."""
         if self._turn.is_empty:
             return []
         turn = Event(
@@ -163,6 +166,7 @@ class OpencodeHarness(Harness):
             content="".join(self._turn.text),
             tool_calls=self._turn.calls,
             usage=usage,
+            cost_usd=cost,
             raw=raw,
         )
         events = [turn, *self._turn.tools]

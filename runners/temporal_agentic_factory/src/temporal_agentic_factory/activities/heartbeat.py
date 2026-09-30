@@ -5,6 +5,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 from temporalio import activity
 
+from agentic_factory.callback import Callback
 from agentic_factory.event import Event, EventKind
 from agentic_factory.job.context import context_of
 
@@ -28,7 +29,7 @@ class Heartbeat(BaseModel):
         return first if isinstance(first, cls) else cls.model_validate(first)
 
 
-class HeartbeatObserver:
+class HeartbeatCallback(Callback):
     """Heartbeats Temporal on every event. The SDK throttles the actual sends."""
 
     def __init__(self) -> None:

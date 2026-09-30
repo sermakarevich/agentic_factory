@@ -4,7 +4,8 @@ from asyncio.subprocess import Process
 from collections.abc import Awaitable, Callable
 from time import monotonic
 
-from agentic_factory.event import Event, Observer
+from agentic_factory.callback import Callback, JobEnd
+from agentic_factory.event import Event
 from agentic_factory.failure import CoderCrashed, JobFailed, Stalled, TimedOut
 from agentic_factory.job.coders.harness import Harness
 from agentic_factory.job.context import ContextWatch, compact
@@ -19,26 +20,64 @@ from agentic_factory.job.summary.contract import JobSummary
 from agentic_factory.job.summary.parse import parse_summary
 from agentic_factory.job.summary.prompt import wrap_prompt
 from agentic_factory.settings.load import settings
-from agentic_factory.tokens import Tokens
 
 Repair = Callable[[str], Awaitable[JobSummary | None]]
 
 
-async def run(job: Job, observer: Observer, harness: Harness, repair: Repair) -> JobResult:
+CANCELLED = "cancelled"  # the failure text of a run that was cancelled from outside
+
+
+async def run(job: Job, callback: Callback, harness: Harness, repair: Repair) -> JobResult:
     """Run one llm job to its end: give it its model, workdir and session,
-    compact a large session before resuming it, run the coder while feeding
-    every event to the observer, and either return the result or raise the
-    `JobFailed` subclass that says why there is none. A summary block that
-    does not parse goes to `repair`, one model step, before the result is made.
-    The caller picks the harness (`harness_for`) and the repair (`repair_summary`)."""
+    tell the callback it starts, compact a large session before resuming it,
+    run the coder while feeding every event to the callback, and either return
+    the result or raise the `JobFailed` subclass that says why there is none.
+    The callback hears the end either way, with the totals so far. A summary
+    block that does not parse goes to `repair`, one model step, before the
+    result is made. The caller picks the harness (`harness_for`) and the
+    repair (`repair_summary`)."""
     job = with_default_model(job, harness)
     ensure_workdir(job)
     job = await _with_session(job, harness)
+    await callback.on_start(job)
+    ledger = Ledger()
     started = monotonic()
-    await _compact_if_large(job, harness, observer)
-    ledger = await _run_coder(job, harness, observer, started)
+    try:
+        result = await _result_of_run(job, harness, callback, repair, ledger, started)
+    except (JobFailed, asyncio.CancelledError) as failure:
+        await callback.on_end(_end_of(ledger, started, failure=_failure_text(failure)))
+        raise
+    await callback.on_end(_end_of(ledger, started, result=result))
+    return result
+
+
+async def _result_of_run(
+    job: Job, harness: Harness, callback: Callback, repair: Repair, ledger: Ledger, started: float
+) -> JobResult:
+    """The run itself: the compaction, the coder to its end, the summary, the result."""
+    await _compact_if_large(job, harness, callback)
+    await _run_coder(job, harness, callback, started, ledger)
     summary = await _parse_or_repair_summary(ledger, repair)
     return _job_result(ledger, summary, monotonic() - started)
+
+
+def _failure_text(failure: BaseException) -> str:
+    if isinstance(failure, asyncio.CancelledError):
+        return CANCELLED
+    return f"{type(failure).__name__}: {failure}"
+
+
+def _end_of(
+    ledger: Ledger, started: float, result: JobResult | None = None, failure: str = ""
+) -> JobEnd:
+    return JobEnd(
+        result=result,
+        failure=failure,
+        tokens=ledger.tokens,
+        cost_usd=ledger.cost_usd,
+        duration_sec=monotonic() - started,
+        stats=ledger.stats,
+    )
 
 
 async def _with_session(job: Job, harness: Harness) -> Job:
@@ -49,27 +88,27 @@ async def _with_session(job: Job, harness: Harness) -> Job:
     return job.model_copy(update={"session_id": await create_session(job, harness)})
 
 
-async def _compact_if_large(job: Job, harness: Harness, observer: Observer) -> None:
+async def _compact_if_large(job: Job, harness: Harness, callback: Callback) -> None:
     """A session resumed past the compaction threshold is compacted first."""
     if job.session_tokens >= settings.job.compact_at_tokens:
-        await compact(harness, job, job.session_id, observer)
+        await compact(harness, job, job.session_id, callback)
 
 
-async def _run_coder(job: Job, harness: Harness, observer: Observer, started: float) -> Ledger:
-    """Start the coder and read it to the end, killing it on any failure or
-    cancellation. Returns the ledger of what it said; raises `CoderCrashed`
-    when it died or never said it finished."""
-    ledger = Ledger()
+async def _run_coder(
+    job: Job, harness: Harness, callback: Callback, started: float, ledger: Ledger
+) -> None:
+    """Start the coder and read it to the end into the ledger, killing it on
+    any failure or cancellation. Raises `CoderCrashed` when it died or never
+    said it finished."""
     proc = await _start_coder(job, harness)
     stderr_task = asyncio.create_task(_stderr_tail(proc))
     try:
-        await _read_events(proc, job, harness, observer, started, ledger)
+        await _read_events(proc, job, harness, callback, started, ledger)
         exit_code = await proc.wait()
     except (JobFailed, asyncio.CancelledError):
         await _kill_coder(proc)
         raise
     _raise_unless_finished(exit_code, await stderr_task, ledger)
-    return ledger
 
 
 async def _start_coder(job: Job, harness: Harness) -> Process:
@@ -90,18 +129,18 @@ async def _read_events(
     proc: Process,
     job: Job,
     harness: Harness,
-    observer: Observer,
+    callback: Callback,
     started: float,
     ledger: Ledger,
 ) -> None:
-    """Read stdout until it closes: every line becomes events for the observer,
+    """Read stdout until it closes: every line becomes events for the callback,
     the ledger and the context watch. Stops on the job's timeout or stall."""
     deadline = started + job.timeout_sec
-    watch = ContextWatch(job, harness, observer)
+    watch = ContextWatch(job, harness, callback)
     while True:
         data = await _read_line_within_limits(proc, job, deadline)
         for event in _events_of(data, harness):
-            await observer.on_event(event)
+            await callback.on_event(event)
             ledger.add(event)
             await watch.on_event(event)
         if not data:
@@ -142,8 +181,8 @@ def _job_result(ledger: Ledger, summary: JobSummary | None, duration_sec: float)
     assert ledger.finished is not None
     return JobResult(
         session_id=ledger.finished.session_id,
-        tokens=ledger.finished.usage or Tokens(),
-        cost_usd=ledger.finished.cost_usd,
+        tokens=ledger.tokens,
+        cost_usd=ledger.cost_usd,
         duration_sec=duration_sec,
         stats=ledger.stats,
         summary_text=ledger.summary_block,

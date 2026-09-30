@@ -1,6 +1,6 @@
 from datetime import datetime
 from enum import StrEnum
-from typing import Any, Protocol
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -40,12 +40,8 @@ class Event(BaseModel):
     usage: Tokens | None = Field(
         default=None, description="Tokens of the turn on ai, totals on finished."
     )
-    cost_usd: float = Field(default=0.0, description="On finished.")
+    cost_usd: float = Field(
+        default=0.0, description="On finished; on ai too when the coder prices each turn."
+    )
     resets_at: datetime | None = Field(default=None, description="On rate_limit.")
     raw: dict[str, Any] = Field(default_factory=dict, description="The original line, untouched.")
-
-
-class Observer(Protocol):
-    """Anything that wants to see events: heartbeat, Langfuse, CLI printer."""
-
-    async def on_event(self, event: Event) -> None: ...

@@ -6,6 +6,7 @@ from pathlib import Path
 
 from options import given_options
 
+from agentic_factory.callbacks.log import LogCallback, configure_logging
 from agentic_factory.failure import JobFailed
 from agentic_factory.job.coders.catalog import harness_for
 from agentic_factory.job.coders.harness import Harness
@@ -14,7 +15,6 @@ from agentic_factory.job.defaults import with_default_model
 from agentic_factory.job.engine import run
 from agentic_factory.job.summary.contract import JobSummary
 from agentic_factory.job.summary.repair import repair_summary
-from agentic_factory.observe.log import LogObserver, configure_logging
 from agentic_factory.settings.load import settings
 from agentic_factory.step.providers.catalog import client_for
 
@@ -60,7 +60,7 @@ def _run_and_log(job: Job, harness: Harness, as_json: bool) -> int:
     """The engine run, with its result or failure logged; the exit code."""
     try:
         result = asyncio.run(
-            run(job, LogObserver(as_json=as_json), harness, _repair_summary_with_step_client)
+            run(job, LogCallback(as_json=as_json), harness, _repair_summary_with_step_client)
         )
     except JobFailed as failure:
         log.error("failed    %s: %s", type(failure).__name__, failure)

@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Any
 
-from factory_store.store import StoredEvent
+from factory_store.store import JobRecord, StoredEvent, StoredTry, Totals
 
 
 class FakeStore:
@@ -10,6 +10,7 @@ class FakeStore:
     def __init__(self) -> None:
         self.calls: list[tuple[Any, ...]] = []
         self.events: list[StoredEvent] = []
+        self.tries: list[StoredTry] = []
 
     async def start_session(
         self, session_id: str, provider: str, model: str, workdir: str, prompt: str
@@ -26,9 +27,22 @@ class FakeStore:
         return len(self.calls)
 
     async def finish_try(
-        self, session_id: str, attempt: int, outcome: str, failure: str = ""
+        self,
+        session_id: str,
+        attempt: int,
+        outcome: str,
+        failure: str = "",
+        totals: Totals | None = None,
+        result: dict[str, Any] | None = None,
     ) -> None:
         self.calls.append(("finish_try", session_id, attempt, str(outcome), failure))
+
+    async def load_tries(self, session_id: str) -> list[StoredTry]:
+        self.calls.append(("load_tries", session_id))
+        return self.tries
+
+    async def save_job(self, session_id: str, job: JobRecord) -> None:
+        self.calls.append(("save_job", session_id, job))
 
     async def load_events(self, session_id: str) -> list[StoredEvent]:
         self.calls.append(("load_events", session_id))

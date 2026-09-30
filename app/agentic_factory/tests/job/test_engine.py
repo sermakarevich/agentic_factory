@@ -3,6 +3,7 @@ from pathlib import Path
 
 import pytest
 
+from agentic_factory.callback import Callback, JobEnd
 from agentic_factory.event import Event, EventKind
 from agentic_factory.failure import CoderCrashed, ContextPressure, Stalled
 from agentic_factory.job.coders.opencode.harness import OpencodeHarness
@@ -19,12 +20,20 @@ async def no_repair(block: str) -> None:
     return None
 
 
-class Recorder:
+class Recorder(Callback):
     def __init__(self) -> None:
+        self.started: list[Job] = []
         self.events: list[Event] = []
+        self.ends: list[JobEnd] = []
+
+    async def on_start(self, job: Job) -> None:
+        self.started.append(job)
 
     async def on_event(self, event: Event) -> None:
         self.events.append(event)
+
+    async def on_end(self, end: JobEnd) -> None:
+        self.ends.append(end)
 
 
 class ScriptedCoder(OpencodeHarness):
@@ -69,6 +78,11 @@ async def test_replayed_stream_gives_result_and_events() -> None:
     assert [e.kind for e in observer.events][-1] == EventKind.FINISHED
     assert result.stats.model_dump() == {"turns": 2, "tool_calls": 1, "tool_failures": 0}
     assert result.summary is None and result.summary_text == ""
+    (started,) = observer.ends and observer.started  # on_start once, with the session made
+    assert started.session_id and started.model
+    (end,) = observer.ends
+    assert end.done and end.result == result and end.failure == ""
+    assert end.tokens == result.tokens and end.stats == result.stats
 
 
 class PromptEchoCoder(ScriptedCoder):
@@ -121,13 +135,18 @@ async def test_prompt_is_wrapped_and_the_summary_comes_back_parsed() -> None:
 
 
 async def test_nonzero_exit_is_a_crash_with_stderr() -> None:
+    observer = Recorder()
     with pytest.raises(CoderCrashed) as exc:
         await run(
             job(),
-            Recorder(),
+            observer,
             repair=no_repair,
             harness=ScriptedCoder(f"cat {FIXTURE}; echo boom >&2; exit 3"),
         )
+    (end,) = observer.ends  # the callback hears a failed end, with the turns so far
+    assert not end.done and end.result is None
+    assert end.failure.startswith("CoderCrashed: ") and end.stats.turns == 2
+    assert end.tokens.input == 8847 + 11718 and end.duration_sec > 0
     assert exc.value.exit_code == 3
     assert "boom" in exc.value.stderr
 

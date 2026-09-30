@@ -1,0 +1,39 @@
+from datetime import UTC, datetime
+
+from agentic_factory.callback import Callback, JobEnd
+from agentic_factory.callbacks.fanout import Fanout
+from agentic_factory.event import Event, EventKind
+from agentic_factory.job.contract import Job
+from agentic_factory.job.stats import JobStats
+from agentic_factory.tokens import Tokens
+
+
+class Recorder(Callback):
+    def __init__(self, name: str, log: list[str]) -> None:
+        self.name = name
+        self.log = log
+
+    async def on_start(self, job: Job) -> None:
+        self.log.append(f"{self.name} start")
+
+    async def on_event(self, event: Event) -> None:
+        self.log.append(f"{self.name} {event.kind.value}")
+
+    async def on_end(self, end: JobEnd) -> None:
+        self.log.append(f"{self.name} end")
+
+
+async def test_everything_reaches_every_callback_in_order() -> None:
+    log: list[str] = []
+    fanout = Fanout(Recorder("a", log), Recorder("b", log))
+    await fanout.on_start(Job(prompt="p", workdir="."))
+    await fanout.on_event(Event(kind=EventKind.AI, at=datetime.now(UTC)))
+    await fanout.on_end(JobEnd(tokens=Tokens(), cost_usd=0, duration_sec=0, stats=JobStats()))
+    assert log == ["a start", "b start", "a ai", "b ai", "a end", "b end"]
+
+
+async def test_the_base_callback_ignores_everything() -> None:
+    callback = Callback()
+    await callback.on_start(Job(prompt="p", workdir="."))
+    await callback.on_event(Event(kind=EventKind.AI, at=datetime.now(UTC)))
+    await callback.on_end(JobEnd(tokens=Tokens(), cost_usd=0, duration_sec=0, stats=JobStats()))

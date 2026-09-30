@@ -1,10 +1,12 @@
 from enum import StrEnum
+from typing import Any
 
 from sqlalchemy import (
     JSON,
     BigInteger,
     Column,
     DateTime,
+    Float,
     ForeignKey,
     Integer,
     MetaData,
@@ -17,7 +19,8 @@ from sqlalchemy.dialects.postgresql import JSONB
 
 
 class Outcome(StrEnum):
-    """How one try of a job ended. `running` until `finish_try` says otherwise."""
+    """How one try, or the whole job, ended. A try is `running` until
+    `finish_try` says otherwise."""
 
     RUNNING = "running"
     DONE = "done"
@@ -31,6 +34,23 @@ PAYLOAD = JSON().with_variant(JSONB(), "postgresql")
 STAMP = DateTime(timezone=True)
 
 metadata = MetaData()
+
+
+def totals_columns() -> list[Column[Any]]:
+    """What a try, and a job over its tries, added up to. The same columns on
+    both tables, flat so that sql can sum them; `Totals` mirrors them."""
+    return [
+        Column("input_tokens", BigInteger, nullable=False, default=0),
+        Column("output_tokens", BigInteger, nullable=False, default=0),
+        Column("cache_read_tokens", BigInteger, nullable=False, default=0),
+        Column("cache_write_tokens", BigInteger, nullable=False, default=0),
+        Column("cost_usd", Float, nullable=False, default=0.0),
+        Column("duration_sec", Float, nullable=False, default=0.0),
+        Column("turns", Integer, nullable=False, default=0),
+        Column("tool_calls", Integer, nullable=False, default=0),
+        Column("tool_failures", Integer, nullable=False, default=0),
+    ]
+
 
 session = Table(
     "session",
@@ -53,6 +73,8 @@ attempt = Table(
     Column("ended_at", STAMP, nullable=True),
     Column("outcome", String, nullable=False, default=Outcome.RUNNING.value),
     Column("failure", Text, nullable=False, default=""),
+    *totals_columns(),
+    Column("result", PAYLOAD, nullable=False, default=dict),  # the JobResult as json; {} on failure
     UniqueConstraint("session_id", "attempt", name="uq_attempt_session_attempt"),
 )
 
@@ -76,6 +98,22 @@ conversation = Table(
     Column("built_at", STAMP, nullable=False),
     Column("events_count", Integer, nullable=False),
     Column("text", Text, nullable=False),
+)
+
+# One row per job: the workflow run over every try of the session, written
+# once at its end, summed over the tries so a cost query needs no join.
+job = Table(
+    "job",
+    metadata,
+    Column("session_id", String, ForeignKey("session.id"), primary_key=True),
+    Column("started_at", STAMP, nullable=False),  # the first try's start
+    Column("ended_at", STAMP, nullable=False),  # when the row was written, after the report
+    Column("tries", Integer, nullable=False),
+    Column("outcome", String, nullable=False),  # done | failed
+    Column("failure", Text, nullable=False, default=""),  # the last try's, when failed
+    *totals_columns(),
+    Column("result", PAYLOAD, nullable=False, default=dict),  # the last try's result; {} on failure
+    Column("verdict", String, nullable=False, default=""),  # the report's; "" when there is none
 )
 
 report = Table(
