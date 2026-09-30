@@ -3,9 +3,9 @@ from asyncio.subprocess import Process
 from collections.abc import Awaitable, Callable
 from time import monotonic
 
-from agentic_factory.callback import Callback, JobEnd
 from agentic_factory.event import Event
 from agentic_factory.failure import CoderCrashed, Stalled, TimedOut
+from agentic_factory.job.callback import JobCallback, JobEnd
 from agentic_factory.job.coders.harness import Harness
 from agentic_factory.job.context import ContextWatch, compact
 from agentic_factory.job.contract import Job, JobResult
@@ -27,7 +27,7 @@ Repair = Callable[[str], Awaitable[JobSummary | None]]
 CANCELLED = "cancelled"  # the failure text of a run that was cancelled from outside
 
 
-async def run(job: Job, callback: Callback, harness: Harness, repair: Repair) -> JobResult:
+async def run(job: Job, callback: JobCallback, harness: Harness, repair: Repair) -> JobResult:
     """Run one llm job to its end: give it its model, workdir and session,
     tell the callback it starts, compact a large session before resuming it,
     run the coder while feeding every event to the callback, and either return
@@ -53,7 +53,12 @@ async def run(job: Job, callback: Callback, harness: Harness, repair: Repair) ->
 
 
 async def _coder_result(
-    job: Job, harness: Harness, callback: Callback, repair: Repair, ledger: Ledger, started: float
+    job: Job,
+    harness: Harness,
+    callback: JobCallback,
+    repair: Repair,
+    ledger: Ledger,
+    started: float,
 ) -> JobResult:
     """The run itself: the compaction, the coder to its end, the summary, the result."""
     await _compact_if_large(job, harness, callback)
@@ -89,14 +94,14 @@ async def _with_session(job: Job, harness: Harness) -> Job:
     return job.model_copy(update={"session_id": await create_session(job, harness)})
 
 
-async def _compact_if_large(job: Job, harness: Harness, callback: Callback) -> None:
+async def _compact_if_large(job: Job, harness: Harness, callback: JobCallback) -> None:
     """A session resumed past the compaction threshold is compacted first."""
     if job.session_tokens >= settings.job.compact_at_tokens:
         await compact(harness, job, job.session_id, callback)
 
 
 async def _read_coder(
-    job: Job, harness: Harness, callback: Callback, started: float, ledger: Ledger
+    job: Job, harness: Harness, callback: JobCallback, started: float, ledger: Ledger
 ) -> None:
     """Start the coder and read it to its end into the ledger. Whatever ends
     the read, the coder is killed with its children, unless it has exited,
@@ -152,7 +157,7 @@ async def _read_events(
     proc: Process,
     job: Job,
     harness: Harness,
-    callback: Callback,
+    callback: JobCallback,
     started: float,
     ledger: Ledger,
 ) -> None:

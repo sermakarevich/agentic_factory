@@ -22,16 +22,13 @@ class SystemSubtype(StrEnum):
 class ResultSubtype(StrEnum):
     """`subtype` of the result line."""
 
-    SUCCESS = "success"
-    ERROR_MAX_TURNS = "error_max_turns"
-    ERROR_DURING_EXECUTION = "error_during_execution"
+    SUCCESS = "success"  # anything else (error_max_turns, error_during_execution) is an error
 
 
 class BlockType(StrEnum):
     """`type` of a content block inside a message."""
 
     TEXT = "text"
-    THINKING = "thinking"
     TOOL_USE = "tool_use"
     TOOL_RESULT = "tool_result"
 
@@ -103,7 +100,6 @@ class Line(BaseModel):
     subtype: str = ""
     session_id: str = ""
     timestamp: str | None = Field(default=None, description="ISO 8601, on messages only.")
-    model: str = ""  # system/init
     message: Message = Field(default_factory=Message)  # assistant, user
     rate_limit_info: RateLimitInfo = Field(default_factory=RateLimitInfo)  # rate_limit_event
     usage: Usage = Field(default_factory=Usage)  # result: totals

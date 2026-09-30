@@ -1,16 +1,16 @@
 from collections.abc import Awaitable, Callable
 
-from agentic_factory.callback import Callback, JobEnd
 from agentic_factory.event import Event
+from agentic_factory.job.callback import JobCallback, JobEnd
 from agentic_factory.job.contract import Job
 
 
-class Fanout(Callback):
+class Fanout(JobCallback):
     """One callback that forwards everything to several, in order. Every
     callback hears every call even when an earlier one raised; the first
     error is raised once all have been told."""
 
-    def __init__(self, *callbacks: Callback) -> None:
+    def __init__(self, *callbacks: JobCallback) -> None:
         self.callbacks = callbacks
 
     async def on_start(self, job: Job) -> None:
@@ -24,7 +24,7 @@ class Fanout(Callback):
 
 
 async def _each(
-    callbacks: tuple[Callback, ...], call: Callable[[Callback], Awaitable[None]]
+    callbacks: tuple[JobCallback, ...], call: Callable[[JobCallback], Awaitable[None]]
 ) -> None:
     """`call` on every callback; the first error raised after the last call."""
     first: Exception | None = None

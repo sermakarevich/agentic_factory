@@ -5,9 +5,9 @@ from pathlib import Path
 
 import pytest
 
-from agentic_factory.callback import Callback, JobEnd
 from agentic_factory.event import Event, EventKind
 from agentic_factory.failure import CoderCrashed, ContextPressure, Stalled
+from agentic_factory.job.callback import JobCallback, JobEnd
 from agentic_factory.job.coders.opencode.harness import OpencodeHarness
 from agentic_factory.job.contract import Job
 from agentic_factory.job.engine import run
@@ -22,7 +22,7 @@ async def no_repair(block: str) -> None:
     return None
 
 
-class Recorder(Callback):
+class Recorder(JobCallback):
     def __init__(self) -> None:
         self.started: list[Job] = []
         self.events: list[Event] = []
@@ -80,7 +80,8 @@ async def test_replayed_stream_gives_result_and_events() -> None:
     assert [e.kind for e in observer.events][-1] == EventKind.FINISHED
     assert result.stats.model_dump() == {"turns": 2, "tool_calls": 1, "tool_failures": 0}
     assert result.summary is None and result.summary_text == ""
-    (started,) = observer.ends and observer.started  # on_start once, with the session made
+    assert observer.ends  # on_end once, and on_start once, with the session made
+    (started,) = observer.started
     assert started.session_id and started.model
     (end,) = observer.ends
     assert end.done and end.result == result and end.failure == ""

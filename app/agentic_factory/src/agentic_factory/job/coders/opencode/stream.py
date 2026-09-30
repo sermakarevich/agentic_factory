@@ -36,7 +36,6 @@ class Cache(BaseModel):
 class StepTokens(BaseModel):
     input: int = 0
     output: int = 0
-    reasoning: int = 0
     cache: Cache = Field(default_factory=Cache)
 
 

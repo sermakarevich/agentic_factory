@@ -1,22 +1,13 @@
-from enum import StrEnum
 from typing import Any, TypeVar
 
 from pydantic import BaseModel, Field, ValidationError
 
 from agentic_factory.failure import BadOutput
 from agentic_factory.settings.load import settings
+from agentic_factory.step.reasoning import Reasoning
 from agentic_factory.tokens import Tokens
 
 T = TypeVar("T", bound=BaseModel)
-
-
-class Reasoning(StrEnum):
-    """How much the model thinks before answering."""
-
-    MINIMAL = "minimal"
-    LOW = "low"
-    MEDIUM = "medium"
-    HIGH = "high"
 
 
 class Step(BaseModel):

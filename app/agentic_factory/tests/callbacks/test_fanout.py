@@ -2,15 +2,16 @@ from datetime import UTC, datetime
 
 import pytest
 
-from agentic_factory.callback import Callback, JobEnd
+from agentic_factory.callback import Callback
 from agentic_factory.callbacks.fanout import Fanout
 from agentic_factory.event import Event, EventKind
+from agentic_factory.job.callback import JobCallback, JobEnd
 from agentic_factory.job.contract import Job
 from agentic_factory.job.stats import JobStats
 from agentic_factory.tokens import Tokens
 
 
-class Recorder(Callback):
+class Recorder(JobCallback):
     def __init__(self, name: str, log: list[str]) -> None:
         self.name = name
         self.log = log
@@ -34,14 +35,15 @@ async def test_everything_reaches_every_callback_in_order() -> None:
     assert log == ["a start", "b start", "a ai", "b ai", "a end", "b end"]
 
 
-async def test_the_base_callback_ignores_everything() -> None:
-    callback = Callback()
+async def test_the_base_callbacks_ignore_everything() -> None:
+    await Callback().on_event(Event(kind=EventKind.AI, at=datetime.now(UTC)))
+    callback = JobCallback()
     await callback.on_start(Job(prompt="p", workdir="."))
     await callback.on_event(Event(kind=EventKind.AI, at=datetime.now(UTC)))
     await callback.on_end(JobEnd(tokens=Tokens(), cost_usd=0, duration_sec=0, stats=JobStats()))
 
 
-class Broken(Callback):
+class Broken(JobCallback):
     async def on_event(self, event: Event) -> None:
         raise RuntimeError("journal down")
 

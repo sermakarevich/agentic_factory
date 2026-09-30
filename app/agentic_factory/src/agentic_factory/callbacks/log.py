@@ -1,40 +1,24 @@
 import json
 import logging
-import sys
 
-from agentic_factory.callback import Callback, JobEnd
 from agentic_factory.event import Event, EventKind, ToolCall
+from agentic_factory.job.callback import JobCallback, JobEnd
 from agentic_factory.settings.load import settings
 from agentic_factory.tokens import Tokens
 
 log = logging.getLogger("agentic_factory.job")
 
 
-class LogCallback(Callback):
-    """Logs one line per event and one for the end of the run. Human layout
-    by default, JSON lines with `as_json`."""
-
-    def __init__(self, as_json: bool = False) -> None:
-        self.as_json = as_json
+class LogCallback(JobCallback):
+    """Logs one line per event and one for the end of the run, for a person
+    to read; lines of a run that does not matter (`UNKNOWN`) at debug."""
 
     async def on_event(self, event: Event) -> None:
         level = logging.DEBUG if event.kind == EventKind.UNKNOWN else logging.INFO
-        if self.as_json:
-            log.log(level, event.model_dump_json(exclude={"raw"}))
-        else:
-            log.log(level, "%-9s %s", event.kind.value, _describe(event))
+        log.log(level, "%-9s %s", event.kind.value, _describe(event))
 
     async def on_end(self, end: JobEnd) -> None:
-        if self.as_json:
-            log.info(end.model_dump_json(exclude={"result"}))
-        else:
-            log.info("%-9s %s", "end", _describe_end(end))
-
-
-def configure_logging(level: int = logging.INFO) -> None:
-    handler = logging.StreamHandler(sys.stderr)
-    handler.setFormatter(logging.Formatter("%(asctime)s.%(msecs)03d %(message)s", "%H:%M:%S"))
-    logging.basicConfig(level=level, handlers=[handler], force=True)
+        log.info("%-9s %s", "end", _describe_end(end))
 
 
 def _describe(event: Event) -> str:

@@ -1,11 +1,12 @@
+from factory_store.store import Store
 from temporalio import activity
 
-from agentic_factory.callback import Callback
 from agentic_factory.callbacks.fanout import Fanout
 from agentic_factory.callbacks.journal import JournalCallback
 from agentic_factory.callbacks.log import LogCallback
 from agentic_factory.failure import JobFailed
 from agentic_factory.job import engine as jobs
+from agentic_factory.job.callback import JobCallback
 from agentic_factory.job.coders.catalog import harness_for
 from agentic_factory.job.continuation import continue_job
 from agentic_factory.job.contract import Job, JobResult
@@ -15,30 +16,34 @@ from agentic_factory.settings.load import settings
 from agentic_factory.step.providers.catalog import client_for
 from temporal_agentic_factory.activities.failure import to_application_error
 from temporal_agentic_factory.activities.heartbeat import Heartbeat, HeartbeatCallback
-from temporal_agentic_factory.activities.store import store
 
 
-@activity.defn
-async def execute_job(job: Job) -> JobResult:
-    """One try of the job. Temporal retries by re-running this with the same
-    `job`, session included; the heartbeat of the earlier try only says how
-    big that session got, so the engine can compact it before resuming.
-    The try's row and every event of it are the journal callback's; this
-    activity only wires the callbacks and maps a failure for Temporal."""
-    info = activity.info()
-    job = _continued_for_this_try(job, info)
-    callback = _callback_for_try(job.session_id, info.attempt)
-    try:
-        return await jobs.run(
-            job, callback, harness_for(job.provider), _repair_summary_with_step_client
-        )
-    except JobFailed as failure:
-        raise to_application_error(failure) from failure
+class JobActivity:
+    def __init__(self, store: Store) -> None:
+        self.store = store
 
+    @activity.defn
+    async def execute_job(self, job: Job) -> JobResult:
+        """One try of the job. Temporal retries by re-running this with the
+        same `job`, session included; the heartbeat of the earlier try only
+        says how big that session got, so the engine can compact it before
+        resuming. The try's row and every event of it are the journal
+        callback's; this activity only wires the callbacks and maps a failure
+        for Temporal."""
+        info = activity.info()
+        job = _continued_for_this_try(job, info)
+        callback = self._callback_for_try(job.session_id, info.attempt)
+        try:
+            return await jobs.run(
+                job, callback, harness_for(job.provider), _repair_summary_with_step_client
+            )
+        except JobFailed as failure:
+            raise to_application_error(failure) from failure
 
-def _callback_for_try(session_id: str, attempt: int) -> Callback:
-    """Heartbeats to Temporal, lines to the log, the try and its events to the store."""
-    return Fanout(HeartbeatCallback(), LogCallback(), JournalCallback(store(), session_id, attempt))
+    def _callback_for_try(self, session_id: str, attempt: int) -> JobCallback:
+        """Heartbeats to Temporal, lines to the log, the try and its events to the store."""
+        journal = JournalCallback(self.store, session_id, attempt)
+        return Fanout(HeartbeatCallback(), LogCallback(), journal)
 
 
 def _continued_for_this_try(job: Job, info: activity.Info) -> Job:

@@ -5,6 +5,7 @@ description = "The application: llm calls, llm jobs, tools, harness runner, work
 requires-python = ">=3.13"
 dependencies = [
     "dynaconf>=3.3.5",
+    "factory-settings",
     "factory-store",
     "openai>=3.22.0",
     "pydantic>=2.8",

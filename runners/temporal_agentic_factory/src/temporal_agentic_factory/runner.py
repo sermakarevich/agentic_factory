@@ -1,23 +1,41 @@
+from collections.abc import Callable
+from typing import Any
+
+from factory_settings.shared import shared
+from factory_store.store import Store
 from temporalio.worker import Worker
 
-from temporal_agentic_factory.activities.job import execute_job
-from temporal_agentic_factory.activities.record import record_job
-from temporal_agentic_factory.activities.report import build_report
-from temporal_agentic_factory.activities.session import create_session
-from temporal_agentic_factory.activities.step import execute_step
+from temporal_agentic_factory.activities.job import JobActivity
+from temporal_agentic_factory.activities.record import RecordActivity
+from temporal_agentic_factory.activities.report import ReportActivity
+from temporal_agentic_factory.activities.session import SessionActivity
 from temporal_agentic_factory.client import connect
 from temporal_agentic_factory.settings.load import settings
 from temporal_agentic_factory.workflows.job import JobWorkflow
 
 
 async def serve() -> None:
-    """Poll the task queue until stopped."""
+    """Poll the task queue until stopped. The process's one store is made
+    here, given to every activity, and closed when the polling ends."""
     client = await connect()
-    worker = Worker(
-        client,
-        task_queue=settings.temporal.task_queue,
-        workflows=[JobWorkflow],
-        activities=[create_session, execute_job, execute_step, build_report, record_job],
-        max_concurrent_activities=settings.runner.max_concurrent_activities,
-    )
-    await worker.run()
+    store = Store.from_url(shared.store.url)
+    try:
+        worker = Worker(
+            client,
+            task_queue=settings.temporal.task_queue,
+            workflows=[JobWorkflow],
+            activities=_activities(store),
+            max_concurrent_activities=settings.runner.max_concurrent_activities,
+        )
+        await worker.run()
+    finally:
+        await store.dispose()
+
+
+def _activities(store: Store) -> list[Callable[..., Any]]:
+    return [
+        SessionActivity(store).create_session,
+        JobActivity(store).execute_job,
+        ReportActivity(store).build_report,
+        RecordActivity(store).record_job,
+    ]

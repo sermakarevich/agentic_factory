@@ -1,6 +1,6 @@
 import logging
 
-from agentic_factory.callbacks.silent import Silent
+from agentic_factory.callback import Callback
 from agentic_factory.job.contract import JobResult
 from agentic_factory.job.report.contract import JobReport
 from agentic_factory.job.report.conversation import clip_middle
@@ -46,7 +46,7 @@ async def report(
     when the model could not answer; the caller decides what that means.
     `client` is the one for `settings.step.provider`, the step's provider."""
     step = _report_step(conversation, result, failure)
-    outcome = (await steps.run(step, Silent(), client)).parse(JobReport)
+    outcome = (await steps.run(step, Callback(), client)).parse(JobReport)
     log.info("report by %s: %s", step.provider, outcome.verdict)
     return outcome
 

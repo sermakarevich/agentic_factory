@@ -2,7 +2,10 @@ from datetime import datetime
 
 
 class JobFailed(Exception):
-    """Base of all job failures."""
+    """Base of all job failures. `retryable` says whether another try of the
+    same job could end differently; a runner turns it into its retry policy."""
+
+    retryable = True
 
 
 class RateLimited(JobFailed):
@@ -38,8 +41,16 @@ class CoderCrashed(JobFailed):
         self.stderr = stderr
 
 
+class CoderNotFound(JobFailed):
+    """The coder's command is not installed where the engine runs."""
+
+    retryable = False
+
+
 class SessionNotCreated(JobFailed):
     """The coder's session command ran but named no session."""
+
+    retryable = False
 
 
 class BadOutput(JobFailed):

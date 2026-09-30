@@ -1,11 +1,23 @@
 from uuid import uuid4
 
+from factory_store.store import Store
+
 from agentic_factory.failure import CoderCrashed, SessionNotCreated
 from agentic_factory.job.coders.harness import Harness
 from agentic_factory.job.contract import Job
+from agentic_factory.job.defaults import with_default_model
 from agentic_factory.job.process.spawn import start_process
 from agentic_factory.job.process.tail import tail_of
 from agentic_factory.job.process.workdir import ensure_workdir
+
+
+async def start_session(store: Store, job: Job, harness: Harness) -> str:
+    """The session made and its row written: the job as the engine will run
+    it, with the harness's default model when none was given."""
+    job = with_default_model(job, harness)
+    session_id = await create_session(job, harness)
+    await store.start_session(session_id, job.provider, job.model, job.workdir, job.prompt)
+    return session_id
 
 
 async def create_session(job: Job, harness: Harness) -> str:

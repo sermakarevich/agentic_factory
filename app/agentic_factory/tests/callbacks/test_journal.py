@@ -3,9 +3,9 @@ from typing import Any
 
 from factory_store.store import Totals
 
-from agentic_factory.callback import JobEnd
 from agentic_factory.callbacks.journal import JournalCallback
 from agentic_factory.event import Event, EventKind, ToolCall
+from agentic_factory.job.callback import JobEnd
 from agentic_factory.job.contract import Job, JobResult
 from agentic_factory.job.stats import JobStats
 from agentic_factory.tokens import Tokens
@@ -57,7 +57,6 @@ async def test_every_event_is_written_with_the_given_session_and_try() -> None:
     payload = store.calls[1][5]
     assert payload["tool_calls"] == [{"id": "c1", "name": "bash", "args": {"cmd": "ls"}}]
     assert payload["raw"] == {"type": "text"} and store.calls[1][3] == at
-    assert recorder.written == 2
 
 
 async def test_a_done_end_closes_the_try_with_its_totals_and_result() -> None:

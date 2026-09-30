@@ -1,17 +1,21 @@
-from pydantic import BaseModel
+from factory_settings.table import Table
 
 
-class TemporalSettings(BaseModel):
+class TemporalSettings(Table):
     address: str
     namespace: str
     task_queue: str
 
 
-class RunnerSettings(BaseModel):
+class RunnerSettings(Table):
     max_concurrent_activities: int
 
 
-class JobActivitySettings(BaseModel):
+class CliSettings(Table):
+    job_id_chars: int
+
+
+class JobActivitySettings(Table):
     session_timeout_sec: int
     heartbeat_margin_sec: int
     close_margin_sec: int
@@ -22,19 +26,20 @@ class JobActivitySettings(BaseModel):
     min_retry_delay_sec: int
 
 
-class StepActivitySettings(BaseModel):
+class ReportActivitySettings(Table):
+    close_margin_sec: int
+    max_attempts: int
+
+
+class RecordActivitySettings(Table):
     timeout_sec: int
     max_attempts: int
 
 
-class RecordActivitySettings(BaseModel):
-    timeout_sec: int
-    max_attempts: int
-
-
-class Settings(BaseModel):
+class Settings(Table):
     temporal: TemporalSettings
     runner: RunnerSettings
+    cli: CliSettings
     job_activity: JobActivitySettings
-    step_activity: StepActivitySettings
+    report_activity: ReportActivitySettings
     record_activity: RecordActivitySettings

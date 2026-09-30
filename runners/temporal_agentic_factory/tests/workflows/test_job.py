@@ -2,7 +2,13 @@ import uuid
 
 from temporalio import activity
 from temporalio.contrib.pydantic import pydantic_data_converter
-from temporalio.exceptions import ApplicationError
+from temporalio.exceptions import (
+    ActivityError,
+    ApplicationError,
+    CancelledError,
+    TimeoutError,
+    TimeoutType,
+)
 from temporalio.testing import WorkflowEnvironment
 from temporalio.worker import Worker
 
@@ -10,7 +16,7 @@ from agentic_factory.job.contract import Job, JobResult
 from agentic_factory.job.outcome import JobOutcome
 from agentic_factory.job.report.contract import JobReport, Verdict
 from temporal_agentic_factory.activities.report import ReportRequest
-from temporal_agentic_factory.workflows.job import JobWorkflow
+from temporal_agentic_factory.workflows.job import JobWorkflow, _failure_text
 
 tries: list[int] = []
 sessions: list[str] = []
@@ -73,6 +79,29 @@ async def test_job_workflow_retries_the_activity_and_returns_its_result() -> Non
     assert len(report_requests) == 1 and report_requests[0].result is not None
     assert report_requests[0].result.session_id == "s1"
     assert recorded == [result]  # the job row is written from the outcome, after the report
+
+
+def test_failure_text_names_what_ended_the_last_try() -> None:
+    def failed_with(cause: BaseException) -> ActivityError:
+        error = ActivityError(
+            "activity failed",
+            scheduled_event_id=1,
+            started_event_id=2,
+            identity="runner",
+            activity_type="execute_job",
+            activity_id="1",
+            retry_state=None,
+        )
+        error.__cause__ = cause
+        return error
+
+    typed = _failure_text(failed_with(ApplicationError("no output", type="Stalled")))
+    assert typed == "Stalled: no output"
+    timeout = _failure_text(
+        failed_with(TimeoutError("t", type=TimeoutType.HEARTBEAT, last_heartbeat_details=[]))
+    )
+    assert timeout == "Timeout: heartbeat"
+    assert _failure_text(failed_with(CancelledError("c"))).startswith("Cancelled")
 
 
 async def test_a_permanently_failed_job_still_gets_a_report() -> None:

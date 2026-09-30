@@ -3,7 +3,7 @@ set positional-arguments
 # agentic_factory — monorepo commands. Run `just` to list them.
 # Each package has its own justfile; these recipes fan out to them.
 
-packages := "common/factory_store app/agentic_factory runners/temporal_agentic_factory"
+packages := "common/factory_settings common/factory_store app/agentic_factory runners/temporal_agentic_factory"
 
 # default: show available recipes
 default:
@@ -66,6 +66,6 @@ db:
 db-stop:
     docker compose stop postgres
 
-# apply every migration to the database (FACTORY_STORE_URL overrides the local default)
+# apply every migration to the database (AF_STORE__URL overrides the shared default)
 db-migrate:
     just --justfile common/factory_store/justfile --working-directory common/factory_store migrate

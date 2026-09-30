@@ -1,2 +1,2 @@
-"""Activities: one-line wrappers over app functions plus Temporal bookkeeping:
-the failure mapping, the heartbeat and the store handle."""
+"""Activities: one call into the app each, plus what Temporal needs around it:
+the failure mapping, the heartbeat, the store handed in by the runner."""

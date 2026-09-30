@@ -1,0 +1,24 @@
+set positional-arguments
+
+# factory_settings — the settings loader and the shared values. Run `just` to list.
+
+default:
+    @just --list
+
+lint:
+    uv run ruff check src tests
+
+fmt:
+    uv run ruff format src tests
+
+fmt-check:
+    uv run ruff format --check src tests
+
+typecheck:
+    uv run mypy src
+
+test *ARGS:
+    uv run pytest -q -p no:cacheprovider tests {{ARGS}}
+
+# one command that says "green"
+check: lint fmt-check typecheck test

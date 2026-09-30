@@ -10,6 +10,7 @@ resolution-markers = [
 members = [
     "agentic-factory",
     "agentic-factory-workspace",
+    "factory-settings",
     "factory-store",
     "temporal-agentic-factory",
 ]
@@ -20,6 +21,7 @@ version = "0.1.0"
 source = { editable = "app/agentic_factory" }
 dependencies = [
     { name = "dynaconf" },
+    { name = "factory-settings" },
     { name = "factory-store" },
     { name = "openai" },
     { name = "pydantic" },
@@ -28,6 +30,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "dynaconf", specifier = ">=3.3.5" },
+    { name = "factory-settings", editable = "common/factory_settings" },
     { name = "factory-store", editable = "common/factory_store" },
     { name = "openai", specifier = ">=3.22.0" },
     { name = "pydantic", specifier = ">=2.8" },
@@ -227,12 +230,28 @@ wheels = [
 ]
 
 [[package]]
+name = "factory-settings"
+version = "0.1.0"
+source = { editable = "common/factory_settings" }
+dependencies = [
+    { name = "dynaconf" },
+    { name = "pydantic" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "dynaconf", specifier = ">=3.3.5" },
+    { name = "pydantic", specifier = ">=2.8" },
+]
+
+[[package]]
 name = "factory-store"
 version = "0.1.0"
 source = { editable = "common/factory_store" }
 dependencies = [
     { name = "alembic" },
     { name = "asyncpg" },
+    { name = "factory-settings" },
     { name = "sqlalchemy", extra = ["asyncio"] },
 ]
 
@@ -240,6 +259,7 @@ dependencies = [
 requires-dist = [
     { name = "alembic", specifier = ">=1.13" },
     { name = "asyncpg", specifier = ">=0.30" },
+    { name = "factory-settings", editable = "common/factory_settings" },
     { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0" },
 ]
 
@@ -979,6 +999,7 @@ source = { editable = "runners/temporal_agentic_factory" }
 dependencies = [
     { name = "agentic-factory" },
     { name = "dynaconf" },
+    { name = "factory-settings" },
     { name = "temporalio" },
     { name = "typer" },
 ]
@@ -987,6 +1008,7 @@ dependencies = [
 requires-dist = [
     { name = "agentic-factory", editable = "app/agentic_factory" },
     { name = "dynaconf", specifier = ">=3.3.5" },
+    { name = "factory-settings", editable = "common/factory_settings" },
     { name = "temporalio", specifier = ">=1.8" },
     { name = "typer", specifier = ">=0.12" },
 ]

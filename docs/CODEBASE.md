@@ -16,15 +16,15 @@ agentic_factory/
     agentic_factory/          # the application: everything that is not an engine
       pyproject.toml        # package `agentic_factory`
       justfile
-      src/agentic_factory/    # event.py, failure.py, tokens.py, callback.py: the vocabulary every layer shares
-        job/                  # contract, engine, session, continuation, ledger, stats, context, outcome, record, defaults
+      src/agentic_factory/    # event.py, failure.py, tokens.py, callback.py, logging_setup.py: what every layer shares
+        job/                  # contract, callback, engine, session, continuation, ledger, stats, context, outcome, record, defaults
           coders/             # harness base, catalog, decode; claude/ and opencode/ (harness, stream)
-          process/            # spawn, environment, workdir, tail: the coder process
+          process/            # spawn, kill, environment, workdir, tail: the coder process
           summary/            # contract, prompt, block, parse, repair: the coder's own summary
-          report/             # contract, conversation, step: the report a model writes over the run
-        step/                 # contract, engine, defaults
+          report/             # contract, conversation, step, build: the report a model writes over the run
+        step/                 # contract, reasoning, engine, defaults
           providers/          # client base, catalog; opencode/ (client)
-        callbacks/            # log, fanout, journal, silent: the callbacks a run's start, events and end go to
+        callbacks/            # log, json_lines, fanout, journal: the callbacks a run's start, events and end go to
         settings/             # settings.toml holds every default; model.py types it; load.py reads it
       scripts/              # run_job.py, run_step.py: dev entry points behind `just`
       tests/
@@ -33,13 +33,18 @@ agentic_factory/
       pyproject.toml        # package `temporal_agentic_factory`
       justfile
       src/temporal_agentic_factory/  # cli, client, runner
-        activities/           # job, session, step, report; failure, heartbeat, store: what only activities need
+        activities/           # session, job, report, record: one class each; failure, heartbeat: what only activities need
         workflows/            # job: the workflows composing the activities
         settings/             # server address, activity limits
       tests/
     argo_agentic_factory/     # NOT built. README only, see "Why runners/"
   common/
-    factory_store/          # the database: schema.py (tables), store.py (async API), migrations/ (alembic)
+    factory_settings/       # the settings loader (dynaconf + pydantic) and the values every package shares
+      pyproject.toml        # package `factory_settings`
+      justfile
+      src/factory_settings/ # table.py (Table base), load.py (load), shared.py + settings.toml ([store] url)
+      tests/
+    factory_store/          # the database: schema.py (tables), store.py (async API), clean.py, migrations/ (alembic)
       pyproject.toml        # package `factory_store`
       justfile              # check, migrate, revision
       src/factory_store/

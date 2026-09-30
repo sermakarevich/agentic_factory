@@ -5,6 +5,7 @@ description = "Temporal runner: activities wrapping agentic_factory, workflow gr
 requires-python = ">=3.13"
 dependencies = [
     "agentic-factory",
+    "factory-settings",
     "dynaconf>=3.3.5",
     "temporalio>=1.8",
     "typer>=0.12",

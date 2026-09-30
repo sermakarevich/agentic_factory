@@ -1,11 +1,12 @@
 import json
+from typing import Any
 
 from agentic_factory.job.summary.block import find_summary_block
 from agentic_factory.job.summary.contract import SUMMARY_KEY, JobSummary
 from agentic_factory.job.summary.parse import parse_summary
 from agentic_factory.job.summary.prompt import INSTRUCTION, wrap_prompt
 
-GOOD = {
+GOOD: dict[str, Any] = {
     "task": "say hello",
     "plan": ["run echo"],
     "execution": ["ran echo hello"],

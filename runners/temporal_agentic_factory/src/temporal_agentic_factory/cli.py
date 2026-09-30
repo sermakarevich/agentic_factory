@@ -6,9 +6,9 @@ from uuid import uuid4
 
 import typer
 
-from agentic_factory.callbacks.log import configure_logging
 from agentic_factory.job.contract import Job
 from agentic_factory.job.outcome import JobOutcome
+from agentic_factory.logging_setup import configure_logging
 from temporal_agentic_factory.client import connect
 from temporal_agentic_factory.runner import serve
 from temporal_agentic_factory.settings.load import settings
@@ -63,16 +63,13 @@ def _given(options: dict[str, Any]) -> dict[str, Any]:
     return {name: value for name, value in options.items() if value is not None}
 
 
-JOB_ID_CHARS = 8  # of the uuid, after "job-": enough to tell runs apart in the ui
-
-
 async def _job_outcome(job: Job) -> JobOutcome:
     """The job workflow started and waited for; ctrl-c stops the run, not just the wait."""
     client = await connect()
     handle = await client.start_workflow(
         JobWorkflow.run,
         job,
-        id=f"job-{uuid4().hex[:JOB_ID_CHARS]}",
+        id=f"job-{uuid4().hex[: settings.cli.job_id_chars]}",
         task_queue=settings.temporal.task_queue,
     )
     typer.echo(f"started {handle.id}", err=True)

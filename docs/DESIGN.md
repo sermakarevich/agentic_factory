@@ -92,9 +92,10 @@ Lives in `agentic_factory/tokens.py`, `event.py`, `failure.py` (shared with call
   takes an id we choose. All sync: pure translation, no process is started
   here. The engine and callbacks are async. Each harness names its `default_model`. Implemented: opencode,
   claude.
-- `Callback` (`callback.py`) — a base with three no-op methods: `on_start(job)`
-  once the session is known and before the coder starts, `on_event(event)`
-  per event, `on_end(JobEnd)` once, on a result, a `JobFailed` and a
+- `Callback` (`callback.py`) — a base with one no-op method, `on_event(event)`,
+  shared by steps and jobs. `JobCallback` (`job/callback.py`) adds the job's
+  lifecycle: `on_start(job)` once the session is known and before the coder
+  starts, `on_end(JobEnd)` once, on a result, a `JobFailed` and a
   cancellation alike. `JobEnd` carries the result or the failure text
   (`Kind: message`, or `cancelled`) and what the ledger counted so far:
   tokens, cost, duration, stats. The runner fans out to a heartbeat, a log
@@ -213,17 +214,23 @@ the two engines; workflows compose them; retries never appear in workflow code.
   `RateLimited` sets `next_retry_delay` to the reset time. Heartbeat details
   are our `Heartbeat` model: time of the last event, event count, context
   size of the last model turn.
-- `execute_step(step)` — the step engine, same error mapping, no heartbeat.
-  For workflows that turn a job's output into typed data between jobs.
-- `build_report(request)` — after the job's last try: the stored events
-  become the conversation, saved, and the report step reads it; the report
-  is saved and returned. Uses the step activity's timeout and retries.
+- `build_report(request)` — after the job's last try: the app's
+  `job/report/build.py` turns the stored events into the conversation,
+  saves it, has the report step read it, saves the report and returns it.
+  Given the app's step timeout plus a margin, with the `report_activity`
+  retries.
+- Activities are methods of small classes (`SessionActivity`,
+  `JobActivity`, `ReportActivity`, `RecordActivity`) that take the store in
+  their constructor: `runner.py` makes one `Store` per process, gives it to
+  each and disposes it when polling ends. A `JobFailed` whose `retryable`
+  is false (`CoderNotFound`, `SessionNotCreated`) becomes a non-retryable
+  `ApplicationError`, so Temporal stops the tries at once.
 - `record_job(outcome)` — after the report: the app's `job/record.py`
   reads the session's tries, sums them and writes the `job` row. One store
   write behind the `record_activity` timeout and retries; a write that
   failed for good is logged, the workflow still returns the outcome.
 - `JobWorkflow` (`workflows/job.py`, type name `job`) — one job, then its
-  report; returns a `JobOutcome`. Its `run_job(job)` helper makes the
+  report; returns a `JobOutcome`. Its `run_job_with_report(job)` helper makes the
   session first when the job has none,
   then carries the activity policy for any workflow
   with a job in it: heartbeat timeout `stall_sec` plus a margin,
@@ -310,7 +317,7 @@ to a model reading text. Lives in `job/stats.py`, `job/summary/contract.py`,
 5. **Repair with a step.** `job/summary/repair.py`: a block that was found but did
    not parse goes to the step engine with the summary schema and a system
    prompt that forbids inventing facts. It runs inside the job engine, right
-   before the result is made, with a silent callback: the step's events stay
+   before the result is made, with a plain `Callback()`: the step's events stay
    out of the job's stream, since the heartbeat callback would read the
    step's tokens as the coder's context. Any step failure logs and yields
    `summary=None`; the job still succeeds. The schema is sent in strict
@@ -387,8 +394,8 @@ failure text, report.
 Postgres runs from `docker-compose.yml` (`just db` starts it and applies the
 migrations, `just db-stop` stops it, the data stays in a volume). Tests use an
 in-memory SQLite through the same schema, so no test needs the database.
-The url is the app setting `store.url`; migrations read `FACTORY_STORE_URL`
-or default to the same local database.
+The url is the shared setting `store.url` in `common/factory_settings`
+(override with `AF_STORE__URL`); the runner and the migrations read the same value.
 
 ## Settings
 
@@ -397,9 +404,14 @@ default provider of jobs and steps, each harness's and client's default model,
 the Go base url and user agent, reasoning and token limits of steps.
 `settings/load.py` loads it with dynaconf and validates it into the pydantic
 models of `settings/model.py`, so code reads `settings.step.max_tokens`, never a bare key.
-The runner package repeats the pattern for its own `[temporal]` and activity tables.
-The store's url is `[store]`, the conversation's clip sizes `[conversation]`,
-the report's transcript limit `[report]`.
+The runner package repeats the pattern for its own `[temporal]`, `[runner]`,
+`[cli]` and activity tables. The loader itself lives once, in
+`common/factory_settings` (`load(model, folder)`), which also holds the
+values more than one package needs: the store's url in `[store]`. Every
+settings model is a `Table` with `extra="forbid"`, so a misspelled key in a
+toml file or an `AF_` variable is refused on load instead of ignored.
+The conversation's clip sizes are `[conversation]`, the report's transcript
+limit `[report]`.
 Overrides, in order: `settings.local.toml` next to it (git-ignored), a
 `.env` found walking up from the package (repo root or `~/.env`), and
 environment variables `AF_<TABLE>__<KEY>`. `Job` and `Step` take their
@@ -443,8 +455,11 @@ Renamed from "llm call" Sep 2026.
   `muse-spark-1.3-contributor` (about 5 s at low reasoning). No retries in
   the client; Temporal retries.
 - `scripts/run_step.py` behind `just step` runs one from the CLI, as
-  `scripts/run_job.py` behind `just job` runs a job. The scripts are dev
+  `scripts/run_job.py` behind `just run` runs a job. The scripts are dev
   entry points outside the package; the just recipe carries the demo input.
+  Both take `--json`, which swaps the human log on stderr for
+  `JsonLinesCallback`: one JSON object per event on stdout, no prefix, for
+  a log shipper or `jq`.
 
 Learned from probes (Go API, Sep 2026): the `openai` SDK works once the
 user agent is overridden; each request needs a fresh `x-opencode-session`;

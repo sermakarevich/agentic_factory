@@ -1,0 +1,7 @@
+# Values shared by every package. Override without editing this file:
+#   - settings.local.toml next to it (git-ignored), same layout;
+#   - environment variables AF_<TABLE>__<KEY>, e.g. AF_STORE__URL=...;
+#   - a .env file in the repo root, read on start.
+
+[store]
+url = "postgresql+asyncpg://factory:factory@127.0.0.1:5432/factory"  # the database of `just db` (docker-compose.yml); async driver required

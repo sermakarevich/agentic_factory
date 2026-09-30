@@ -28,12 +28,9 @@ test *ARGS:
 # one command that says "green"
 check: lint fmt-check typecheck test
 
-# the local Postgres of `just db`; export FACTORY_STORE_URL to migrate another database
-local_url := "postgresql+asyncpg://factory:factory@127.0.0.1:5432/factory"
-
-# apply every migration to the database in FACTORY_STORE_URL
+# apply every migration to the database of the shared settings (AF_STORE__URL overrides it)
 migrate:
-    FACTORY_STORE_URL="${FACTORY_STORE_URL:-{{local_url}}}" uv run alembic upgrade head
+    uv run alembic upgrade head
 
 # write a migration from the difference between schema.py and the database: just revision "what changed"
 revision message:

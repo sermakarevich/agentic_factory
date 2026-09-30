@@ -1,6 +1,6 @@
 from datetime import UTC, datetime, timedelta
 
-from agentic_factory.failure import CoderCrashed, RateLimited, Stalled
+from agentic_factory.failure import CoderCrashed, CoderNotFound, RateLimited, Stalled
 from temporal_agentic_factory.activities.failure import to_application_error
 
 
@@ -20,3 +20,9 @@ def test_crash_keeps_exit_code_and_stderr() -> None:
 def test_plain_failure_is_typed_by_class() -> None:
     err = to_application_error(Stalled("no output"))
     assert err.type == "Stalled" and err.next_retry_delay is None
+    assert not err.non_retryable  # another try may help
+
+
+def test_a_failure_another_try_cannot_help_stops_the_retries() -> None:
+    err = to_application_error(CoderNotFound("opencode is not installed"))
+    assert err.type == "CoderNotFound" and err.non_retryable

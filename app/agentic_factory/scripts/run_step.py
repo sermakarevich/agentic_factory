@@ -8,13 +8,17 @@ from typing import Any
 
 from options import given_options
 
-from agentic_factory.callbacks.log import LogCallback, configure_logging
+from agentic_factory.callback import Callback
+from agentic_factory.callbacks.json_lines import JsonLinesCallback
+from agentic_factory.callbacks.log import LogCallback
 from agentic_factory.failure import JobFailed
-from agentic_factory.step.contract import Reasoning, Step
+from agentic_factory.logging_setup import configure_logging
+from agentic_factory.step.contract import Step
 from agentic_factory.step.defaults import with_default_model
 from agentic_factory.step.engine import run
 from agentic_factory.step.providers.catalog import client_for
 from agentic_factory.step.providers.client import Client
+from agentic_factory.step.reasoning import Reasoning
 
 log = logging.getLogger("agentic_factory.step")
 
@@ -53,7 +57,7 @@ def main(argv: list[str] | None = None) -> int:
     client = client_for(step.provider)
     step = with_default_model(step, client)
     log.info("step      %s %s", step.provider, step.model)
-    return _run_and_print(step, client, as_json=args.json)
+    return _run_and_print(step, client, _callback(args.json))
 
 
 def _quiet_http_logs() -> None:
@@ -67,10 +71,14 @@ def _step_from_args(args: argparse.Namespace) -> Step:
     return Step.model_validate(given)
 
 
-def _run_and_print(step: Step, client: Client, as_json: bool) -> int:
+def _callback(as_json: bool) -> Callback:
+    return JsonLinesCallback() if as_json else LogCallback()
+
+
+def _run_and_print(step: Step, client: Client, callback: Callback) -> int:
     """The engine run, its result logged and its output printed; the exit code."""
     try:
-        result = asyncio.run(run(step, LogCallback(as_json=as_json), client))
+        result = asyncio.run(run(step, callback, client))
     except JobFailed as failure:
         log.error("failed    %s: %s", type(failure).__name__, failure)
         return 1

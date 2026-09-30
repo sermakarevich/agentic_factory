@@ -8,14 +8,18 @@ from temporal_agentic_factory.settings.load import settings
 
 def to_application_error(failure: JobFailed) -> ApplicationError:
     """One `ApplicationError` per failure class, typed by the class name so
-    retry policies can name them. A rate limit tells Temporal when to retry."""
+    retry policies can name them. A failure that says another try cannot
+    help (`retryable = False`) stops the retries. A rate limit tells Temporal
+    when to retry."""
     kind = type(failure).__name__
+    final = not failure.retryable
     if isinstance(failure, RateLimited):
         delay = _delay_until(failure.resets_at)
         return ApplicationError(str(failure), type=kind, next_retry_delay=delay)
     if isinstance(failure, CoderCrashed):
-        return ApplicationError(str(failure), failure.exit_code, failure.stderr, type=kind)
-    return ApplicationError(str(failure), type=kind)
+        details = (failure.exit_code, failure.stderr)
+        return ApplicationError(str(failure), *details, type=kind, non_retryable=final)
+    return ApplicationError(str(failure), type=kind, non_retryable=final)
 
 
 def _delay_until(resets_at: datetime) -> timedelta:

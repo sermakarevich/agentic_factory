@@ -1,12 +1,12 @@
 from factory_store.schema import Outcome
 from factory_store.store import Store, Totals
 
-from agentic_factory.callback import Callback, JobEnd
 from agentic_factory.event import Event
+from agentic_factory.job.callback import JobCallback, JobEnd
 from agentic_factory.job.contract import Job
 
 
-class JournalCallback(Callback):
+class JournalCallback(JobCallback):
     """The try's recorder: opens its row when the run starts, writes every
     event as it happens, closes the row with how the run ended and what it
     added up to. The session and try are given, not read from the events:
@@ -16,7 +16,6 @@ class JournalCallback(Callback):
         self.store = store
         self.session_id = session_id
         self.attempt = attempt
-        self.written = 0
 
     async def on_start(self, job: Job) -> None:
         await self.store.start_try(self.session_id, self.attempt)
@@ -25,7 +24,6 @@ class JournalCallback(Callback):
         await self.store.append_event(
             self.session_id, self.attempt, event.at, event.kind, event.model_dump(mode="json")
         )
-        self.written += 1
 
     async def on_end(self, end: JobEnd) -> None:
         await self.store.finish_try(

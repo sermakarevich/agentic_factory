@@ -1,6 +1,13 @@
-import pytest
+from pathlib import Path
 
-from agentic_factory.settings.load import load, settings
+import pytest
+from factory_settings.load import load
+
+import agentic_factory.settings.load
+from agentic_factory.settings.load import settings
+from agentic_factory.settings.model import Settings
+
+FOLDER = Path(agentic_factory.settings.load.__file__).parent
 
 
 def test_toml_defaults_are_typed() -> None:
@@ -10,8 +17,8 @@ def test_toml_defaults_are_typed() -> None:
 
 def test_env_overrides_a_nested_key(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("AF_JOB__TIMEOUT_SEC", "5")
-    assert load().job.timeout_sec == 5
-    assert load().job.stall_sec == settings.job.stall_sec  # the rest is untouched
+    assert load(Settings, FOLDER).job.timeout_sec == 5
+    assert load(Settings, FOLDER).job.stall_sec == settings.job.stall_sec  # the rest is untouched
 
 
 def test_every_knob_is_a_setting() -> None:

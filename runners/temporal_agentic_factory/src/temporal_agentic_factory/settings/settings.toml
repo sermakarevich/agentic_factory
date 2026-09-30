@@ -6,6 +6,9 @@ task_queue = "agentic-factory"  # the queue the runner polls and the cli starts 
 [runner]
 max_concurrent_activities = 4   # each job activity is one coder process on this machine
 
+[cli]
+job_id_chars = 8    # of the uuid after "job-" in a workflow id: enough to tell runs apart in the ui
+
 [job_activity]
 session_timeout_sec = 60     # creating the session before try 1; opencode's api answers in seconds
 heartbeat_margin_sec = 60   # heartbeat timeout = job.stall_sec + this; the engine kills first, Temporal is the backstop
@@ -16,9 +19,9 @@ retry_backoff = 2.0         # each later wait is the previous one times this
 retry_max_sec = 600         # the longest backoff wait
 min_retry_delay_sec = 1     # the shortest wait after a rate limit whose reset time has passed
 
-[step_activity]
-timeout_sec = 300   # one structured-output request; no heartbeat
-max_attempts = 3    # tries per step before the workflow gives up
+[report_activity]
+close_margin_sec = 60   # start-to-close = the app's step.timeout_sec + this; the step's own timeout fires first
+max_attempts = 3        # tries of the report step before the workflow gives it up
 
 [record_activity]
 timeout_sec = 30    # two store queries: the tries read, the job row written

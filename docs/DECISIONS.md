@@ -188,7 +188,7 @@ queues.
   is strictest first, then a lenient pass for the mistakes seen (bare key,
   trailing commas, Python literals). A block that was found but did not
   parse is repaired by a step with a system prompt that forbids inventing
-  facts, run with a silent callback so its tokens do not pollute the
+  facts, run with a plain `Callback()` so its tokens do not pollute the
   heartbeat's context reading.
 
 ## 2. Step: structured output that is useful
@@ -231,7 +231,7 @@ queues.
   plain function called from an activity. The process that polls task
   queues is the **runner**.
 - **Activities are one-line wrappers.** `create_session`, `execute_job`,
-  `execute_step`, `build_report`. Retries never appear in workflow code;
+  `build_report`, `record_job`. Retries never appear in workflow code;
   each failure class carries its own rule. The job activity reads its
   attempt number and the previous try's heartbeat from `activity.info()`.
 - **Two timeouts, engine first.** Heartbeat timeout is the stall time
@@ -258,9 +258,36 @@ queues.
 - **Proven by the restart test.** Runner killed mid-job and restarted:
   Temporal failed the try with a heartbeat timeout, try 2 started with
   attempt 2 in the session made before try 1, and the coder resumed it
-  saying it would not redo the work. Open: killing the runner does not
-  kill the coder, which kept working as an orphan; the fix is a process
-  group plus a watchdog (see TODO).
+  saying it would not redo the work. Found: killing the runner did not
+  kill the coder, which kept working as an orphan; the process group fix
+  is in (below), the watchdog for a hard death is in TODO.
+- **Activities are classes with the store given** (Sep 30). The first cut
+  had a module-level `store.py` making a `Store` on import and activities
+  as free functions reading it, so tests monkeypatched a global and the
+  engine was never disposed. Now `runner.py` makes one `Store`, gives it
+  to `SessionActivity(store)`, `JobActivity(store)`, `ReportActivity(store)`,
+  `RecordActivity(store)` and disposes it in `finally`; workflows call
+  them with `execute_activity_method`. The rule "dependencies are given,
+  never resolved" applied to the runner.
+- **Domain logic left the activities** (Sep 30). The session activity
+  had the default model, the session creation and the store write in its
+  body; the report activity had load, render, save, report, save. Both
+  moved to the app (`job/session.py: start_session`,
+  `job/report/build.py: build_report`); an activity now adds only the
+  Temporal parts (heartbeat, `activity.info()`, the error mapping).
+- **Retryable is a property of the failure** (Sep 30). `JobFailed` has
+  `retryable = True`; `CoderNotFound` and `SessionNotCreated` set it
+  false and the runner maps that to `ApplicationError(non_retryable=True)`.
+  Before, every failure was retried up to `max_attempts`, including a
+  missing binary, which is five identical tries for nothing.
+- **What ends a try is named in the outcome** (Sep 30). `_failure_text`
+  handled only `ApplicationError`; a heartbeat timeout came out as
+  `ActivityError: ...`. It now names the Temporal timeout kind
+  (`Timeout: heartbeat`, `Timeout: start to close`) and a cancellation.
+- **Step activity dropped** (Sep 30). `execute_step` had no workflow
+  calling it and its timeout was shorter than the app's step timeout. The
+  report activity's timeout is now the app's `step.timeout_sec` plus a
+  margin, read from the app's settings, so the two cannot drift apart.
 - **Workflows are Python, not YAML.** Graphs are code; a data-driven DAG
   interpreter can be added later if needed. Beads is an input source and
   an output target, not the internal state store.
@@ -296,6 +323,38 @@ The sequence in `run` reads without opening any step.
 They came out of the first pass at the engine and were sent back: a step
 called `_prepare` hides three unrelated things behind one word, which is
 the mess the split was meant to end.
+
+### Settings: one loader, shared values in `common/factory_settings`
+
+**Chosen** (Sep 30). The dynaconf-to-pydantic loader lives once in
+`factory_settings.load`, every settings model is a `Table` with
+`extra="forbid"`, and values more than one package needs (the store's url)
+live in `factory_settings.shared`. Env override is `AF_<TABLE>__<KEY>` for
+every package; migrations and the runner read the same `shared.store.url`.
+
+**Rejected.** Each package with its own copy of the loader (the app and
+the runner had two identical ones) and the store's url as an app setting
+that the migrations then read from a differently named variable
+(`FACTORY_STORE_URL`). Two places to change one thing.
+
+**Why `extra="forbid"`.** A misspelled key in a toml file or an `AF_`
+variable used to be dropped in silence; now the load refuses it. The
+loader keeps only the dict-valued keys of dynaconf's output, because
+dynaconf adds its own flat keys (`LOAD_DOTENV`) that the models must not see.
+
+### Callbacks: `on_event` for everyone, the lifecycle for jobs
+
+**Chosen** (Sep 30). `Callback` has only `on_event`, and a step and a job
+give their events to it alike. `JobCallback` adds `on_start` and `on_end`;
+the job engine calls `on_end` on a result, on any error and on
+cancellation, from `finally`, and the fanout runs every callback and
+raises the first error after. The kill path signals the coder's process
+group, so opencode's private server dies with it.
+
+**Rejected.** A `Silent` callback (a base with no-op methods is already
+silent) and `LogCallback(as_json=True)`: one JSON line on stderr behind a
+timestamp prefix. Machine output is `JsonLinesCallback` on stdout, with
+no prefix, and the human log stays on stderr.
 
 ### Dependencies are given, never resolved as a fallback
 

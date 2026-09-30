@@ -1,6 +1,6 @@
 import logging
 
-from agentic_factory.callbacks.silent import Silent
+from agentic_factory.callback import Callback
 from agentic_factory.failure import JobFailed
 from agentic_factory.job.summary.contract import SUMMARY_KEY, JobSummary
 from agentic_factory.step import engine as steps
@@ -26,7 +26,7 @@ async def repair_summary(block: str, client: Client) -> JobSummary | None:
     `client` is the one for `settings.step.provider`, the step's provider."""
     step = _repair_step(block)
     try:
-        summary = (await steps.run(step, Silent(), client)).parse(JobSummary)
+        summary = (await steps.run(step, Callback(), client)).parse(JobSummary)
     except JobFailed as failure:
         log.warning("summary repair failed: %s", failure)
         return None
