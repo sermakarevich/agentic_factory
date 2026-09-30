@@ -248,6 +248,26 @@ queues.
 
 ## 4. Cross-cutting
 
+### One level of abstraction per function
+
+**Chosen.** Every function is either a sequence of named steps or the
+detail of one step. The job engine's `run` reads as prepare, compact when
+the session is large, drive the coder, summarize, result; each step's body
+is the only place that knows how it is done. The context watch (compaction
+request, context pressure) and the coder environment got their own modules
+because two callers need them.
+
+**Rejected.** One long function with comments marking its phases. The
+comments drift, the phases share locals, and a reader cannot tell which
+lines are the plan and which are its details. Also rejected: extracting by
+line count alone. A dispatch of one-line branches is one level already and
+stays as it is, however long.
+
+**Why.** A function whose body mixes filling a default model, making a
+directory and parsing a stream has no shape a reader or a model can hold.
+Named steps give the plan in six lines and the details behind six names.
+
+
 - **Monorepo, one uv workspace, three layers.** `app/` owns the domain
   and knows nothing about Temporal; `runners/` owns the engine binding;
   `common/` holds what two apps share. Imports point down only. A

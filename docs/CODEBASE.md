@@ -110,6 +110,12 @@ package here:
 - Every `__init__.py` is empty of code, so each object has exactly one
   import path. Its only content is a docstring saying what layer this
   folder is and what lives below it.
+- One function, one level of abstraction. A function is either a
+  sequence of named steps (each a call, read top to bottom as a story) or
+  the detail of one step. Filling a default, making a directory and
+  parsing a stream do not sit in the same body; each becomes a named
+  step whose body is the only place that knows how. Long branches of a
+  dispatch become one function per branch behind a table.
 - No hardcoded knobs. A value that tunes behaviour (a size, width,
   limit, timeout, delay, default) lives in the package's
   `settings/settings.toml` with a typed field in `settings/model.py` and
