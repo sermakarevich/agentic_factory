@@ -35,8 +35,17 @@ class HeartbeatObserver:
         self.state = Heartbeat()
 
     async def on_event(self, event: Event) -> None:
-        context = self.state.context_tokens
-        if event.kind == EventKind.AI:
-            context = context_of(event) or context
-        self.state = Heartbeat(at=event.at, events=self.state.events + 1, context_tokens=context)
+        self.state = Heartbeat(
+            at=event.at,
+            events=self.state.events + 1,
+            context_tokens=_context_tokens_after(self.state, event),
+        )
         activity.heartbeat(self.state)
+
+
+def _context_tokens_after(state: Heartbeat, event: Event) -> int:
+    """The context of the last model turn: this event's when it is one and
+    says so, else what the state had."""
+    if event.kind == EventKind.AI:
+        return context_of(event) or state.context_tokens
+    return state.context_tokens

@@ -10,8 +10,13 @@ def to_application_error(failure: JobFailed) -> ApplicationError:
     retry policies can name them. A rate limit tells Temporal when to retry."""
     kind = type(failure).__name__
     if isinstance(failure, RateLimited):
-        wait = max(failure.resets_at - datetime.now(UTC), timedelta(seconds=1))
-        return ApplicationError(str(failure), type=kind, next_retry_delay=wait)
+        delay = _delay_until(failure.resets_at)
+        return ApplicationError(str(failure), type=kind, next_retry_delay=delay)
     if isinstance(failure, CoderCrashed):
         return ApplicationError(str(failure), failure.exit_code, failure.stderr, type=kind)
     return ApplicationError(str(failure), type=kind)
+
+
+def _delay_until(resets_at: datetime) -> timedelta:
+    """How long until the limit lifts; at least a second, as the moment may have passed."""
+    return max(resets_at - datetime.now(UTC), timedelta(seconds=1))

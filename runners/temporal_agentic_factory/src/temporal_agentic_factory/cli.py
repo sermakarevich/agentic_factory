@@ -16,8 +16,6 @@ from temporal_agentic_factory.workflows.job import JobWorkflow
 
 app = typer.Typer(no_args_is_help=True, help="agentic_factory on Temporal.")
 
-JOB_FIELDS = ("provider", "model", "timeout_sec", "stall_sec", "context_limit_tokens", "tools")
-
 
 @app.command()
 def runner(debug: bool = False) -> None:
@@ -39,17 +37,34 @@ def run(
 ) -> None:
     """Start one job on Temporal and wait for it. Prints the result as JSON.
     Options left out keep the settings defaults."""
-    given = locals()
-    fields: dict[str, Any] = {k: given[k] for k in JOB_FIELDS if given[k] is not None}
-    if "tools" in fields:
-        fields["tools"] = [t for t in fields["tools"].split(",") if t]
-    # absolute: the runner's cwd is not ours
-    job = Job(prompt=prompt, workdir=str(Path(workdir).expanduser().resolve()), **fields)
-    result = asyncio.run(_run(job))
-    typer.echo(result.model_dump_json(indent=2))
+    options = {
+        "provider": provider,
+        "model": model,
+        "timeout_sec": timeout_sec,
+        "stall_sec": stall_sec,
+        "context_limit_tokens": context_limit_tokens,
+        "tools": _tool_list(tools),
+    }
+    job = Job(prompt=prompt, workdir=_absolute(workdir), **_given(options))
+    outcome = asyncio.run(_job_outcome(job))
+    typer.echo(outcome.model_dump_json(indent=2))
 
 
-async def _run(job: Job) -> JobOutcome:
+def _tool_list(tools: str | None) -> list[str] | None:
+    return [t for t in tools.split(",") if t] if tools is not None else None
+
+
+def _absolute(workdir: str) -> str:
+    """The runner's cwd is not ours, so the job gets an absolute path."""
+    return str(Path(workdir).expanduser().resolve())
+
+
+def _given(options: dict[str, Any]) -> dict[str, Any]:
+    return {name: value for name, value in options.items() if value is not None}
+
+
+async def _job_outcome(job: Job) -> JobOutcome:
+    """The job workflow started and waited for; ctrl-c stops the run, not just the wait."""
     client = await connect()
     handle = await client.start_workflow(
         JobWorkflow.run,
@@ -60,6 +75,6 @@ async def _run(job: Job) -> JobOutcome:
     typer.echo(f"started {handle.id}", err=True)
     try:
         return await handle.result()
-    except asyncio.CancelledError:  # ctrl-c: stop the run, not just the wait
+    except asyncio.CancelledError:
         await handle.cancel()
         raise

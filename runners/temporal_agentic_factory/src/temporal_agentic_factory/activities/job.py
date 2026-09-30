@@ -1,8 +1,10 @@
 import asyncio
 
 from factory_store.schema import Outcome
+from factory_store.store import Store
 from temporalio import activity
 
+from agentic_factory.event import Observer
 from agentic_factory.failure import JobFailed
 from agentic_factory.job import engine as jobs
 from agentic_factory.job.catalog import harness_for
@@ -33,18 +35,27 @@ async def execute_job(job: Job) -> JobResult:
     job = _continued_for_this_try(job, info)
     db = store()
     await db.start_try(job.session_id, info.attempt)
-    observer = Fanout(
-        HeartbeatObserver(), LogObserver(), JournalObserver(db, job.session_id, info.attempt)
-    )
+    observer = _observer_for_try(db, job.session_id, info.attempt)
+    return await _run_and_record_try(job, observer, db, info.attempt)
+
+
+def _observer_for_try(db: Store, session_id: str, attempt: int) -> Observer:
+    """Heartbeats to Temporal, lines to the log, every event to the store."""
+    return Fanout(HeartbeatObserver(), LogObserver(), JournalObserver(db, session_id, attempt))
+
+
+async def _run_and_record_try(job: Job, observer: Observer, db: Store, attempt: int) -> JobResult:
+    """The engine run, with how it ended written to the try's row: done,
+    failed with the failure's text, or cancelled."""
     try:
         result = await jobs.run(job, observer, harness_for(job.provider), _repair_summary)
     except JobFailed as failure:
-        await db.finish_try(job.session_id, info.attempt, Outcome.FAILED, str(failure))
+        await db.finish_try(job.session_id, attempt, Outcome.FAILED, str(failure))
         raise to_application_error(failure) from failure
     except asyncio.CancelledError:
-        await db.finish_try(job.session_id, info.attempt, Outcome.FAILED, CANCELLED)
+        await db.finish_try(job.session_id, attempt, Outcome.FAILED, CANCELLED)
         raise
-    await db.finish_try(job.session_id, info.attempt, Outcome.DONE)
+    await db.finish_try(job.session_id, attempt, Outcome.DONE)
     return result
 
 

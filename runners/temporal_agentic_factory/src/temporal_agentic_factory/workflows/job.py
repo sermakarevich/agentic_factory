@@ -35,22 +35,31 @@ def _job_retry() -> RetryPolicy:
     )
 
 
+def _step_retry() -> RetryPolicy:
+    return RetryPolicy(maximum_attempts=settings.step_activity.max_attempts)
+
+
 async def _with_session(job: Job) -> Job:
     """The job with a session id: made once before try 1, reused by retries."""
+    if job.session_id:
+        return job
+    return job.model_copy(update={"session_id": await _created_session_id(job)})
+
+
+async def _created_session_id(job: Job) -> str:
+    """The create_session activity with the job policy."""
     cfg = settings.job_activity
-    if not job.session_id:
-        session_id = await workflow.execute_activity(
-            create_session,
-            job,
-            start_to_close_timeout=timedelta(seconds=cfg.session_timeout_sec),
-            retry_policy=_job_retry(),
-        )
-        job = job.model_copy(update={"session_id": session_id})
-    return job
+    return await workflow.execute_activity(
+        create_session,
+        job,
+        start_to_close_timeout=timedelta(seconds=cfg.session_timeout_sec),
+        retry_policy=_job_retry(),
+    )
 
 
 async def _execute_job_activity(job: Job) -> JobResult:
-    """One job run: the execute_job activity with its timeouts and retries."""
+    """One job run: the execute_job activity with a timeout past the job's own,
+    a heartbeat timeout past its stall limit, and the retries from settings."""
     cfg = settings.job_activity
     return await workflow.execute_activity(
         execute_job,
@@ -59,15 +68,6 @@ async def _execute_job_activity(job: Job) -> JobResult:
         heartbeat_timeout=timedelta(seconds=job.stall_sec + cfg.heartbeat_margin_sec),
         retry_policy=_job_retry(),
     )
-
-
-async def run_job(job: Job) -> JobResult:
-    """The job activity with its policy: a timeout past the job's own, a
-    heartbeat timeout past its stall limit, and retries from settings. A job
-    without a session gets one first, so that every try runs in it. For any
-    workflow that has a job in it."""
-    job = await _with_session(job)
-    return await _execute_job_activity(job)
 
 
 def _failure_text(error: ActivityError) -> str:
@@ -79,7 +79,8 @@ def _failure_text(error: ActivityError) -> str:
 
 
 async def run_job_with_report(job: Job) -> JobOutcome:
-    """The job, then the report over everything it stored. A permanently failed
+    """The job, then the report over everything it stored. A job without a
+    session gets one first, so that every try runs in it. A permanently failed
     job still gets its report, then the outcome carries the failure instead of
     a result. A failed report step is not fatal: the outcome has none."""
     job = await _with_session(job)
@@ -110,7 +111,7 @@ async def _report_or_none(request: ReportRequest) -> JobReport | None:
             build_report,
             request,
             start_to_close_timeout=timedelta(seconds=cfg.timeout_sec),
-            retry_policy=RetryPolicy(maximum_attempts=cfg.max_attempts),
+            retry_policy=_step_retry(),
         )
     except ActivityError:
         return None

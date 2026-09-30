@@ -1,3 +1,4 @@
+from factory_store.store import Store
 from pydantic import BaseModel
 from temporalio import activity
 
@@ -23,14 +24,30 @@ async def build_report(request: ReportRequest) -> JobReport:
     """After the job's last try: the stored events become the conversation,
     saved, and one model step reads it and writes the report, saved too."""
     db = store()
-    rows = await db.load_events(request.session_id)
+    text = await _saved_conversation(db, request.session_id)
+    report = await _written_report(text, request)
+    await _save_report(db, request, report)
+    return report
+
+
+async def _saved_conversation(db: Store, session_id: str) -> str:
+    """The session's stored events rendered as one text, kept beside them."""
+    rows = await db.load_events(session_id)
     text = conversation.render(rows)
-    await db.save_conversation(request.session_id, text, len(rows))
+    await db.save_conversation(session_id, text, len(rows))
+    return text
+
+
+async def _written_report(text: str, request: ReportRequest) -> JobReport:
+    """The report step over the conversation, with the client for the step
+    provider from settings; its failure typed for Temporal."""
     try:
         client = client_for(settings.step.provider)
-        report = await reports.report(text, request.result, request.failure, client)
+        return await reports.report(text, request.result, request.failure, client)
     except JobFailed as failure:
         raise to_application_error(failure) from failure
+
+
+async def _save_report(db: Store, request: ReportRequest, report: JobReport) -> None:
     result = request.result.model_dump(mode="json") if request.result else {}
     await db.save_report(request.session_id, result, report.model_dump(mode="json"), report.verdict)
-    return report
