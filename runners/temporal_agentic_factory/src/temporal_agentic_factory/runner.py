@@ -6,14 +6,14 @@ from factory_store.store import Store
 from temporalio.worker import Worker
 
 from temporal_agentic_factory.activities.job import JobActivity
-from temporal_agentic_factory.activities.outputs import OutputsActivity
 from temporal_agentic_factory.activities.record import RecordActivity
 from temporal_agentic_factory.activities.report import ReportActivity
 from temporal_agentic_factory.activities.session import SessionActivity
+from temporal_agentic_factory.activities.structured_output import StructuredOutputActivity
 from temporal_agentic_factory.client import connect
 from temporal_agentic_factory.settings.load import settings
 from temporal_agentic_factory.workflows.job import JobWorkflow
-from temporal_agentic_factory.workflows.outputs import JobWithOutputsWorkflow
+from temporal_agentic_factory.workflows.structured_output import JobWithStructuredOutputWorkflow
 
 
 async def serve(identity: str) -> None:
@@ -27,7 +27,7 @@ async def serve(identity: str) -> None:
             client,
             task_queue=settings.temporal.task_queue,
             identity=identity,
-            workflows=[JobWorkflow, JobWithOutputsWorkflow],
+            workflows=[JobWorkflow, JobWithStructuredOutputWorkflow],
             activities=_activities(store, identity),
             max_concurrent_activities=settings.runner.max_concurrent_activities,
         )
@@ -41,6 +41,6 @@ def _activities(store: Store, identity: str) -> list[Callable[..., Any]]:
         SessionActivity(store).create_session,
         JobActivity(store, identity).execute_job,
         ReportActivity(store).build_report,
-        OutputsActivity(store).extract_outputs,
+        StructuredOutputActivity(store).extract_structured_output,
         RecordActivity(store).record_job,
     ]

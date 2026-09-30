@@ -191,22 +191,27 @@ queues.
   facts, run with a plain `Callback()` so its tokens do not pollute the
   heartbeat's context reading.
 
-### Typed outputs: asked in the prompt, picked out by a step
+### Structured output of a job: asked in the prompt, picked out by a step
 
 - **Chosen.** A workflow that needs typed data out of a job gives its JSON
   schema. The prompt gets a request to state each field plainly in the
   final message, before the summary block. After the job, one step with
-  the schema wrapped as "the outputs or null, plus the fields not stated"
+  the schema wrapped as "the output or null, plus the fields not stated"
   reads the coder's last message; when it says not stated, a second step
   reads the whole rendered conversation. Not stated there either is
-  `OutputsNotStated`, a final failure: the workflow stops, as fleet's did on
-  a missing outputs file. `job/outputs/` in the app (contract, prompt,
-  step, extract), `OutputsActivity` and `run_job_with_outputs` in the
-  runner. The outputs are saved in their own `outputs` row with the schema
-  and which pass found them; the job engine is untouched.
+  `StructuredOutputNotStated`, a final failure: the workflow stops, as
+  fleet's did on a missing outputs file. `job/structured_output/` in the
+  app (contract, prompt, step, extract), `StructuredOutputActivity` and
+  `run_job_with_structured_output` in the runner. The output is saved in
+  its own `structured_output` row with the schema and which pass found it;
+  the job engine is untouched.
+- **Why "structured output", not "outputs".** A job has many outputs
+  (files, events, the report); the name says which one this is: the
+  schema-shaped answer, the same thing a step returns, here stated by a
+  coder and picked out by a step.
 - **Why a step over the stored events.** The events are already stored
-  and the step engine already exists; the outputs are a lookup in the
-  text, not an inference, once the prompt asked for them. The null branch
+  and the step engine already exists; the output is a lookup in the
+  text, not an inference, once the prompt asked for it. The null branch
   in the schema is what keeps strict mode from forcing invented values.
 - **Rejected: an outputs file in the workdir** (fleet). Ties the job to a
   filesystem the workflow must reach and to a path convention; a job with
@@ -241,7 +246,7 @@ queues.
   leave room, and a reasoning effort of `low` cut glm-5.3-flash from 30 s
   to 6 s. No retries in the client: Temporal retries.
 - **Where steps are used.** Repairing a coder's summary block, the report
-  over a session, the typed outputs picked out of a job's text, and,
+  over a session, the structured output picked out of a job's text, and,
   planned, any typed judgement between two jobs.
   Renamed from "llm call" to "step" in Sep 2026 so the vocabulary matches
   the workflow's building blocks.

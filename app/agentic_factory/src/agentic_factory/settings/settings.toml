@@ -45,5 +45,5 @@ tool_args_chars = 300  # longest tool-call arguments kept, json, cut at the end
 [report]
 max_chars = 200000  # longest conversation sent to the report step; head and tail are kept
 
-[outputs]
-max_chars = 200000  # longest text sent to the outputs extraction step; head and tail are kept
+[structured_output]
+max_chars = 200000  # longest text sent to the structured output extraction step; head and tail are kept

@@ -1,6 +1,6 @@
-"""the outputs table: for a job a workflow asked for typed outputs, the JSON
-schema it asked for, the outputs the extraction step found and where it
-found them (last_message | conversation). One row per session.
+"""the structured_output table: for a job a workflow asked for structured output,
+the JSON schema it asked for, the output the extraction step found and where
+it found it (last_message | conversation). One row per session.
 
 Revision ID: 9410ff787989
 Revises: 7659f9addce0
@@ -21,7 +21,7 @@ depends_on: str | Sequence[str] | None = None
 
 def upgrade() -> None:
     op.create_table(
-        "outputs",
+        "structured_output",
         sa.Column("session_id", sa.String(), nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("source", sa.String(), nullable=False),
@@ -31,7 +31,7 @@ def upgrade() -> None:
             nullable=False,
         ),
         sa.Column(
-            "outputs",
+            "structured_output",
             sa.JSON().with_variant(postgresql.JSONB(astext_type=sa.Text()), "postgresql"),
             nullable=False,
         ),
@@ -44,4 +44,4 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_table("outputs")
+    op.drop_table("structured_output")

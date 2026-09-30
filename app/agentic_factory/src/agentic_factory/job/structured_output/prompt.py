@@ -1,9 +1,9 @@
 from typing import Any
 
-from agentic_factory.job.outputs.contract import Schema
+from agentic_factory.job.structured_output.contract import Schema
 
 INSTRUCTION = (
-    "When you are done, state these outputs plainly in your final message, each on its own "
+    "When you are done, state these values plainly in your final message, each on its own "
     "line as `name: value`, lists as json arrays. Put them before anything else you were "
     "asked to end the message with:"
 )
@@ -11,9 +11,9 @@ INSTRUCTION = (
 
 def wrap_prompt(prompt: str, schema: Schema) -> str:
     """The prompt the workflow gives the job: the job's own, then the request
-    to state the outputs, one line per field with its type and description.
-    The engine adds the summary request after it, so the outputs come first
-    in the coder's last message."""
+    to state the structured output, one line per field with its type and
+    description. The engine adds the summary request after it, so the
+    structured output comes first in the coder's last message."""
     return f"{prompt}\n\n{INSTRUCTION}\n{field_lines(schema)}"
 
 

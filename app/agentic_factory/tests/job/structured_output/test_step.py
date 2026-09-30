@@ -4,8 +4,8 @@ import pytest
 from pydantic import BaseModel, ConfigDict
 
 from agentic_factory.failure import JobFailed
-from agentic_factory.job.outputs.contract import Extraction
-from agentic_factory.job.outputs.step import (
+from agentic_factory.job.structured_output.contract import Extraction
+from agentic_factory.job.structured_output.step import (
     SYSTEM_PROMPT,
     extract,
     extraction_schema,
@@ -38,19 +38,21 @@ class Page(BaseModel):
     url: str
 
 
-class Outputs(BaseModel):
+class StructuredOutput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     pages: list[Page]
 
 
-SCHEMA = Outputs.model_json_schema()
+SCHEMA = StructuredOutput.model_json_schema()
 
 
 async def test_extract_sends_the_text_with_the_wrapped_schema_and_parses_the_answer() -> None:
-    client = ScriptedClient(json.dumps({"outputs": {"pages": [{"url": "u"}]}, "missing": []}))
+    client = ScriptedClient(
+        json.dumps({"structured_output": {"pages": [{"url": "u"}]}, "missing": []})
+    )
     assert await extract("pages: [{url: u}]", SCHEMA, client) == (
-        Extraction(outputs={"pages": [{"url": "u"}]}, missing=[])
+        Extraction(structured_output={"pages": [{"url": "u"}]}, missing=[])
     )
     (step,) = client.steps
     assert step.prompt == "pages: [{url: u}]"
@@ -59,15 +61,17 @@ async def test_extract_sends_the_text_with_the_wrapped_schema_and_parses_the_ans
 
 
 async def test_not_stated_is_an_answer_not_a_failure() -> None:
-    client = ScriptedClient(json.dumps({"outputs": None, "missing": ["pages"]}))
-    assert await extract("all done", SCHEMA, client) == Extraction(outputs=None, missing=["pages"])
+    client = ScriptedClient(json.dumps({"structured_output": None, "missing": ["pages"]}))
+    assert await extract("all done", SCHEMA, client) == Extraction(
+        structured_output=None, missing=["pages"]
+    )
 
 
 def test_the_wrapped_schema_allows_null_and_lifts_the_defs() -> None:
     wrapped = extraction_schema(SCHEMA)
-    assert wrapped["required"] == ["outputs", "missing"]
+    assert wrapped["required"] == ["structured_output", "missing"]
     assert wrapped["additionalProperties"] is False
-    inner, null = wrapped["properties"]["outputs"]["anyOf"]
+    inner, null = wrapped["properties"]["structured_output"]["anyOf"]
     assert null == {"type": "null"} and "$defs" not in inner
     assert wrapped["$defs"] == SCHEMA["$defs"]
     assert SCHEMA.get("$defs")  # the input is untouched
@@ -86,7 +90,7 @@ def test_a_hand_written_schema_is_made_strict_at_every_level() -> None:
             "pages": {"type": "array", "items": {"type": "object", "properties": {"url": {}}}},
         },
     }
-    inner, _ = extraction_schema(loose)["properties"]["outputs"]["anyOf"]
+    inner, _ = extraction_schema(loose)["properties"]["structured_output"]["anyOf"]
     assert inner["required"] == ["path", "pages"] and inner["additionalProperties"] is False
     page = inner["properties"]["pages"]["items"]
     assert page["required"] == ["url"] and page["additionalProperties"] is False
@@ -94,7 +98,7 @@ def test_a_hand_written_schema_is_made_strict_at_every_level() -> None:
 
 
 def test_prompt_clips_a_long_text(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(settings.outputs, "max_chars", 50)
+    monkeypatch.setattr(settings.structured_output, "max_chars", 50)
     prompt = prompt_for("x" * 500)
     assert "[...]" in prompt and len(prompt) <= 50
 

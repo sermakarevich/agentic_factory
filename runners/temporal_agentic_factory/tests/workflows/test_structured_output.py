@@ -11,17 +11,20 @@ from temporalio.worker import Worker
 
 from agentic_factory.job.contract import Job, JobResult
 from agentic_factory.job.outcome import JobOutcome
-from agentic_factory.job.outputs.prompt import INSTRUCTION
 from agentic_factory.job.report.contract import JobReport, Verdict
+from agentic_factory.job.structured_output.prompt import INSTRUCTION
 from temporal_agentic_factory import search_attributes
 from temporal_agentic_factory.activities.job import TryResult
-from temporal_agentic_factory.activities.outputs import OutputsRequest
 from temporal_agentic_factory.activities.report import ReportRequest
-from temporal_agentic_factory.workflows.outputs import JobWithOutputsWorkflow, OutputsJob
+from temporal_agentic_factory.activities.structured_output import StructuredOutputRequest
+from temporal_agentic_factory.workflows.structured_output import (
+    JobWithStructuredOutputWorkflow,
+    StructuredOutputJob,
+)
 
 SCHEMA = {"type": "object", "properties": {"urls": {"type": "array", "items": {"type": "string"}}}}
 prompts: list[str] = []
-extractions: list[OutputsRequest] = []
+extractions: list[StructuredOutputRequest] = []
 
 
 @activity.defn(name="create_session")
@@ -50,16 +53,16 @@ async def fake_record(outcome: JobOutcome) -> None:
     return None
 
 
-@activity.defn(name="extract_outputs")
-async def fake_extract(request: OutputsRequest) -> dict[str, Any]:
+@activity.defn(name="extract_structured_output")
+async def fake_extract(request: StructuredOutputRequest) -> dict[str, Any]:
     extractions.append(request)
     return {"urls": ["u"]}
 
 
-@activity.defn(name="extract_outputs")
-async def nothing_stated(request: OutputsRequest) -> dict[str, Any]:
+@activity.defn(name="extract_structured_output")
+async def nothing_stated(request: StructuredOutputRequest) -> dict[str, Any]:
     raise ApplicationError(
-        "the coder did not state: urls", type="OutputsNotStated", non_retryable=True
+        "the coder did not state: urls", type="StructuredOutputNotStated", non_retryable=True
     )
 
 
@@ -75,26 +78,28 @@ async def _run(activities: list[Any]) -> Any:
         async with Worker(
             env.client,
             task_queue=queue,
-            workflows=[JobWithOutputsWorkflow],
+            workflows=[JobWithStructuredOutputWorkflow],
             activities=[fake_session, fake_report, fake_record, *activities],
         ):
             return await env.client.execute_workflow(
-                JobWithOutputsWorkflow.run,
-                OutputsJob(job=Job(prompt="fetch", workdir=".", model="m"), outputs_schema=SCHEMA),
+                JobWithStructuredOutputWorkflow.run,
+                StructuredOutputJob(
+                    job=Job(prompt="fetch", workdir=".", model="m"), output_schema=SCHEMA
+                ),
                 id=f"j-{uuid.uuid4()}",
                 task_queue=queue,
             )
 
 
-async def test_the_job_is_asked_for_the_outputs_and_the_result_carries_them() -> None:
+async def test_the_job_is_asked_for_the_structured_output_and_the_result_carries_it() -> None:
     prompts.clear()
     extractions.clear()
     result = await _run([fake_job, fake_extract])
-    assert result.outputs == {"urls": ["u"]}
+    assert result.structured_output == {"urls": ["u"]}
     assert result.outcome.session_id == "s1" and result.outcome.report is not None
     (prompt,) = prompts
     assert prompt.startswith("fetch\n\n" + INSTRUCTION) and "- urls (array of string)" in prompt
-    assert extractions == [OutputsRequest(session_id="s1", outputs_schema=SCHEMA)]
+    assert extractions == [StructuredOutputRequest(session_id="s1", output_schema=SCHEMA)]
 
 
 async def test_a_job_that_failed_for_good_fails_the_workflow() -> None:
@@ -104,8 +109,11 @@ async def test_a_job_that_failed_for_good_fails_the_workflow() -> None:
     assert "Stalled" in err.value.cause.message
 
 
-async def test_outputs_not_stated_fails_the_workflow() -> None:
+async def test_structured_output_not_stated_fails_the_workflow() -> None:
     with pytest.raises(WorkflowFailureError) as err:
         await _run([fake_job, nothing_stated])
     step_failure = err.value.cause.cause if err.value.cause else None
-    assert isinstance(step_failure, ApplicationError) and step_failure.type == "OutputsNotStated"
+    assert (
+        isinstance(step_failure, ApplicationError)
+        and step_failure.type == "StructuredOutputNotStated"
+    )

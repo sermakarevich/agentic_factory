@@ -5,15 +5,15 @@ import pytest
 from factory_store.store import StoredEvent, StoredSession
 
 from agentic_factory.event import Event, EventKind
-from agentic_factory.failure import OutputsNotStated
-from agentic_factory.job.outputs import extract as module
-from agentic_factory.job.outputs.contract import Extraction, Schema
-from agentic_factory.job.outputs.extract import extract_outputs, last_message
+from agentic_factory.failure import StructuredOutputNotStated
+from agentic_factory.job.structured_output import extract as module
+from agentic_factory.job.structured_output.contract import Extraction, Schema
+from agentic_factory.job.structured_output.extract import extract_structured_output, last_message
 from agentic_factory.step.providers.client import Client
 
 SCHEMA: Schema = {"type": "object", "properties": {"urls": {"type": "array"}}}
-FOUND = Extraction(outputs={"urls": ["u"]}, missing=[])
-NOT_FOUND = Extraction(outputs=None, missing=["urls"])
+FOUND = Extraction(structured_output={"urls": ["u"]}, missing=[])
+NOT_FOUND = Extraction(structured_output=None, missing=["urls"])
 
 
 class FakeStore:
@@ -21,10 +21,10 @@ class FakeStore:
         self.events = events
         self.saved: list[tuple[str, Schema, dict[str, Any], str]] = []
 
-    async def save_outputs(
-        self, session_id: str, schema: Schema, outputs: dict[str, Any], source: str
+    async def save_structured_output(
+        self, session_id: str, schema: Schema, structured_output: dict[str, Any], source: str
     ) -> None:
-        self.saved.append((session_id, schema, outputs, str(source)))
+        self.saved.append((session_id, schema, structured_output, str(source)))
 
     async def load_session(self, session_id: str) -> StoredSession | None:
         return StoredSession(
@@ -76,14 +76,14 @@ def test_last_message_is_the_last_ai_event_with_text() -> None:
     assert last_message(ROWS[2:3]) == ""
 
 
-async def test_the_last_message_is_enough_when_it_states_the_outputs(
+async def test_the_last_message_is_enough_when_it_states_the_structured_output(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     step = Scripted(FOUND)
     monkeypatch.setattr(module, "extract", step)
     db = FakeStore(ROWS)
-    outputs = await extract_outputs(db, "s1", SCHEMA, client=None)  # type: ignore[arg-type]
-    assert outputs == {"urls": ["u"]}
+    structured_output = await extract_structured_output(db, "s1", SCHEMA, client=None)  # type: ignore[arg-type]
+    assert structured_output == {"urls": ["u"]}
     assert step.texts == ["urls: [u]"]
     assert db.saved == [("s1", SCHEMA, {"urls": ["u"]}, "last_message")]
 
@@ -94,8 +94,8 @@ async def test_the_conversation_is_read_when_the_last_message_does_not_state_the
     step = Scripted(NOT_FOUND, FOUND)
     monkeypatch.setattr(module, "extract", step)
     db = FakeStore(ROWS)
-    outputs = await extract_outputs(db, "s1", SCHEMA, client=None)  # type: ignore[arg-type]
-    assert outputs == {"urls": ["u"]}
+    structured_output = await extract_structured_output(db, "s1", SCHEMA, client=None)  # type: ignore[arg-type]
+    assert structured_output == {"urls": ["u"]}
     assert db.saved == [("s1", SCHEMA, {"urls": ["u"]}, "conversation")]
     assert len(step.texts) == 2
     assert step.texts[1].startswith("user: fetch\n===== try 1 =====\nassistant: urls: [a]")
@@ -108,7 +108,7 @@ async def test_a_job_with_no_message_goes_straight_to_the_conversation(
     step = Scripted(FOUND)
     monkeypatch.setattr(module, "extract", step)
     rows = [stored(1, 1, EventKind.TOOL, "out")]
-    await extract_outputs(FakeStore(rows), "s1", SCHEMA, client=None)  # type: ignore[arg-type]
+    await extract_structured_output(FakeStore(rows), "s1", SCHEMA, client=None)  # type: ignore[arg-type]
     assert step.texts == ["user: fetch\n===== try 1 =====\ntool : out"]
 
 
@@ -117,7 +117,7 @@ async def test_not_stated_anywhere_fails_and_names_the_fields(
 ) -> None:
     monkeypatch.setattr(module, "extract", Scripted(NOT_FOUND, NOT_FOUND))
     db = FakeStore(ROWS)
-    with pytest.raises(OutputsNotStated, match="did not state: urls"):
-        await extract_outputs(db, "s1", SCHEMA, client=None)  # type: ignore[arg-type]
-    assert not OutputsNotStated.retryable
+    with pytest.raises(StructuredOutputNotStated, match="did not state: urls"):
+        await extract_structured_output(db, "s1", SCHEMA, client=None)  # type: ignore[arg-type]
+    assert not StructuredOutputNotStated.retryable
     assert db.saved == []

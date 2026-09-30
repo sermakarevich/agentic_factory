@@ -213,21 +213,21 @@ async def test_event_payload_with_nul_comes_back_escaped() -> None:
         await store.dispose()
 
 
-async def test_outputs_round_trip_and_replace_earlier_rows() -> None:
+async def test_structured_output_round_trip_and_replace_earlier_rows() -> None:
     store = await make_store()
     try:
         await store.start_session("s1", "opencode", "m", "/w", "fetch")
-        assert await store.load_outputs("s1") is None
+        assert await store.load_structured_output("s1") is None
         schema_dict: dict[str, Any] = {"type": "object", "properties": {"urls": {}}}
-        await store.save_outputs("s1", schema_dict, {"urls": []}, "last_message")
-        await store.save_outputs("s1", schema_dict, {"urls": ["u"]}, "conversation")
-        stored = await store.load_outputs("s1")
+        await store.save_structured_output("s1", schema_dict, {"urls": []}, "last_message")
+        await store.save_structured_output("s1", schema_dict, {"urls": ["u"]}, "conversation")
+        stored = await store.load_structured_output("s1")
         assert stored is not None
-        assert (stored.source, dict(stored.outputs)) == ("conversation", {"urls": ["u"]})
+        assert (stored.source, dict(stored.structured_output)) == ("conversation", {"urls": ["u"]})
         assert dict(stored.schema) == schema_dict
         assert stored.created_at.tzinfo is not None
         async with store.engine.connect() as conn:
-            result = await conn.execute(select(schema.outputs))
+            result = await conn.execute(select(schema.structured_output))
             assert len(result.mappings().all()) == 1
     finally:
         await store.dispose()

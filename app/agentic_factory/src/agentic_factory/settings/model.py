@@ -60,7 +60,7 @@ class ReportSettings(Table):
     max_chars: int
 
 
-class OutputsSettings(Table):
+class StructuredOutputSettings(Table):
     max_chars: int
 
 
@@ -73,4 +73,4 @@ class Settings(Table):
     log: LogSettings
     conversation: ConversationSettings
     report: ReportSettings
-    outputs: OutputsSettings
+    structured_output: StructuredOutputSettings

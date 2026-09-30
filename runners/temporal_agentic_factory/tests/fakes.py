@@ -56,7 +56,11 @@ class FakeStore:
     ) -> None:
         self.calls.append(("save_report", session_id, result, summary, str(verdict)))
 
-    async def save_outputs(
-        self, session_id: str, schema: dict[str, Any], outputs: dict[str, Any], source: str
+    async def save_structured_output(
+        self,
+        session_id: str,
+        schema: dict[str, Any],
+        structured_output: dict[str, Any],
+        source: str,
     ) -> None:
-        self.calls.append(("save_outputs", session_id, schema, outputs, source))
+        self.calls.append(("save_structured_output", session_id, schema, structured_output, source))

@@ -12,7 +12,7 @@ from agentic_factory.job.coders.catalog import harness_for
 from agentic_factory.job.contract import Job
 from agentic_factory.job.defaults import with_default_model
 from agentic_factory.job.outcome import JobOutcome
-from agentic_factory.job.outputs.contract import Schema
+from agentic_factory.job.structured_output.contract import Schema
 from agentic_factory.logging_setup import configure_logging
 from temporal_agentic_factory import search_attributes
 from temporal_agentic_factory.client import connect
@@ -20,10 +20,10 @@ from temporal_agentic_factory.identity import runner_identity
 from temporal_agentic_factory.runner import serve
 from temporal_agentic_factory.settings.load import settings
 from temporal_agentic_factory.workflows.job import JobWorkflow
-from temporal_agentic_factory.workflows.outputs import (
-    JobWithOutputs,
-    JobWithOutputsWorkflow,
-    OutputsJob,
+from temporal_agentic_factory.workflows.structured_output import (
+    JobWithStructuredOutput,
+    JobWithStructuredOutputWorkflow,
+    StructuredOutputJob,
 )
 
 app = typer.Typer(no_args_is_help=True, help="agentic_factory on Temporal.")
@@ -56,13 +56,14 @@ def run(
     stall_sec: int | None = None,
     context_limit_tokens: int | None = None,
     tools: Annotated[str | None, typer.Option(help="comma-separated allow-list")] = None,
-    outputs: Annotated[
-        str | None, typer.Option(help="JSON schema of the outputs the job must state, or @file")
+    structured_output: Annotated[
+        str | None,
+        typer.Option(help="JSON schema of the structured output the job must state, or @file"),
     ] = None,
 ) -> None:
     """Start one job on Temporal and wait for it. Prints the result as JSON.
-    Options left out keep the settings defaults. With --outputs the job must
-    state them and the result carries them."""
+    Options left out keep the settings defaults. With --structured-output the
+    job must state it and the result carries it."""
     options = {
         "provider": provider,
         "model": model,
@@ -73,10 +74,14 @@ def run(
     }
     job = Job(prompt=prompt, workdir=_absolute(workdir), **_given(options))
     job = with_default_model(job, harness_for(job.provider))  # so the UI shows the model
-    if outputs is None:
+    if structured_output is None:
         typer.echo(asyncio.run(_job_outcome(job)).model_dump_json(indent=2))
     else:
-        typer.echo(asyncio.run(_job_with_outputs(job, _schema(outputs))).model_dump_json(indent=2))
+        typer.echo(
+            asyncio.run(
+                _job_with_structured_output(job, _schema(structured_output))
+            ).model_dump_json(indent=2)
+        )
 
 
 def _tool_list(tools: str | None) -> list[str] | None:
@@ -89,7 +94,7 @@ def _absolute(workdir: str) -> str:
 
 
 def _schema(option: str) -> Schema:
-    """The `--outputs` option as a JSON schema: given inline, or as `@file`."""
+    """The `--structured-output` option as a JSON schema: given inline, or as `@file`."""
     text = Path(option[1:]).read_text() if option.startswith("@") else option
     schema: Schema = json.loads(text)
     return schema
@@ -116,12 +121,12 @@ async def _job_outcome(job: Job) -> JobOutcome:
     return await _awaited(handle)
 
 
-async def _job_with_outputs(job: Job, schema: Schema) -> JobWithOutputs:
-    """The job-with-outputs workflow started and waited for."""
+async def _job_with_structured_output(job: Job, schema: Schema) -> JobWithStructuredOutput:
+    """The job-with-structured-output workflow started and waited for."""
     client = await connect()
     handle = await client.start_workflow(
-        JobWithOutputsWorkflow.run,
-        OutputsJob(job=job, outputs_schema=schema),
+        JobWithStructuredOutputWorkflow.run,
+        StructuredOutputJob(job=job, output_schema=schema),
         id=f"job-{uuid4().hex[: settings.cli.job_id_chars]}",
         task_queue=settings.temporal.task_queue,
         search_attributes=search_attributes.at_start(job),

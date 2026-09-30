@@ -24,8 +24,8 @@ common/factory_settings            the settings loader
 
 | Component | What it does |
 |---|---|
-| `schema` | The tables: session, attempt (one try), event, conversation, job, report, outputs. |
-| `Store` | The async API over them. One method is one short transaction: start a session or try, append an event, finish a try, save the job, conversation, report and outputs, load any of them back. |
+| `schema` | The tables: session, attempt (one try), event, conversation, job, report, structured_output. |
+| `Store` | The async API over them. One method is one short transaction: start a session or try, append an event, finish a try, save the job, conversation, report and structured output, load any of them back. |
 | `clean` | Makes text safe for Postgres (no NUL characters). |
 | `migrations/` | Alembic migrations that create and change the tables. |
 
@@ -41,7 +41,7 @@ Knows nothing about Temporal. Everything runs from a test or a script.
 | **job/process** | Starting, killing and reading a coder process. |
 | **job/summary** | The summary the coder writes at the end: its shape, the prompt asking for it, finding and parsing it, repairing it with a step when it is broken. |
 | **job/report** | After the job: the conversation rendered from stored events, and the step that judges it and writes a report. |
-| **job/outputs** | Typed outputs a workflow needs from a job: the prompt that asks the coder to state them, and the step that picks them out of its last message, or of the whole conversation. |
+| **job/structured_output** | The schema-shaped output a workflow needs from a job: the prompt that asks the coder to state it, and the step that picks it out of its last message, or of the whole conversation. |
 | **job** helpers (`session`, `continuation`, `ledger`, `context`, `usage`, `record`, `outcome`) | Make the session before try 1, re-prompt for a retry, add up tokens and cost, compact a large context, read lost usage back, write the job row. |
 | **step** | One structured-output request to a model. `contract` is `Step` and `StepResult`; `engine` sends it and validates the answer; `providers/` holds one client per API and `catalog` picks one. |
 | **callbacks** | Where a run's start, events and end go: the log, JSON lines, the journal that writes events and try rows to the store, and `fanout` that sends to several at once. |
@@ -54,10 +54,10 @@ not mention Temporal, it belongs in the app.
 
 | Component | What it does |
 |---|---|
-| `cli` (`factory`) | `runner` starts the poller, `run` starts one job and waits (`--outputs <schema>` asks for typed outputs), `attributes` registers the search attributes on the server. |
+| `cli` (`factory`) | `runner` starts the poller, `run` starts one job and waits (`--structured-output <schema>` asks for a structured output), `attributes` registers the search attributes on the server. |
 | `runner` | The worker: connects, builds the store and the callbacks, registers the activities and workflows, polls the task queue. |
 | `workflows/job` | The job workflow: make the session, run the job activity with retries, report, record. Deterministic, no I/O. |
-| `workflows/outputs` | The job-with-outputs workflow: the job asked for its outputs, then the extraction activity; fails when they were not stated. |
-| `activities/` | One activity per app call (session, job, report, outputs, record). `failure` maps app failures to Temporal retry behaviour; `heartbeat` keeps a long job alive. |
+| `workflows/structured_output` | The job-with-structured-output workflow: the job asked for its output, then the extraction activity; fails when it was not stated. |
+| `activities/` | One activity per app call (session, job, report, structured_output, record). `failure` maps app failures to Temporal retry behaviour; `heartbeat` keeps a long job alive. |
 | `search_attributes` | The columns and filters the Temporal UI shows for a job. |
 | `client`, `identity`, `settings` | Connecting to the server, naming the runner (`host:pid:sha`), where the server is and how long activities may take. |

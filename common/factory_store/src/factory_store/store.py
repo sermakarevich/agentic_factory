@@ -41,14 +41,15 @@ class StoredEvent:
 
 
 @dataclass(frozen=True)
-class StoredOutputs:
-    """One `outputs` row: what the workflow asked for, what was found, and where."""
+class StoredStructuredOutput:
+    """One `structured_output` row: what the workflow asked for, what was
+    found, and where."""
 
     session_id: str
     created_at: datetime
     source: str
     schema: dict[str, Any]
-    outputs: dict[str, Any]
+    structured_output: dict[str, Any]
 
 
 @dataclass(frozen=True)
@@ -268,31 +269,37 @@ class Store:
                 },
             )
 
-    async def save_outputs(
-        self, session_id: str, schema: dict[str, Any], outputs: dict[str, Any], source: str
+    async def save_structured_output(
+        self,
+        session_id: str,
+        schema: dict[str, Any],
+        structured_output: dict[str, Any],
+        source: str,
     ) -> None:
-        """Insert or replace the outputs row (created_at = now UTC)."""
+        """Insert or replace the structured_output row (created_at = now UTC)."""
         async with self.engine.begin() as conn:
             await _upsert(
                 conn,
-                schema_.outputs,
+                schema_.structured_output,
                 {"session_id": session_id},
                 {
                     "created_at": _now(),
                     "source": source,
                     "schema": without_nul(schema),
-                    "outputs": without_nul(outputs),
+                    "structured_output": without_nul(structured_output),
                 },
             )
 
-    async def load_outputs(self, session_id: str) -> StoredOutputs | None:
-        """The outputs row, or None when the job was not asked for any."""
+    async def load_structured_output(self, session_id: str) -> StoredStructuredOutput | None:
+        """The structured_output row, or None when the job was not asked for any."""
         async with self.engine.begin() as conn:
             result = await conn.execute(
-                select(schema_.outputs).where(schema_.outputs.c.session_id == session_id)
+                select(schema_.structured_output).where(
+                    schema_.structured_output.c.session_id == session_id
+                )
             )
             row = result.mappings().first()
-            return _stored_outputs(row) if row is not None else None
+            return _stored_structured_output(row) if row is not None else None
 
 
 ABANDONED = "abandoned: a later try started while this one was still running"
@@ -379,13 +386,13 @@ def _stored_session(row: RowMapping) -> StoredSession:
     )
 
 
-def _stored_outputs(row: RowMapping) -> StoredOutputs:
-    return StoredOutputs(
+def _stored_structured_output(row: RowMapping) -> StoredStructuredOutput:
+    return StoredStructuredOutput(
         session_id=row["session_id"],
         created_at=_as_utc(row["created_at"]),
         source=row["source"],
         schema=row["schema"],
-        outputs=row["outputs"],
+        structured_output=row["structured_output"],
     )
 
 

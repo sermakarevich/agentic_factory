@@ -3,14 +3,14 @@ from factory_store.store import Store
 from temporalio.exceptions import ApplicationError
 from temporalio.testing import ActivityEnvironment
 
-from agentic_factory.failure import OutputsNotStated
-from agentic_factory.job.outputs.contract import Schema
+from agentic_factory.failure import StructuredOutputNotStated
+from agentic_factory.job.structured_output.contract import Schema
 from agentic_factory.step.providers.client import Client
-from temporal_agentic_factory.activities import outputs as activity
+from temporal_agentic_factory.activities import structured_output as activity
 from tests.fakes import FakeStore
 
 SCHEMA: Schema = {"type": "object", "properties": {"urls": {"type": "array"}}}
-REQUEST = activity.OutputsRequest(session_id="s1", outputs_schema=SCHEMA)
+REQUEST = activity.StructuredOutputRequest(session_id="s1", output_schema=SCHEMA)
 
 
 @pytest.fixture
@@ -18,8 +18,8 @@ def db() -> FakeStore:
     return FakeStore()
 
 
-def extract_outputs(db: FakeStore) -> activity.OutputsActivity:
-    return activity.OutputsActivity(db)  # type: ignore[arg-type]
+def extract_structured_output(db: FakeStore) -> activity.StructuredOutputActivity:
+    return activity.StructuredOutputActivity(db)  # type: ignore[arg-type]
 
 
 async def test_the_app_extracts_with_the_store_the_schema_and_a_step_client(
@@ -33,8 +33,10 @@ async def test_the_app_extracts_with_the_store_the_schema_and_a_step_client(
         given.append((store, session_id, schema, client))
         return {"urls": ["u"]}
 
-    monkeypatch.setattr(activity.outputs, "extract_outputs", fake_extract)
-    found = await ActivityEnvironment().run(extract_outputs(db).extract_outputs, REQUEST)
+    monkeypatch.setattr(activity.structured_output, "extract_structured_output", fake_extract)
+    found = await ActivityEnvironment().run(
+        extract_structured_output(db).extract_structured_output, REQUEST
+    )
 
     assert found == {"urls": ["u"]}
     ((store, session_id, schema, client),) = given
@@ -48,9 +50,11 @@ async def test_not_stated_becomes_a_final_typed_error(
     async def fake_extract(
         store: Store, session_id: str, schema: Schema, client: Client
     ) -> dict[str, list[str]]:
-        raise OutputsNotStated("the coder did not state: urls")
+        raise StructuredOutputNotStated("the coder did not state: urls")
 
-    monkeypatch.setattr(activity.outputs, "extract_outputs", fake_extract)
+    monkeypatch.setattr(activity.structured_output, "extract_structured_output", fake_extract)
     with pytest.raises(ApplicationError) as err:
-        await ActivityEnvironment().run(extract_outputs(db).extract_outputs, REQUEST)
-    assert err.value.type == "OutputsNotStated" and err.value.non_retryable
+        await ActivityEnvironment().run(
+            extract_structured_output(db).extract_structured_output, REQUEST
+        )
+    assert err.value.type == "StructuredOutputNotStated" and err.value.non_retryable

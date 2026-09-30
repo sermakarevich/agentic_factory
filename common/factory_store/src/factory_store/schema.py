@@ -126,14 +126,14 @@ report = Table(
     Column("verdict", String, nullable=False),
 )
 
-# The typed outputs a workflow asked the job for, once a step picked them out
-# of the coder's text. Only jobs asked for outputs have a row.
-outputs = Table(
-    "outputs",
+# The structured output a workflow asked the job for, once a step picked it
+# out of the coder's text. Only jobs asked for one have a row.
+structured_output = Table(
+    "structured_output",
     metadata,
     Column("session_id", String, ForeignKey("session.id"), primary_key=True),
     Column("created_at", STAMP, nullable=False),
     Column("source", String, nullable=False),  # where they were found: last_message | conversation
     Column("schema", PAYLOAD, nullable=False),  # the JSON schema the workflow asked for
-    Column("outputs", PAYLOAD, nullable=False),  # the outputs, matching it
+    Column("structured_output", PAYLOAD, nullable=False),  # the output, matching it
 )
