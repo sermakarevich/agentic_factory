@@ -28,7 +28,7 @@ def run_migrations_offline() -> None:
         context.run_migrations()
 
 
-def _run(connection: Connection) -> None:
+def _migrate_on_connection(connection: Connection) -> None:
     context.configure(connection=connection, target_metadata=metadata)
     with context.begin_transaction():
         context.run_migrations()
@@ -37,7 +37,7 @@ def _run(connection: Connection) -> None:
 async def run_migrations_online() -> None:
     engine = async_engine_from_config(config.get_section(config.config_ini_section, {}))
     async with engine.connect() as connection:
-        await connection.run_sync(_run)
+        await connection.run_sync(_migrate_on_connection)
     await engine.dispose()
 
 

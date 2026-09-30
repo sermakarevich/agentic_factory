@@ -51,7 +51,7 @@ attempt = Table(
     Column("attempt", Integer, nullable=False),  # Temporal's attempt number, from 1
     Column("started_at", STAMP, nullable=False),
     Column("ended_at", STAMP, nullable=True),
-    Column("outcome", String, nullable=False, default=Outcome.RUNNING),
+    Column("outcome", String, nullable=False, default=Outcome.RUNNING.value),
     Column("failure", Text, nullable=False, default=""),
     UniqueConstraint("session_id", "attempt", name="uq_attempt_session_attempt"),
 )
@@ -65,7 +65,7 @@ event = Table(
     Column("session_id", String, ForeignKey("session.id"), nullable=False, index=True),
     Column("attempt", Integer, nullable=False),
     Column("at", STAMP, nullable=False),
-    Column("kind", String, nullable=False),  # agentic_factory.event.EventKind value
+    Column("kind", String, nullable=False),  # the event kind, as the app names it
     Column("payload", PAYLOAD, nullable=False),  # the whole Event, json-dumped
 )
 
@@ -83,7 +83,7 @@ report = Table(
     metadata,
     Column("session_id", String, ForeignKey("session.id"), primary_key=True),
     Column("created_at", STAMP, nullable=False),
-    Column("result", PAYLOAD, nullable=False),  # the JobResult, json-dumped; {} when the job failed
+    Column("result", PAYLOAD, nullable=False),  # the job result as json; {} when the job failed
     Column("summary", PAYLOAD, nullable=False),  # the structured report a model wrote
     Column("verdict", String, nullable=False),
 )
