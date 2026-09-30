@@ -12,6 +12,7 @@ members = ["app/*", "runners/temporal_agentic_factory", "common/*"]
 
 [tool.uv.sources]
 agentic-factory = { workspace = true }
+factory-store = { workspace = true }
 
 [dependency-groups]
 dev = [
@@ -19,6 +20,7 @@ dev = [
     "pytest-asyncio>=0.24",
     "ruff>=0.6",
     "mypy>=1.11",
+    "aiosqlite>=0.20",  # in-memory database for factory_store tests
 ]
 
 # Shared tool config. Each package inherits it via `extend`.

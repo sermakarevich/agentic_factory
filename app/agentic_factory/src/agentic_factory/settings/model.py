@@ -45,6 +45,10 @@ class LogSettings(BaseModel):
     content_width: int
 
 
+class StoreSettings(BaseModel):
+    url: str
+
+
 class Settings(BaseModel):
     """Typed view of settings.toml after dynaconf merged the overrides."""
 
@@ -52,3 +56,4 @@ class Settings(BaseModel):
     harness: HarnessesSettings
     step: StepSettings
     log: LogSettings
+    store: StoreSettings

@@ -35,3 +35,6 @@ retry_after_default_sec = 60         # wait after a rate limit that names no ret
 
 [log]
 content_width = 160           # longest event text on one log line
+
+[store]
+url = "postgresql+asyncpg://factory:factory@127.0.0.1:5432/factory"  # the database of `just db`; async driver required

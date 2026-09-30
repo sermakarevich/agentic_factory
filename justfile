@@ -3,7 +3,7 @@ set positional-arguments
 # agentic_factory — monorepo commands. Run `just` to list them.
 # Each package has its own justfile; these recipes fan out to them.
 
-packages := "app/agentic_factory runners/temporal_agentic_factory"
+packages := "common/factory_store app/agentic_factory runners/temporal_agentic_factory"
 
 # default: show available recipes
 default:
@@ -52,3 +52,16 @@ job *ARGS:
 # One step, a structured-output request (OpenCode Go API); no args = demo. See app/agentic_factory/justfile.
 step *ARGS:
     just --justfile app/agentic_factory/justfile --working-directory app/agentic_factory step "$@"
+
+# start Postgres (docker compose, 127.0.0.1:5432, user/password/db "factory") and apply the migrations
+db:
+    docker compose up -d --wait postgres
+    just db-migrate
+
+# stop Postgres; the data stays in its volume
+db-stop:
+    docker compose stop postgres
+
+# apply every migration to the database (FACTORY_STORE_URL overrides the local default)
+db-migrate:
+    just --justfile common/factory_store/justfile --working-directory common/factory_store migrate

@@ -1,0 +1,37 @@
+set positional-arguments
+
+# factory_store — the database package. Run `just` to list.
+
+default:
+    @just --list
+
+# lint source, tests and migrations
+lint:
+    uv run ruff check src tests migrations
+
+# format source, tests and migrations
+fmt:
+    uv run ruff format src tests migrations
+
+# fail if anything needs formatting
+fmt-check:
+    uv run ruff format --check src tests migrations
+
+# static types
+typecheck:
+    uv run mypy src
+
+# unit tests (on an in-memory sqlite; Postgres is not needed)
+test *ARGS:
+    uv run pytest -q -p no:cacheprovider tests {{ARGS}}
+
+# one command that says "green"
+check: lint fmt-check typecheck test
+
+# apply every migration to the database in FACTORY_STORE_URL (default: the local Postgres of `just db`)
+migrate:
+    uv run alembic upgrade head
+
+# write a migration from the difference between schema.py and the database: just revision "what changed"
+revision message:
+    uv run alembic revision --autogenerate -m "$1"
