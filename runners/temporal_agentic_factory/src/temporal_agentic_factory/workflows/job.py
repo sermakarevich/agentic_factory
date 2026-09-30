@@ -49,7 +49,7 @@ async def _with_session(job: Job) -> Job:
     return job
 
 
-async def _execute(job: Job) -> JobResult:
+async def _execute_job_activity(job: Job) -> JobResult:
     """One job run: the execute_job activity with its timeouts and retries."""
     cfg = settings.job_activity
     return await workflow.execute_activity(
@@ -67,10 +67,10 @@ async def run_job(job: Job) -> JobResult:
     without a session gets one first, so that every try runs in it. For any
     workflow that has a job in it."""
     job = await _with_session(job)
-    return await _execute(job)
+    return await _execute_job_activity(job)
 
 
-def _describe(error: ActivityError) -> str:
+def _failure_text(error: ActivityError) -> str:
     """The cause's message when the activity failed with a typed error."""
     cause = error.cause
     if isinstance(cause, ApplicationError):
@@ -83,8 +83,8 @@ async def run_job_with_report(job: Job) -> JobOutcome:
     job still gets its report, then the outcome carries the failure instead of
     a result. A failed report step is not fatal: the outcome has none."""
     job = await _with_session(job)
-    request = await _execute_for_report(job)
-    report = await _report(request)
+    request = await _job_as_report_request(job)
+    report = await _report_or_none(request)
     return JobOutcome(
         session_id=job.session_id,
         result=request.result,
@@ -93,16 +93,16 @@ async def run_job_with_report(job: Job) -> JobOutcome:
     )
 
 
-async def _execute_for_report(job: Job) -> ReportRequest:
+async def _job_as_report_request(job: Job) -> ReportRequest:
     """The job run, as the report step wants it: its result, or the failure
     that ended it after every try."""
     try:
-        return ReportRequest(session_id=job.session_id, result=await _execute(job))
+        return ReportRequest(session_id=job.session_id, result=await _execute_job_activity(job))
     except ActivityError as error:
-        return ReportRequest(session_id=job.session_id, failure=_describe(error))
+        return ReportRequest(session_id=job.session_id, failure=_failure_text(error))
 
 
-async def _report(request: ReportRequest) -> JobReport | None:
+async def _report_or_none(request: ReportRequest) -> JobReport | None:
     """The report activity with the step policy; None when it failed for good."""
     cfg = settings.step_activity
     try:

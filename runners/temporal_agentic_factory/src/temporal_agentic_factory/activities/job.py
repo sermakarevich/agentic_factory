@@ -5,11 +5,16 @@ from temporalio import activity
 
 from agentic_factory.failure import JobFailed
 from agentic_factory.job import engine as jobs
+from agentic_factory.job.catalog import harness_for
 from agentic_factory.job.continuation import continue_job
 from agentic_factory.job.contract import Job, JobResult
+from agentic_factory.job.repair import repair_summary
+from agentic_factory.job.summary import JobSummary
 from agentic_factory.observe.fanout import Fanout
 from agentic_factory.observe.journal import JournalObserver
 from agentic_factory.observe.log import LogObserver
+from agentic_factory.settings.load import settings
+from agentic_factory.step.catalog import client_for
 from temporal_agentic_factory.failure import to_application_error
 from temporal_agentic_factory.heartbeat import Heartbeat, HeartbeatObserver
 from temporal_agentic_factory.store import store
@@ -25,14 +30,14 @@ async def execute_job(job: Job) -> JobResult:
     The try and every event of it go to the store, so nothing is lost when
     a try fails or the runner dies."""
     info = activity.info()
-    job = _this_try(job, info)
+    job = _continued_for_this_try(job, info)
     db = store()
     await db.start_try(job.session_id, info.attempt)
     observer = Fanout(
         HeartbeatObserver(), LogObserver(), JournalObserver(db, job.session_id, info.attempt)
     )
     try:
-        result = await jobs.run(job, observer)
+        result = await jobs.run(job, observer, harness_for(job.provider), _repair_summary)
     except JobFailed as failure:
         await db.finish_try(job.session_id, info.attempt, Outcome.FAILED, str(failure))
         raise to_application_error(failure) from failure
@@ -43,8 +48,14 @@ async def execute_job(job: Job) -> JobResult:
     return result
 
 
-def _this_try(job: Job, info: activity.Info) -> Job:
+def _continued_for_this_try(job: Job, info: activity.Info) -> Job:
     """The job as this try runs it: continued from the earlier tries, with the
     session size the last heartbeat of the previous try reported."""
     previous = Heartbeat.last(info.heartbeat_details)
     return continue_job(job, info.attempt, previous.context_tokens if previous else 0)
+
+
+async def _repair_summary(block: str) -> JobSummary | None:
+    """The engine's repair: the summary step with the client for the step
+    provider from settings, made only when a summary needs repairing."""
+    return await repair_summary(block, client_for(settings.step.provider))

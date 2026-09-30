@@ -267,6 +267,29 @@ stays as it is, however long.
 directory and parsing a stream has no shape a reader or a model can hold.
 Named steps give the plan in six lines and the details behind six names.
 
+### Steps are named by what they do
+
+**Chosen.** A step's name says what it does or returns in plain words:
+`_with_default_model`, `_read_line_within_limits`, `_parse_or_repair_summary`.
+The sequence in `run` reads without opening any step.
+
+**Rejected.** Vague verbs (`_prepare`, `_drive`, `_show`, `_complete`).
+They came out of the first pass at the engine and were sent back: a step
+called `_prepare` hides three unrelated things behind one word, which is
+the mess the split was meant to end.
+
+### Dependencies are given, never resolved as a fallback
+
+**Chosen.** The engines take their harness or client as a required
+argument. The runner activity and the script pick them with `harness_for`
+and `client_for`; the summary repair the engine calls is also handed in,
+with its client made only when a repair is needed. Tests pass fakes.
+
+**Rejected.** `harness = harness or harness_for(job.provider)`: an
+optional argument with a fallback. It is two code paths where the tests
+only ever take one, and it lets the caller forget that the choice of
+harness is its job.
+
 
 - **Monorepo, one uv workspace, three layers.** `app/` owns the domain
   and knows nothing about Temporal; `runners/` owns the engine binding;

@@ -61,10 +61,11 @@ def prompt_for(conversation: str, result: JobResult | None, failure: str) -> str
 
 
 async def report(
-    conversation: str, result: JobResult | None, failure: str = "", client: Client | None = None
+    conversation: str, result: JobResult | None, failure: str, client: Client
 ) -> JobReport:
     """One model step over the conversation. Raises the step's `JobFailed`
-    when the model could not answer; the caller decides what that means."""
+    when the model could not answer; the caller decides what that means.
+    `client` is the one for `settings.step.provider`, the step's provider."""
     step = Step(
         prompt=prompt_for(conversation, result, failure),
         output_schema=JobReport.model_json_schema(),

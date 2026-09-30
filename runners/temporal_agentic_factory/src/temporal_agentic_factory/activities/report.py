@@ -6,6 +6,8 @@ from agentic_factory.job import conversation
 from agentic_factory.job import report as reports
 from agentic_factory.job.contract import JobResult
 from agentic_factory.job.report import JobReport
+from agentic_factory.settings.load import settings
+from agentic_factory.step.catalog import client_for
 from temporal_agentic_factory.failure import to_application_error
 from temporal_agentic_factory.store import store
 
@@ -25,7 +27,8 @@ async def build_report(request: ReportRequest) -> JobReport:
     text = conversation.render(rows)
     await db.save_conversation(request.session_id, text, len(rows))
     try:
-        report = await reports.report(text, request.result, request.failure)
+        client = client_for(settings.step.provider)
+        report = await reports.report(text, request.result, request.failure, client)
     except JobFailed as failure:
         raise to_application_error(failure) from failure
     result = request.result.model_dump(mode="json") if request.result else {}

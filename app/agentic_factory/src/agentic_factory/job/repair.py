@@ -28,9 +28,10 @@ class Silent:
         return None
 
 
-async def repair_summary(block: str, client: Client | None = None) -> JobSummary | None:
+async def repair_summary(block: str, client: Client) -> JobSummary | None:
     """Layer 5: a block that was found but did not parse, handed to a model
-    with the summary schema. None when the model could not fix it either."""
+    with the summary schema. None when the model could not fix it either.
+    `client` is the one for `settings.step.provider`, the step's provider."""
     step = Step(
         prompt=block, output_schema=JobSummary.model_json_schema(), system_prompt=SYSTEM_PROMPT
     )

@@ -116,6 +116,18 @@ package here:
   parsing a stream do not sit in the same body; each becomes a named
   step whose body is the only place that knows how. Long branches of a
   dispatch become one function per branch behind a table.
+- Each step is isolated. It gets what it needs as arguments, returns what
+  it made, and touches nothing the other steps use. A step never reaches
+  into the caller's locals or leaves work half done for the next step.
+- Names say what a function does or returns in plain words, so the
+  sequence of steps reads without opening any of them:
+  `_with_default_model`, `_read_line_within_limits`, `_job_as_report_request`.
+  Never a vague verb: `_prepare`, `_process`, `_handle`, `_drive`,
+  `_setup`, `_do`, `_run` (for anything but the engine's entry point).
+- One way to get a dependency. A function takes the harness, client or
+  store it needs as a required argument; the caller picks it
+  (`harness_for`, `client_for`). Never `x = x or make_x()`: an optional
+  argument with a fallback is two code paths, one of them untested.
 - No hardcoded knobs. A value that tunes behaviour (a size, width,
   limit, timeout, delay, default) lives in the package's
   `settings/settings.toml` with a typed field in `settings/model.py` and

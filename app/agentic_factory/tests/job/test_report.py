@@ -30,7 +30,7 @@ async def test_report_sends_the_transcript_and_parses_the_verdict() -> None:
     client = ScriptedClient(
         json.dumps({"task": "t", "done": ["a"], "not_done": [], "problems": [], "verdict": "done"})
     )
-    assert await report("hello", JobResult(summary_text='{"job_summary": 1}'), client=client) == (
+    assert await report("hello", JobResult(summary_text='{"job_summary": 1}'), "", client) == (
         JobReport(task="t", done=["a"], not_done=[], problems=[], verdict=Verdict.DONE)
     )
     (step,) = client.steps
@@ -55,4 +55,4 @@ def test_prompt_clips_a_long_conversation(monkeypatch: pytest.MonkeyPatch) -> No
 
 async def test_bad_answer_raises() -> None:
     with pytest.raises(JobFailed):
-        await report("hello", None, client=ScriptedClient("not json"))
+        await report("hello", None, "", ScriptedClient("not json"))

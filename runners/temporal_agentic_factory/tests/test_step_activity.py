@@ -12,7 +12,7 @@ CALL = Step(prompt="p", output_schema={"type": "object"}, provider="opencode")
 
 
 async def test_call_returns_the_engine_result(monkeypatch: pytest.MonkeyPatch) -> None:
-    async def fake_run(step: Step, observer: Observer, client: Client | None = None) -> StepResult:
+    async def fake_run(step: Step, observer: Observer, client: Client) -> StepResult:
         return StepResult(output={"ok": True}, model=step.model)
 
     monkeypatch.setattr(activity.steps, "run", fake_run)
@@ -21,7 +21,7 @@ async def test_call_returns_the_engine_result(monkeypatch: pytest.MonkeyPatch) -
 
 
 async def test_bad_output_is_a_typed_error(monkeypatch: pytest.MonkeyPatch) -> None:
-    async def fake_run(step: Step, observer: Observer, client: Client | None = None) -> StepResult:
+    async def fake_run(step: Step, observer: Observer, client: Client) -> StepResult:
         raise BadOutput("not json")
 
     monkeypatch.setattr(activity.steps, "run", fake_run)

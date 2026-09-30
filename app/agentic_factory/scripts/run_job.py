@@ -8,7 +8,11 @@ from agentic_factory.failure import JobFailed
 from agentic_factory.job.catalog import harness_for
 from agentic_factory.job.contract import Job
 from agentic_factory.job.engine import run
+from agentic_factory.job.repair import repair_summary
+from agentic_factory.job.summary import JobSummary
 from agentic_factory.observe.log import LogObserver, configure_logging
+from agentic_factory.settings.load import settings
+from agentic_factory.step.catalog import client_for
 
 log = logging.getLogger("agentic_factory.job")
 
@@ -31,6 +35,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return p.parse_args(argv)
 
 
+async def repair(block: str) -> JobSummary | None:
+    """The summary step with the client for the step provider from settings."""
+    return await repair_summary(block, client_for(settings.step.provider))
+
+
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     configure_logging(logging.DEBUG if args.debug else logging.INFO)
@@ -40,7 +49,7 @@ def main(argv: list[str] | None = None) -> int:
     harness = harness_for(job.provider)
     log.info("job       %s %s in %s", job.provider, job.model or harness.default_model, job.workdir)
     try:
-        result = asyncio.run(run(job, LogObserver(as_json=args.json), harness))
+        result = asyncio.run(run(job, LogObserver(as_json=args.json), harness, repair))
     except JobFailed as failure:
         log.error("failed    %s: %s", type(failure).__name__, failure)
         return 1

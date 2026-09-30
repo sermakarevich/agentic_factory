@@ -14,6 +14,10 @@ from agentic_factory.settings.load import settings
 FIXTURE = Path(__file__).parent / "opencode" / "fixtures" / "echo.jsonl"
 
 
+async def no_repair(block: str) -> None:
+    return None
+
+
 class Recorder:
     def __init__(self) -> None:
         self.events: list[Event] = []
@@ -50,14 +54,14 @@ async def test_a_job_without_a_session_runs_in_a_new_one() -> None:
             return ["sh", "-c", f"echo {job.session_id} > sess.txt; {self.script}"]
 
     workdir = FIXTURE.parent
-    await run(job(), Recorder(), harness=SessionCoder(f"cat {FIXTURE}"))
+    await run(job(), Recorder(), repair=no_repair, harness=SessionCoder(f"cat {FIXTURE}"))
     assert (workdir / "sess.txt").read_text().strip() == "ses_made"
     (workdir / "sess.txt").unlink()
 
 
 async def test_replayed_stream_gives_result_and_events() -> None:
     observer = Recorder()
-    result = await run(job(), observer, harness=ScriptedCoder(f"cat {FIXTURE}"))
+    result = await run(job(), observer, repair=no_repair, harness=ScriptedCoder(f"cat {FIXTURE}"))
     assert result.session_id.startswith("ses_")
     assert result.tokens.input == 8847 + 11718
     assert result.duration_sec > 0
@@ -106,7 +110,9 @@ async def test_unparsable_block_goes_to_repair() -> None:
 
 async def test_prompt_is_wrapped_and_the_summary_comes_back_parsed() -> None:
     observer = Recorder()
-    result = await run(job(prompt="do it"), observer, harness=PromptEchoCoder(ECHO_PROMPT))
+    result = await run(
+        job(prompt="do it"), observer, repair=no_repair, harness=PromptEchoCoder(ECHO_PROMPT)
+    )
     turn = next(e for e in observer.events if e.kind == EventKind.AI)
     assert turn.content.startswith("do it\n\n" + INSTRUCTION)  # what the coder was sent
     assert result.summary == JobSummary(**SUMMARY)  # the coder's block, not the template
@@ -115,26 +121,36 @@ async def test_prompt_is_wrapped_and_the_summary_comes_back_parsed() -> None:
 
 async def test_nonzero_exit_is_a_crash_with_stderr() -> None:
     with pytest.raises(CoderCrashed) as exc:
-        await run(job(), Recorder(), harness=ScriptedCoder(f"cat {FIXTURE}; echo boom >&2; exit 3"))
+        await run(
+            job(),
+            Recorder(),
+            repair=no_repair,
+            harness=ScriptedCoder(f"cat {FIXTURE}; echo boom >&2; exit 3"),
+        )
     assert exc.value.exit_code == 3
     assert "boom" in exc.value.stderr
 
 
 async def test_silence_is_a_stall_and_kills_the_coder() -> None:
     with pytest.raises(Stalled):
-        await run(job(stall_sec=1), Recorder(), harness=ScriptedCoder("sleep 30"))
+        await run(job(stall_sec=1), Recorder(), repair=no_repair, harness=ScriptedCoder("sleep 30"))
 
 
 async def test_context_over_limit_is_context_pressure() -> None:
     with pytest.raises(ContextPressure):
         await run(
-            job(context_limit_tokens=10_000), Recorder(), harness=ScriptedCoder(f"cat {FIXTURE}")
+            job(context_limit_tokens=10_000),
+            Recorder(),
+            repair=no_repair,
+            harness=ScriptedCoder(f"cat {FIXTURE}"),
         )
 
 
 async def test_coder_sees_workdir_as_pwd(tmp_path: Path) -> None:
     script = f"echo $PWD > {tmp_path / 'pwd.txt'}; cat {FIXTURE}"
-    await run(job(workdir=str(tmp_path)), Recorder(), harness=ScriptedCoder(script))
+    await run(
+        job(workdir=str(tmp_path)), Recorder(), repair=no_repair, harness=ScriptedCoder(script)
+    )
     assert (tmp_path / "pwd.txt").read_text().strip() == str(tmp_path)
 
 
@@ -162,6 +178,7 @@ async def test_compaction_is_requested_once_per_threshold_crossing(tmp_path: Pat
     await run(
         job(workdir=str(tmp_path)),  # one request, not one per turn
         observer,
+        repair=no_repair,
         harness=CompactingCoder(f"cat {FIXTURE}", marker),
     )
     compactions = [e for e in observer.events if e.kind == EventKind.COMPACTION]
@@ -174,13 +191,16 @@ async def test_no_compaction_below_threshold_or_when_coder_cannot(
 ) -> None:
     marker = tmp_path / "marker"
     await run(  # the fixture stays far below the default threshold
-        job(workdir=str(tmp_path)), Recorder(), harness=CompactingCoder(f"cat {FIXTURE}", marker)
+        job(workdir=str(tmp_path)),
+        Recorder(),
+        repair=no_repair,
+        harness=CompactingCoder(f"cat {FIXTURE}", marker),
     )
     assert not marker.exists()
     monkeypatch.setattr(settings.job, "compact_at_tokens", 1)
     coder = CompactingCoder(f"cat {FIXTURE}", marker)
     coder.compacts_while_running = False  # type: ignore[misc]  # claude-like: flag, not a call
-    await run(job(workdir=str(tmp_path)), Recorder(), harness=coder)
+    await run(job(workdir=str(tmp_path)), Recorder(), repair=no_repair, harness=coder)
     assert not marker.exists()
 
 
@@ -191,6 +211,7 @@ async def test_resume_of_a_large_session_compacts_first(tmp_path: Path) -> None:
     await run(
         job(workdir=str(tmp_path), session_id="old", session_tokens=large),
         observer,
+        repair=no_repair,
         harness=CompactingCoder(f"cat {FIXTURE}", marker),
     )
     assert observer.events[0].kind == EventKind.COMPACTION  # before the coder started
@@ -202,7 +223,7 @@ async def test_failed_compaction_is_reported_and_the_run_goes_on(tmp_path: Path)
     observer = Recorder()
     coder = CompactingCoder(f"cat {FIXTURE}", tmp_path / "unused")
     coder.compact_command = lambda session_id: ["sh", "-c", "echo boom >&2; exit 3"]  # type: ignore[method-assign]
-    result = await run(job(workdir=str(tmp_path)), observer, harness=coder)
+    result = await run(job(workdir=str(tmp_path)), observer, repair=no_repair, harness=coder)
     compactions = [e for e in observer.events if e.kind == EventKind.COMPACTION]
     assert compactions[0].content == "compaction failed: boom"
     assert result.session_id

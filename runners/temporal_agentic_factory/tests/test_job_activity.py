@@ -8,6 +8,8 @@ from temporalio.testing import ActivityEnvironment
 from agentic_factory.event import Event, EventKind, Observer
 from agentic_factory.failure import Stalled
 from agentic_factory.job.contract import Job, JobResult
+from agentic_factory.job.engine import Repair
+from agentic_factory.job.harness import Harness
 from temporal_agentic_factory.activities import job as activity
 from tests.fakes import FakeStore
 
@@ -26,7 +28,7 @@ async def test_second_try_continues_with_the_context_size_from_heartbeat(
 ) -> None:
     ran: list[Job] = []
 
-    async def fake_run(job: Job, observer: Observer) -> JobResult:
+    async def fake_run(job: Job, observer: Observer, harness: Harness, repair: Repair) -> JobResult:
         ran.append(job)
         return JobResult(session_id=job.session_id)
 
@@ -47,7 +49,7 @@ async def test_first_try_runs_the_job_as_given(
 ) -> None:
     ran: list[Job] = []
 
-    async def fake_run(job: Job, observer: Observer) -> JobResult:
+    async def fake_run(job: Job, observer: Observer, harness: Harness, repair: Repair) -> JobResult:
         ran.append(job)
         return JobResult()
 
@@ -59,7 +61,7 @@ async def test_first_try_runs_the_job_as_given(
 async def test_failure_becomes_typed_application_error(
     db: FakeStore, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    async def fake_run(job: Job, observer: Observer) -> JobResult:
+    async def fake_run(job: Job, observer: Observer, harness: Harness, repair: Repair) -> JobResult:
         raise Stalled("quiet")
 
     monkeypatch.setattr(activity.jobs, "run", fake_run)
@@ -71,7 +73,7 @@ async def test_failure_becomes_typed_application_error(
 async def test_a_try_is_opened_closed_and_journaled(
     db: FakeStore, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    async def fake_run(job: Job, observer: Observer) -> JobResult:
+    async def fake_run(job: Job, observer: Observer, harness: Harness, repair: Repair) -> JobResult:
         await observer.on_event(Event(kind=EventKind.AI, at=datetime.now(UTC), content="x"))
         return JobResult()
 
@@ -91,7 +93,7 @@ async def test_a_try_is_opened_closed_and_journaled(
 async def test_a_failed_try_is_closed_as_failed(
     db: FakeStore, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    async def fake_run(job: Job, observer: Observer) -> JobResult:
+    async def fake_run(job: Job, observer: Observer, harness: Harness, repair: Repair) -> JobResult:
         raise Stalled("quiet")
 
     monkeypatch.setattr(activity.jobs, "run", fake_run)
