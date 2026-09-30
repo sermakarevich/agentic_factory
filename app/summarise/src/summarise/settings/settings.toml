@@ -1,0 +1,47 @@
+# Defaults of the summarise application. Override without editing this file:
+#   - settings.local.toml next to it (git-ignored), same layout;
+#   - environment variables AF_<TABLE>__<KEY>, e.g. AF_CHUNKING__CHARS_DEFAULT=8000;
+#   - a .env file in the repo root, read on start.
+
+[vault]
+workdir = "~/.ai"                                     # where every summarise job runs: the knowledge-base repo
+research = "~/.ai/knowledge/research"                 # entries with no topic go here as research/<PascalName>
+investment = "~/.ai/knowledge/investment"             # finance entries go here as investment/<YYYY-MM-DD>-<PascalName>
+research_topics = "~/.ai/knowledge/research_topics"   # one folder per topic; a filed entry moves under its topic
+pdf_copy_max_bytes = 2000000                          # a source PDF up to this size is copied into the entry; a bigger one is linked
+
+[fetch]
+work_root = "~/.local/share/agentic_factory/summarise"  # each run keeps its source.md, chunks/ and downloads under <work_root>/<run id>
+http_timeout_sec = 60                # one GET (page, PDF, README, oEmbed) may take this long
+cli_timeout_sec = 180                # one call of yt, x, pdftotext or git clone may take this long
+max_bytes = 50000000                 # longest body read from a GET or a local file
+user_agent = "Mozilla/5.0 (compatible; agentic-factory-summarise/1.0)"
+http_retry_delays_sec = [3.0, 10.0]  # pauses before GET retries on 406, 429, 5xx or a cut-off body; arXiv answers a burst with a passing 406
+min_text_chars = 200                 # a page or file with less text than this is not a source
+title_chars = 160                    # longest title kept from a page, README, PDF or thread
+
+[fetch.throttle.youtube]
+at_once = 1     # transcript fetches running at the same time in this process; more got the machine's IP blocked
+gap_sec = 1.5   # pause between two of them
+
+[fetch.throttle.x]
+at_once = 1     # thread fetches at the same time; every call costs paid credits
+gap_sec = 1.0   # pause between two of them
+
+[repo]
+readme_chars = 12000    # longest README text put in a clone's overview
+manifest_chars = 8000   # longest manifest (pyproject.toml, package.json, ...) put in the overview
+tree_files_cap = 5000   # the overview stops counting a directory's files past this
+max_file_bytes = 200000 # a source file bigger than this is left out of its component chunk
+
+[chunking]
+chars_default = 12000   # target chunk size when the request does not say
+chars_min = 2000        # a requested chunk size below this is raised to it
+chars_max = 60000       # a requested chunk size above this is lowered to it
+max_chunks = 24         # never more wiki pages than this per entry, whatever the source size
+min_section_chars = 400 # a section shorter than this is folded into its neighbour
+badges_only_chars = 60  # a README section with less real text than this is badges, not content
+slug_chars = 48         # longest kebab-case stem of a chunk file, after its number
+
+[verify]
+min_bytes = 500   # an entry file at or below this size counts as missing

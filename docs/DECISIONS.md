@@ -370,6 +370,23 @@ queues.
 - **Workflows are Python, not YAML.** Graphs are code; a data-driven DAG
   interpreter can be added later if needed. Beads is an input source and
   an output target, not the internal state store.
+- **Summarise: the app's steps, the runner's order** (Sep 30). Fleet's
+  summarise flow was a YAML graph over 1,900 lines of tools (sources,
+  chunking, verify, topics) and prompt files. The tools and prompts moved
+  as they were into `app/summarise`; the graph became
+  `workflows/summarise.py` in the runner, with the fetch and the verifier
+  as activities and every other step a job. Rejected: a summarise
+  package inside `agentic_factory` (a second domain in the first app's
+  tree), and workflow code in the app (it is written against the
+  Temporal API, so it belongs to the runner). The fetch activity's
+  timeout is 300 s, not fleet's 900 s tool ceiling: the app's own
+  limits are 60 s per http call and 180 s per cli call, with two
+  retries.
+- **A job that must succeed raises** (Sep 30). Chained workflows kept
+  writing `if outcome.result is None: raise ApplicationError(...)` after
+  `run_job_with_report`. That became `run_job_or_fail` in
+  `workflows/job.py`; the structured-output helper and every summarise
+  job use it.
 
 ## 4. Cross-cutting
 
@@ -453,6 +470,14 @@ harness is its job.
   `common/` holds what two apps share. Imports point down only. A
   placeholder `runners/argo_agentic_factory` README exists to keep the
   split honest.
+- **Apps do not import from apps** (Sep 30). `app/summarise` was first
+  sketched depending on `agentic_factory` for its `Job` contract. It
+  does not: an app is one domain, its steps are prompts and plain
+  functions, and the runner is the only place that knows both the
+  domain and the job engine. What two apps would share moves to
+  `common/`. Workflow-specific Temporal artifacts (the workflow, its
+  activities, its settings table, its cli command) live in the runner,
+  next to the workflow they serve, not in the app they order.
 - **No hardcoded knobs.** Every tunable (a size, limit, timeout, default)
   lives in `settings.toml` with a typed field and a one-line comment;
   facts of a protocol (an env var name, a header, a prompt) stay as named

@@ -29,14 +29,21 @@ agentic_factory/
         settings/             # settings.toml holds every default; model.py types it; load.py reads it
       scripts/              # run_job.py, run_step.py: dev entry points behind `just`
       tests/
+    summarise/                # the application behind the summarise workflow: one source into a knowledge-base entry
+      pyproject.toml        # package `summarise`; depends on factory_settings only
+      justfile
+      src/summarise/          # contract (request, fetched source, plan, filed entry), sources, chunking, fetch, verify, topics, vault
+        prompts/              # plan, wiki, digest, summary, explainer, questions, critical_thinking, index, file: one prompt per job
+        settings/             # vault folders, fetch limits and throttles, chunk bounds, verify minimum
+      tests/
   runners/
     temporal_agentic_factory/ # Temporal binding: installs `agentic_factory`
       pyproject.toml        # package `temporal_agentic_factory`
       justfile
       src/temporal_agentic_factory/  # cli, client, runner, identity (host:pid:sha), search_attributes (the ui's columns)
-        activities/           # session, job, report, structured_output, record: one class each; failure, heartbeat: what only activities need
-        workflows/            # job, structured_output: the workflows composing the activities
-        settings/             # server address, activity limits
+        activities/           # session, job, report, structured_output, record: one class each; summarise: the fetch and verify functions; failure, heartbeat: what only activities need
+        workflows/            # job, structured_output, summarise: the workflows composing the activities
+        settings/             # server address, activity limits, one table per workflow
       tests/
     argo_agentic_factory/     # NOT built. README only, see "Why runners/"
   common/
@@ -54,8 +61,12 @@ agentic_factory/
 
 ## Responsibilities
 
-**app/agentic_factory** owns the domain. It knows nothing about Temporal.
-It holds the atomic abstractions as plain Python:
+**app/** holds the applications, one folder each. An app is one domain
+as plain Python: it knows nothing about Temporal and imports no other
+app. What two apps would share moves to `common/`.
+
+**app/agentic_factory** owns the job and step domain. It holds the
+atomic abstractions:
 
 - **step**: one structured-output request to a model (`Step`,
   `StepResult`, the client per provider, the engine that runs one).
@@ -66,21 +77,25 @@ It holds the atomic abstractions as plain Python:
   report step over it, the structured output picked out of the coder's text).
 - **callbacks**: the callbacks a run's start, events and end go to (log,
   fanout, the journal that records the try in the store).
-- **tools**: the tools exposed to steps and jobs (ask_human, web fetch,
-  and any MCP server config the harness is handed).
-- plain functions a workflow needs around a job (worktree, bead update),
-  the artifact store, and the Langfuse adapter.
 
 Every function here is callable from a test or a script with no engine
-running. A new step, job or tool is added here and only here.
+running. A new step or job feature is added here and only here.
+
+**app/summarise** owns the summarise domain: how a source is fetched and
+cut into chunks, what each job is asked (`prompts/`), how a finished
+entry is checked, where the vault's folders are. It holds no Temporal
+and no `agentic_factory` import; the runner's summarise workflow orders
+its steps.
 
 **runners/temporal_agentic_factory** owns the engine binding and the
-workflows. It wraps `agentic_factory` jobs and steps as Temporal
-activities, implements the workflows that compose them (the job workflow,
-multi-step ones, the watcher loop), registers schedules, and exposes the CLI
-(`start`, `run`, `ask`). Workflows are implemented here because their
-code is written against the engine API. It contains no domain logic:
-if a function does not mention Temporal, it belongs in `app/`.
+workflows. It wraps app functions as Temporal activities, implements the
+workflows that compose them (the job workflow, the job with structured
+output, summarise) and exposes the CLI (`runner`, `run`, `summarise`,
+`attributes`). Workflows are implemented here because their code is
+written against the engine API, and every artifact a workflow needs
+(its activities, its settings table, its cli command) lives here next to
+it. It contains no domain logic: if a function does not mention
+Temporal, it belongs in `app/`.
 
 **runners/argo_agentic_factory** is a placeholder with a README only. It
 exists to make the split honest: if the engine ever changes (Argo
@@ -103,7 +118,8 @@ runners/*  →  app/*  →  common/*
 
 Imports point down only. `app/` never imports a runner. `common/`
 never imports an app. Two packages in the same layer do not import
-each other; what they share moves down a layer.
+each other (`summarise` does not import `agentic_factory`); what they
+share moves down a layer.
 
 ## Structure rules
 
@@ -173,8 +189,8 @@ How to apply when reviewing or refactoring:
 
 - `uv` workspace: the root `pyproject.toml` lists members under
   `[tool.uv.workspace]`; each package declares its own dependencies.
-  `runners/temporal_agentic_factory` depends on `agentic_factory` as a
-  workspace member.
+  `runners/temporal_agentic_factory` depends on `agentic_factory` and
+  `summarise` as workspace members.
 - `just check` at the root runs every package's `check` (ruff, mypy,
   pytest). Each package's `justfile` is self-contained so a package can
   be checked alone.

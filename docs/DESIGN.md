@@ -247,6 +247,10 @@ the two engines; workflows compose them; retries never appear in workflow code.
   in the request. Given two step timeouts plus a margin, with the
   `structured_output_activity` retries. `StructuredOutputNotStated` is
   final: another try would read the same text.
+- `fetch_source(request)` and `verify_entry(research_dir)` — the
+  `summarise` app's fetch and check, each on a thread, behind the
+  `fetch_activity` and `verify_activity` timeouts and retries. Free
+  functions: neither needs the store.
 - Activities are methods of small classes (`SessionActivity`,
   `JobActivity`, `ReportActivity`, `RecordActivity`) that take the store in
   their constructor: `runner.py` makes one `Store` per process, gives it to
@@ -276,6 +280,10 @@ the two engines; workflows compose them; retries never appear in workflow code.
   extraction activity. A job that failed for good, or an output the coder
   never stated, fail the workflow: nothing downstream can run on made-up
   values. The caller owns the model and validates the dict with it.
+- `SummariseWorkflow` (`workflows/summarise.py`, type name `summarise`) —
+  see "Summarise workflow": the app's steps in order, jobs through
+  `run_job_or_fail` and `run_job_with_structured_output`, the fetch and
+  verify activities between them.
 - Defaults: job fields stay in the app's `settings.toml`, since they describe a
   job whatever engine runs it. The runner has its own `settings/settings.toml`
   for the engine's part: server address, namespace, task queue, activity
@@ -284,7 +292,9 @@ the two engines; workflows compose them; retries never appear in workflow code.
 - `factory run PROMPT [--workdir] [--provider] [--model] [--timeout-sec]
   [--stall-sec] [--context-limit-tokens] [--tools]` starts one job and
   waits; `just run` at the root. The workdir is made absolute by the CLI and
-  created by the job engine. `factory runner` polls.
+  created by the job engine. `factory summarise URL [--topic]
+  [--chunk-chars] [--research-target]` starts the summarise workflow and
+  waits. `factory runner` polls.
 
 Learned from the restart test (runner killed mid-job, restarted): Temporal
 failed the try with a heartbeat timeout, try 2 started with attempt 2 in
@@ -399,6 +409,48 @@ JSON-block parser: extraction is the only path. A found output is saved in
 the `structured_output` table with the schema and the pass that found it,
 so a later workflow, or a person, can read it without the Temporal
 history.
+
+## Summarise workflow
+
+The first workflow with a chain of jobs, ported from fleet's summarise
+flow: one source (YouTube, X, PDF, arXiv, article, GitHub repo) becomes a
+knowledge-base entry (summary, digest, wiki pages, explainer, questions,
+critical thinking, index) in the vault at `~/.ai`.
+
+It is split in two places, by the rule that a runner holds no domain
+logic:
+
+- `app/summarise` is a second application, plain Python with no Temporal
+  and no import from `agentic_factory`: the source fetch and chunking
+  (`sources.py`, `chunking.py`, `fetch.py`), the check of a finished entry
+  (`verify.py`), the topic list (`topics.py`), the vault paths
+  (`vault.py`), the contracts the steps exchange (`SummariseRequest`,
+  `FetchedSource`, `EntryPlan`, `FiledEntry`) and one prompt module per
+  job under `prompts/`. Its `settings.toml` holds the vault folders,
+  fetch limits (60 s per http call, 180 s per cli call, retry delays,
+  throttles per tool), chunk bounds and the verifier's minimum size.
+  Every function runs from a test with nothing else up.
+- The runner holds what only Temporal needs: `activities/summarise.py`
+  (`fetch_source`, `verify_entry`: the app's two blocking functions on
+  a thread, a `SourceError` mapped to a retryable `ApplicationError`
+  only when it says `transient`), `workflows/summarise.py`
+  (`SummariseWorkflow`, type name `summarise`) and the `factory
+  summarise URL [--topic] [--chunk-chars] [--research-target]` command.
+
+The workflow orders the app's steps: fetch (activity, under
+`<fetch.work_root>/<workflow id>`), plan (a job with structured output,
+validated as `EntryPlan`: the entry folder, slug, title, type), one wiki
+job per chunk at once, digest and summary at once, explainer, questions
+and critical thinking at once, then the index job followed by the verify
+activity; the verifier's problems go back into the next index job's
+prompt, up to `summarise_workflow.index_attempts` runs, after which the
+workflow fails with `EntryNotVerified`. With a topic, a last job moves
+the entry under it and states the final path (`FiledEntry`). Every job
+is built by `summarise_job(prompt)`: the coder, model and limits of the
+runner's `summarise_workflow` table, in the vault. A job that failed for
+good raises through `run_job_or_fail`, so the chain stops where fleet
+stopped. The run date the prompts carry is `workflow.now()`, so a replay
+sees the same one.
 
 ## Materialization
 

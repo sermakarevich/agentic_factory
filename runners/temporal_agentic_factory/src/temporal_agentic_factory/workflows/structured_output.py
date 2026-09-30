@@ -6,7 +6,6 @@ from temporalio.common import RetryPolicy
 
 with workflow.unsafe.imports_passed_through():
     from pydantic import BaseModel, Field
-    from temporalio.exceptions import ApplicationError
 
     from agentic_factory.job.contract import Job
     from agentic_factory.job.outcome import JobOutcome
@@ -18,7 +17,7 @@ with workflow.unsafe.imports_passed_through():
         StructuredOutputRequest,
     )
     from temporal_agentic_factory.settings.load import settings
-    from temporal_agentic_factory.workflows.job import run_job_with_report
+    from temporal_agentic_factory.workflows.job import run_job_or_fail
 
 EXTRACTION_STEPS = 2  # the last message, then the whole conversation when that was not enough
 
@@ -56,9 +55,7 @@ async def run_job_with_structured_output(job: Job, schema: Schema) -> JobWithStr
     up: either raises, so the workflow stops where fleet stopped on a
     missing outputs file."""
     asked = job.model_copy(update={"prompt": wrap_prompt(job.prompt, schema)})
-    outcome = await run_job_with_report(asked)
-    if outcome.result is None:
-        raise ApplicationError(outcome.failure, type="JobFailed", non_retryable=True)
+    outcome = await run_job_or_fail(asked)
     request = StructuredOutputRequest(session_id=outcome.session_id, output_schema=schema)
     return JobWithStructuredOutput(outcome=outcome, structured_output=await _extracted(request))
 

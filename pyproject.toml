@@ -14,6 +14,7 @@ members = ["app/*", "runners/temporal_agentic_factory", "common/*"]
 agentic-factory = { workspace = true }
 factory-store = { workspace = true }
 factory-settings = { workspace = true }
+summarise = { workspace = true }
 
 [dependency-groups]
 dev = [

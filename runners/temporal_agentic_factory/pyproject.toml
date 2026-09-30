@@ -6,6 +6,7 @@ requires-python = ">=3.13"
 dependencies = [
     "agentic-factory",
     "factory-settings",
+    "summarise",
     "dynaconf>=3.3.5",
     "temporalio>=1.8",
     "typer>=0.12",
@@ -30,7 +31,7 @@ extend = "../../pyproject.toml"
 src = ["src", "tests"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["agentic_factory", "temporal_agentic_factory"]
+known-first-party = ["agentic_factory", "summarise", "temporal_agentic_factory"]
 
 [tool.ruff.lint.per-file-ignores]  # replaces the root table, so repeat its tests entry
 "**/tests/**" = ["PLR2004", "PLR0913"]

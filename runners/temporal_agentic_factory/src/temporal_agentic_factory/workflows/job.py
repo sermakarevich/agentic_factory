@@ -118,6 +118,16 @@ async def run_job_with_report(job: Job) -> JobOutcome:
     return outcome
 
 
+async def run_job_or_fail(job: Job) -> JobOutcome:
+    """`run_job_with_report` for a workflow whose next step needs what this
+    job made: a job that failed for good raises, so the workflow stops
+    there instead of building on nothing."""
+    outcome = await run_job_with_report(job)
+    if outcome.result is None:
+        raise ApplicationError(outcome.failure, type="JobFailed", non_retryable=True)
+    return outcome
+
+
 async def _job_as_report_request(job: Job) -> ReportRequest:
     """The job run, as the report step wants it: its result, or the failure
     that ended it after every try. Either way the runner of the last try goes

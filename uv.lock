@@ -12,6 +12,7 @@ members = [
     "agentic-factory-workspace",
     "factory-settings",
     "factory-store",
+    "summarise",
     "temporal-agentic-factory",
 ]
 
@@ -993,6 +994,21 @@ asyncio = [
 ]
 
 [[package]]
+name = "summarise"
+version = "0.1.0"
+source = { editable = "app/summarise" }
+dependencies = [
+    { name = "factory-settings" },
+    { name = "pydantic" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "factory-settings", editable = "common/factory_settings" },
+    { name = "pydantic", specifier = ">=2.8" },
+]
+
+[[package]]
 name = "temporal-agentic-factory"
 version = "0.1.0"
 source = { editable = "runners/temporal_agentic_factory" }
@@ -1000,6 +1016,7 @@ dependencies = [
     { name = "agentic-factory" },
     { name = "dynaconf" },
     { name = "factory-settings" },
+    { name = "summarise" },
     { name = "temporalio" },
     { name = "typer" },
 ]
@@ -1009,6 +1026,7 @@ requires-dist = [
     { name = "agentic-factory", editable = "app/agentic_factory" },
     { name = "dynaconf", specifier = ">=3.3.5" },
     { name = "factory-settings", editable = "common/factory_settings" },
+    { name = "summarise", editable = "app/summarise" },
     { name = "temporalio", specifier = ">=1.8" },
     { name = "typer", specifier = ">=0.12" },
 ]

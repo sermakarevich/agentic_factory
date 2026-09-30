@@ -41,6 +41,24 @@ class RecordActivitySettings(Table):
     max_attempts: int
 
 
+class SummariseWorkflowSettings(Table):
+    provider: str
+    model: str
+    job_timeout_sec: int
+    job_stall_sec: int
+    index_attempts: int
+
+
+class FetchActivitySettings(Table):
+    timeout_sec: int
+    max_attempts: int
+
+
+class VerifyActivitySettings(Table):
+    timeout_sec: int
+    max_attempts: int
+
+
 class Settings(Table):
     temporal: TemporalSettings
     runner: RunnerSettings
@@ -49,3 +67,6 @@ class Settings(Table):
     report_activity: ReportActivitySettings
     structured_output_activity: StructuredOutputActivitySettings
     record_activity: RecordActivitySettings
+    summarise_workflow: SummariseWorkflowSettings
+    fetch_activity: FetchActivitySettings
+    verify_activity: VerifyActivitySettings
