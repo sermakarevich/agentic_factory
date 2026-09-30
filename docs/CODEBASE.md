@@ -11,19 +11,19 @@ agentic_factory/
     DESIGN.md               # abstractions, needs, decisions
     CODEBASE.md             # this file
   app/
-    agent_factory/          # the application: everything that is not an engine
-      pyproject.toml        # package `agent_factory`
+    agentic_factory/          # the application: everything that is not an engine
+      pyproject.toml        # package `agentic_factory`
       justfile
-      src/agent_factory/    # job/ and step/ (contract, engine, providers); settings/settings.toml holds every default
+      src/agentic_factory/    # job/ and step/ (contract, engine, providers); settings/settings.toml holds every default
       scripts/              # run_job.py, run_step.py: dev entry points behind `just`
       tests/
   runners/
-    temporal_agent_factory/ # Temporal binding: installs `agent_factory`
-      pyproject.toml        # package `temporal_agent_factory`
+    temporal_agentic_factory/ # Temporal binding: installs `agentic_factory`
+      pyproject.toml        # package `temporal_agentic_factory`
       justfile
-      src/temporal_agent_factory/  # activities/, workflows/, settings/ (server address, activity limits)
+      src/temporal_agentic_factory/  # activities/, workflows/, settings/ (server address, activity limits)
       tests/
-    argo_agent_factory/     # NOT built. README only, see "Why runners/"
+    argo_agentic_factory/     # NOT built. README only, see "Why runners/"
   common/
     <package>/              # libraries reused by more than one app, one per folder
       pyproject.toml
@@ -33,7 +33,7 @@ agentic_factory/
 
 ## Responsibilities
 
-**app/agent_factory** owns the domain. It knows nothing about Temporal.
+**app/agentic_factory** owns the domain. It knows nothing about Temporal.
 It holds the atomic abstractions as plain Python:
 
 - **step**: one structured-output request to a model (`Step`,
@@ -50,15 +50,15 @@ It holds the atomic abstractions as plain Python:
 Every function here is callable from a test or a script with no engine
 running. A new step, job or tool is added here and only here.
 
-**runners/temporal_agent_factory** owns the engine binding and the
-workflows. It wraps `agent_factory` jobs and steps as Temporal
+**runners/temporal_agentic_factory** owns the engine binding and the
+workflows. It wraps `agentic_factory` jobs and steps as Temporal
 activities, implements the workflows that compose them (the job workflow,
 multi-step ones, the watcher loop), registers schedules, and exposes the CLI
 (`start`, `run`, `ask`). Workflows are implemented here because their
 code is written against the engine API. It contains no domain logic:
 if a function does not mention Temporal, it belongs in `app/`.
 
-**runners/argo_agent_factory** is a placeholder with a README only. It
+**runners/argo_agentic_factory** is a placeholder with a README only. It
 exists to make the split honest: if the engine ever changes (Argo
 Workflows on Kubernetes, Prefect, plain cron), only a new folder under
 `runners/` is written and `app/` is untouched. It is not on the roadmap.
@@ -125,7 +125,7 @@ How to apply when reviewing or refactoring:
 
 - `uv` workspace: the root `pyproject.toml` lists members under
   `[tool.uv.workspace]`; each package declares its own dependencies.
-  `runners/temporal_agent_factory` depends on `agent_factory` as a
+  `runners/temporal_agentic_factory` depends on `agentic_factory` as a
   workspace member.
 - `just check` at the root runs every package's `check` (ruff, mypy,
   pytest). Each package's `justfile` is self-contained so a package can

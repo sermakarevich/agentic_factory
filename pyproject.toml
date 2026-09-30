@@ -8,10 +8,10 @@ requires-python = ">=3.13"
 package = false
 
 [tool.uv.workspace]
-members = ["app/*", "runners/temporal_agent_factory", "common/*"]
+members = ["app/*", "runners/temporal_agentic_factory", "common/*"]
 
 [tool.uv.sources]
-agent-factory = { workspace = true }
+agentic-factory = { workspace = true }
 
 [dependency-groups]
 dev = [

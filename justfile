@@ -3,7 +3,7 @@ set positional-arguments
 # agentic_factory — monorepo commands. Run `just` to list them.
 # Each package has its own justfile; these recipes fan out to them.
 
-packages := "app/agent_factory runners/temporal_agent_factory"
+packages := "app/agentic_factory runners/temporal_agentic_factory"
 
 # default: show available recipes
 default:
@@ -27,28 +27,28 @@ fmt:
 
 # install the `temporal` CLI
 temporal-install:
-    just --justfile runners/temporal_agent_factory/justfile --working-directory runners/temporal_agent_factory temporal-install
+    just --justfile runners/temporal_agentic_factory/justfile --working-directory runners/temporal_agentic_factory temporal-install
 
 # start the local Temporal dev server (gRPC 127.0.0.1:7233, UI :8233, history in a SQLite file)
 temporal:
-    just --justfile runners/temporal_agent_factory/justfile --working-directory runners/temporal_agent_factory temporal
+    just --justfile runners/temporal_agentic_factory/justfile --working-directory runners/temporal_agentic_factory temporal
 
 # is the dev server up?
 temporal-health:
-    just --justfile runners/temporal_agent_factory/justfile --working-directory runners/temporal_agent_factory temporal-health
+    just --justfile runners/temporal_agentic_factory/justfile --working-directory runners/temporal_agentic_factory temporal-health
 
 # start the Temporal runner (polls task queues)
 runner *ARGS:
-    just --justfile runners/temporal_agent_factory/justfile --working-directory runners/temporal_agent_factory runner "$@"
+    just --justfile runners/temporal_agentic_factory/justfile --working-directory runners/temporal_agentic_factory runner "$@"
 
 # Start one job on Temporal and wait for it (needs `just temporal` and `just runner`): just run "prompt" --model ...
 run *ARGS:
-    just --justfile runners/temporal_agent_factory/justfile --working-directory runners/temporal_agent_factory run "$@"
+    just --justfile runners/temporal_agentic_factory/justfile --working-directory runners/temporal_agentic_factory run "$@"
 
 # Run one llm job directly (no Temporal) and watch its events: just job "prompt" --model ...
 job *ARGS:
-    just --justfile app/agent_factory/justfile --working-directory app/agent_factory run "$@"
+    just --justfile app/agentic_factory/justfile --working-directory app/agentic_factory run "$@"
 
-# One step, a structured-output request (OpenCode Go API); no args = demo. See app/agent_factory/justfile.
+# One step, a structured-output request (OpenCode Go API); no args = demo. See app/agentic_factory/justfile.
 step *ARGS:
-    just --justfile app/agent_factory/justfile --working-directory app/agent_factory step "$@"
+    just --justfile app/agentic_factory/justfile --working-directory app/agentic_factory step "$@"

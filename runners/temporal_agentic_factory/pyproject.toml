@@ -1,0 +1,41 @@
+[project]
+name = "temporal-agentic-factory"
+version = "0.1.0"
+description = "Temporal runner: activities wrapping agentic_factory, workflow graphs, watcher, schedules, CLI."
+requires-python = ">=3.13"
+dependencies = [
+    "agentic-factory",
+    "dynaconf>=3.3.5",
+    "temporalio>=1.8",
+    "typer>=0.12",
+]
+
+[project.scripts]
+factory = "temporal_agentic_factory.cli:app"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/temporal_agentic_factory"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+
+[tool.ruff]
+extend = "../../pyproject.toml"
+src = ["src", "tests"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["agentic_factory", "temporal_agentic_factory"]
+
+[tool.ruff.lint.per-file-ignores]  # replaces the root table, so repeat its tests entry
+"**/tests/**" = ["PLR2004", "PLR0913"]
+"**/cli.py" = ["PLR0913", "PLR0917"]  # a command takes one option per job field
+
+[tool.mypy]
+python_version = "3.13"
+strict = true
+ignore_missing_imports = true

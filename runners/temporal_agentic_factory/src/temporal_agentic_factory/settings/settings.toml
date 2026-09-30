@@ -1,0 +1,20 @@
+[temporal]
+address = "127.0.0.1:7233"   # not "localhost": it resolves to ::1 first on macOS, the dev server is IPv4 only
+namespace = "default"
+task_queue = "agentic-factory"
+
+[runner]
+max_concurrent_activities = 4   # each job activity is one coder process on this machine
+
+[job_activity]
+session_timeout_sec = 60     # creating the session before try 1; opencode's api answers in seconds
+heartbeat_margin_sec = 60   # heartbeat timeout = job.stall_sec + this; the engine kills first, Temporal is the backstop
+close_margin_sec = 120      # start-to-close = job.timeout_sec + this
+max_attempts = 5
+retry_initial_sec = 10
+retry_backoff = 2.0
+retry_max_sec = 600
+
+[step_activity]
+timeout_sec = 300   # one structured-output request; no heartbeat
+max_attempts = 3

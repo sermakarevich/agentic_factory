@@ -55,7 +55,7 @@ watcher, or by a schedule.
 
 ## llm job contract
 
-Lives in `agent_factory/tokens.py`, `event.py`, `failure.py` (shared with calls) and `job/` (contract, coders, and the loop that runs one). Engine-agnostic.
+Lives in `agentic_factory/tokens.py`, `event.py`, `failure.py` (shared with calls) and `job/` (contract, coders, and the loop that runs one). Engine-agnostic.
 
 - `Job` — what to run: provider (the harness: claude, opencode), model, prompt, workdir, tools, timeout_sec,
   stall_sec, context_limit_tokens, `session_id` (session of an earlier try)
@@ -192,7 +192,7 @@ called from an activity.
 
 ## Temporal binding
 
-`runners/temporal_agent_factory`. Activities are one-line wrappers around
+`runners/temporal_agentic_factory`. Activities are one-line wrappers around
 the two engines; workflows compose them; retries never appear in workflow code.
 
 - `create_session(job)` — the app's `create_session`, once per job before
@@ -317,7 +317,7 @@ answered from the summary.
 
 ## Settings
 
-Every default lives in `agent_factory/settings/settings.toml`: job limits, the
+Every default lives in `agentic_factory/settings/settings.toml`: job limits, the
 default provider of jobs and steps, each harness's and client's default model,
 the Go base url and user agent, reasoning and token limits of steps.
 `settings/load.py` loads it with dynaconf and validates it into the pydantic
@@ -331,7 +331,7 @@ default is repeated in Python.
 
 ## step contract
 
-Lives in `agent_factory/step/`, shaped like `job/`: `contract.py` is the
+Lives in `agentic_factory/step/`, shaped like `job/`: `contract.py` is the
 contract, `client.py` the client base (as `job/harness.py` is the coder
 base), `catalog.py` picks a client by provider name, `engine.py` runs one
 step, and one folder per provider holds the wire code. One request, one JSON
@@ -384,7 +384,7 @@ process state. No task.json, no attempts log, no signal files.
 
 - Runs on the user's laptop / server. Temporal is the `temporal` CLI dev
   server, not docker: one binary, history in a SQLite file under
-  `~/.local/share/agent_factory/`, web UI on :8233. `just temporal-install`,
+  `~/.local/share/agentic_factory/`, web UI on :8233. `just temporal-install`,
   `just temporal`, `just temporal-health`. Clients use `127.0.0.1:7233`, never
   `localhost`: on macOS that resolves to IPv6 first and the server is IPv4
   only, so gRPC hangs. Docker compose with Postgres only when this moves to
