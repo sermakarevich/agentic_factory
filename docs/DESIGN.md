@@ -440,7 +440,8 @@ process state. No task.json, no attempts log, no signal files.
 - Runs on the user's laptop / server. Temporal is the `temporal` CLI dev
   server, not docker: one binary, history in a SQLite file under
   `~/.local/share/agentic_factory/`, web UI on :8233. `just temporal-install`,
-  `just temporal`, `just temporal-health`. Clients use `127.0.0.1:7233`, never
+  `just temporal`, `just temporal-health`; `just temporal-tailscale` binds the UI
+  to the machine's Tailscale IP for other tailnet devices. Clients use `127.0.0.1:7233`, never
   `localhost`: on macOS that resolves to IPv6 first and the server is IPv4
   only, so gRPC hangs. Postgres, for the store, runs from the repo's
   docker compose (`just db`); the runner keeps running on the host either

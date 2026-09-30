@@ -33,6 +33,10 @@ temporal-install:
 temporal:
     just --justfile runners/temporal_agentic_factory/justfile --working-directory runners/temporal_agentic_factory temporal
 
+# the dev server with its UI shared on the tailnet
+temporal-tailscale:
+    just --justfile runners/temporal_agentic_factory/justfile --working-directory runners/temporal_agentic_factory temporal-tailscale
+
 # is the dev server up?
 temporal-health:
     just --justfile runners/temporal_agentic_factory/justfile --working-directory runners/temporal_agentic_factory temporal-health

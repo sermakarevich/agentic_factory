@@ -10,6 +10,7 @@ agentic_factory/
   docker-compose.yml        # Postgres for the store: `just db`
   docs/
     DESIGN.md               # abstractions, needs, decisions
+    DECISIONS.md            # decisions log: what was chosen, what was rejected, why
     CODEBASE.md             # this file
   app/
     agentic_factory/          # the application: everything that is not an engine

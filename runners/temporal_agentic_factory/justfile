@@ -52,13 +52,17 @@ temporal-install:
     temporal --version
 
 # start the local Temporal dev server: gRPC {{temporal_ip}}:{{temporal_port}}, UI :{{temporal_ui_port}}, history in {{temporal_data}}/temporal.db
-temporal:
+temporal ui_ip=temporal_ip:
     #!/usr/bin/env bash
     set -euo pipefail
     command -v temporal >/dev/null || { echo "temporal CLI missing: run 'just temporal-install'"; exit 1; }
     mkdir -p "{{temporal_data}}"
-    exec temporal server start-dev --ip {{temporal_ip}} --port {{temporal_port}} --ui-port {{temporal_ui_port}} \
-        --db-filename "{{temporal_data}}/temporal.db"
+    exec temporal server start-dev --ip {{temporal_ip}} --port {{temporal_port}} \
+        --ui-ip {{ui_ip}} --ui-port {{temporal_ui_port}} --db-filename "{{temporal_data}}/temporal.db"
+
+# same, with the UI reachable from other tailnet devices at http://<tailscale ip>:8233 (gRPC stays local)
+temporal-tailscale:
+    just temporal "$(tailscale ip -4)"
 
 # is the dev server up?
 temporal-health:
