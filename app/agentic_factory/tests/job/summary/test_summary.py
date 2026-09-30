@@ -63,3 +63,35 @@ def test_broken_block_gives_no_summary_but_keeps_the_text() -> None:
     assert found.startswith('{"job_summary"') and parse_summary(found) is None
     wrong = block({"task": "x", "success": "yes"})  # fields missing, wrong type
     assert find_summary_block(wrong) and parse_summary(find_summary_block(wrong)) is None
+
+
+def test_lenient_keeps_comma_before_bracket_inside_string() -> None:
+    text = '{"task": "a,]", "plan": [], "execution": [], "result": "r", "success": true,}'
+    summary = parse_summary(text)
+    assert summary is not None and summary.task == "a,]"
+
+
+def test_lenient_keeps_none_inside_string() -> None:
+    text = '{"task": "None of the tests ran", "plan": [], '
+    text += '"execution": [], "result": "r", "success": True,}'
+    summary = parse_summary(text)
+    assert summary is not None and summary.task == "None of the tests ran"
+
+
+def test_lenient_removes_trailing_comma_outside_string() -> None:
+    text = '{"task": "t", "plan": [], "execution": [], "result": "r", "success": true,}'
+    summary = parse_summary(text)
+    assert summary is not None and summary.task == "t"
+
+
+def test_lenient_converts_python_literal_outside_string() -> None:
+    text = '{"task": "t", "plan": [], "execution": [], "result": "r", "success": False}'
+    summary = parse_summary(text)
+    assert summary is not None and summary.success is False
+
+
+def test_lenient_escaped_quote_does_not_end_string() -> None:
+    text = '{"task": "a \\" None b", "plan": [], '
+    text += '"execution": [], "result": "r", "success": True}'
+    summary = parse_summary(text)
+    assert summary is not None and summary.task == 'a " None b'

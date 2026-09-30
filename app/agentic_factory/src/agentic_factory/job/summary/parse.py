@@ -82,16 +82,56 @@ TRAILING_COMMA = re.compile(r",(\s*[}\]])")
 
 
 def _without_trailing_commas(text: str) -> str:
-    return TRAILING_COMMA.sub(r"\1", text)
+    return _rewritten_outside_strings(text, _removed_trailing_comma)
+
+
+def _removed_trailing_comma(chunk: str) -> str:
+    return TRAILING_COMMA.sub(r"\1", chunk)
 
 
 PYTHON_LITERALS = {"True": "true", "False": "false", "None": "null"}
 
 
 def _with_json_literals(text: str) -> str:
+    return _rewritten_outside_strings(text, _replaced_python_literals)
+
+
+def _replaced_python_literals(chunk: str) -> str:
     for literal, replacement in PYTHON_LITERALS.items():
-        text = re.sub(r"\b" + literal + r"\b", replacement, text)
-    return text
+        chunk = re.sub(r"\b" + literal + r"\b", replacement, chunk)
+    return chunk
+
+
+def _rewritten_outside_strings(text: str, rewrite: Callable[[str], str]) -> str:
+    return "".join(
+        rewrite(chunk) if not in_string else chunk for chunk, in_string in _split_string_spans(text)
+    )
+
+
+def _split_string_spans(text: str) -> list[tuple[str, bool]]:
+    """`text` into (chunk, in_string) spans, backslash escapes respected."""
+    spans: list[tuple[str, bool]] = []
+    start = 0
+    in_string = False
+    escaped = False
+    for i, char in enumerate(text):
+        if in_string:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                spans.append((text[start : i + 1], True))
+                start = i + 1
+                in_string = False
+        elif char == '"':
+            if start != i:
+                spans.append((text[start:i], False))
+            start = i
+            in_string = True
+    if start < len(text):
+        spans.append((text[start:], in_string))
+    return spans
 
 
 PARSERS: list[Callable[[str], Any]] = [_strict, _leading_object, _lenient]
