@@ -59,7 +59,7 @@ agentic_factory/
       justfile
       src/autocode/         # contract (request, units, commands, findings, runs, result), order (build waves),
                             # run (the state, where a run's files land, its checks), written (files and test
-                            # folders checked), lock (test hashes), git (branch, commit), command (a repo command run)
+                            # folders checked), old_tests (the test folders without the feature's), lock (test hashes), git (branch, commit), command (a repo command run)
         prompts/              # flat .md templates, one per job, rules pasted into each, and prompt.py
         settings/             # provider, models, timeouts, attempts, output tail
       tests/                  # contract, order, lock, run, prompts, written, settings
@@ -82,7 +82,7 @@ agentic_factory/
                               # and child distill runs)
           tutorial/           # activities (locate_tutorial), workflow (designer, chapters at
                               # once with review rounds, finish)
-          autocode/           # activities (branch, commit, check, file checks, test hashes), workflow
+          autocode/           # activities (branch, commit, check, file checks, old tests, test hashes), workflow
                               # (requirements to gate; code runs git, tests and the test lock)
         watchers/             # things that watch a state and start workflows
           beads/              # client (bd calls on the database af owns), home ([beads].home),

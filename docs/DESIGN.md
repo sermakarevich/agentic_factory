@@ -781,7 +781,8 @@ tests, test hashes, bounded by `[autocode_activity]`) and `workflow.py`
 branch (activity: autocode/<feature>, checked out or made; a dirty tree stops the run)
 requirements (states the units in build order; writes REQUIREMENTS.md)        commit
 failures/<unit> (every unit at once)                                           commit
-baseline (states the repo's commands; its test command must pass, else BaselineRed)
+baseline (states the repo's commands; its test command must pass, else BaselineRed;
+    the old tests are its test folders without tests/<feature>, cut out by code)
 scaffold (stubs only)                                                          commit
 tests/<unit> (every unit at once), e2e (tests/<feature>/main)                  commit
 red: the old tests green, every new test folder red; then the tests are locked

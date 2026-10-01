@@ -43,12 +43,14 @@ with workflow.unsafe.imports_passed_through():
         CheckRequest,
         CommitRequest,
         FolderRequest,
+        OldTestsRequest,
         PathsRequest,
         autocode_branch,
         autocode_check,
         autocode_commit,
         autocode_folders_without_tests,
         autocode_missing_files,
+        autocode_old_tests,
         autocode_test_hashes,
     )
     from temporal_agentic_factory.workflows.job.child import (
@@ -128,10 +130,20 @@ async def failures_written(run: Autocode) -> Autocode:
 
 
 async def baseline_found(run: Autocode) -> Autocode:
-    """The repo's commands, and its test suite green before anything is built."""
+    """The repo's commands, its test folders without the feature's own, and
+    its test suite green before anything is built."""
     status("finding the repo's commands")
     job = autocode_job(run, "baseline", prompt("baseline", run))
     commands, spend = await output_done(run, job, Commands)
+    old = await activity_done(
+        autocode_old_tests,
+        OldTestsRequest(
+            repo=run.request.repo, test_dirs=commands.test_dirs, feature_dir=run.tests_dir
+        ),
+        settings.autocode_activity.files_timeout_sec,
+        "old tests",
+    )
+    commands = commands.model_copy(update={"test_dirs": old})
     run = run.model_copy(update={"commands": commands}).spent(spend)
     baseline = await checked(run, Check(name="baseline", command=commands.test))
     if not baseline.green:

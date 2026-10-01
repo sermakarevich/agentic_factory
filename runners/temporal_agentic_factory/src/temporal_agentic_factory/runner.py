@@ -17,6 +17,7 @@ from temporal_agentic_factory.workflows.autocode.activities import (
     autocode_commit,
     autocode_folders_without_tests,
     autocode_missing_files,
+    autocode_old_tests,
     autocode_test_hashes,
 )
 from temporal_agentic_factory.workflows.autocode.workflow import AutocodeWorkflow
@@ -78,6 +79,7 @@ def _activities(store: Store) -> list[Callable[..., Any]]:
         autocode_commit,
         autocode_check,
         autocode_missing_files,
+        autocode_old_tests,
         autocode_folders_without_tests,
         autocode_test_hashes,
         BeadsPollActivity().poll,

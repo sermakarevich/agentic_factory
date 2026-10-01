@@ -501,6 +501,12 @@ queues.
   the locked tests forbade them, and the fix job rightly reported partial.
   Code findings go to the fix job; test findings go to the result for the
   human, who alone may change a locked test.
+- **Autocode's old tests leave out the feature's own folder, in code** (Oct 1).
+  A run stopped at red: the baseline coder listed a leftover `tests/<feature>`
+  as an old test folder, and a repo whose only test folder is `tests` would
+  stop there every time, since `tests` holds the new red tests. Code now cuts
+  `tests/<feature>` out of the stated folders (a folder holding it becomes
+  everything else it holds), with no runner-specific flag like `--ignore`.
 
 ## 4. Cross-cutting
 

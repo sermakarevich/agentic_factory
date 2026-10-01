@@ -15,12 +15,14 @@ from temporal_agentic_factory.workflows.autocode.activities import (
     CheckRequest,
     CommitRequest,
     FolderRequest,
+    OldTestsRequest,
     PathsRequest,
     autocode_branch,
     autocode_check,
     autocode_commit,
     autocode_folders_without_tests,
     autocode_missing_files,
+    autocode_old_tests,
     autocode_test_hashes,
 )
 
@@ -163,3 +165,12 @@ async def test_the_files_a_stage_wrote_are_checked(repo: Path) -> None:
 
     assert missing == ["docs/R1.md"] and empty == ["tests/csv/main"]
     assert list(hashes) == ["R1/test_export.py"]
+
+
+async def test_the_old_tests_are_the_test_folder_without_the_features(tmp_path: Path) -> None:
+    for path in ["tests/core/test_a.py", "tests/csv/R1/test_b.py"]:
+        (tmp_path / path).parent.mkdir(parents=True)
+        (tmp_path / path).write_text("")
+    request = OldTestsRequest(repo=str(tmp_path), test_dirs=["tests"], feature_dir="tests/csv")
+
+    assert await ActivityEnvironment().run(autocode_old_tests, request) == ["tests/core"]

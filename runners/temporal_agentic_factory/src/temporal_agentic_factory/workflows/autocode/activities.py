@@ -9,6 +9,7 @@ from autocode.command import ran
 from autocode.contract import Check, Commit, Ran
 from autocode.git import DirtyTree, GitFailed, NotARepo, OffBranch, committed, on_branch
 from autocode.lock import hashes
+from autocode.old_tests import old_tests
 from autocode.written import folders_without_tests, missing_files
 from pydantic import BaseModel, Field
 from temporalio import activity
@@ -40,6 +41,12 @@ class PathsRequest(BaseModel):
 
     repo: str
     paths: list[str]
+
+
+class OldTestsRequest(BaseModel):
+    repo: str
+    test_dirs: list[str] = Field(description="The repo's test folders, relative to its root.")
+    feature_dir: str = Field(description="Where the feature's tests land: tests/<feature>.")
 
 
 class FolderRequest(BaseModel):
@@ -91,6 +98,12 @@ async def autocode_missing_files(request: PathsRequest) -> list[str]:
 async def autocode_folders_without_tests(request: PathsRequest) -> list[str]:
     """The folders that hold no test file."""
     return folders_without_tests(Path(request.repo), request.paths)
+
+
+@activity.defn
+async def autocode_old_tests(request: OldTestsRequest) -> list[str]:
+    """The test paths there were, without the feature's own folder."""
+    return old_tests(Path(request.repo), request.test_dirs, request.feature_dir)
 
 
 @activity.defn

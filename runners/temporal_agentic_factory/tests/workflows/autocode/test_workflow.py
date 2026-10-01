@@ -29,6 +29,7 @@ from temporal_agentic_factory.workflows.autocode.activities import (
     CheckRequest,
     CommitRequest,
     FolderRequest,
+    OldTestsRequest,
     PathsRequest,
 )
 from temporal_agentic_factory.workflows.autocode.workflow import AutocodeWorkflow
@@ -66,6 +67,9 @@ class World:
     commits: list[str] = field(default_factory=list)
     checks: list[str] = field(default_factory=list)
     hashes: dict[str, str] = field(default_factory=lambda: dict(LOCKED))
+    old_tests: list[str] = field(default_factory=lambda: ["tests/unit"])  # the old test paths
+    old_tests_asked: list[OldTestsRequest] = field(default_factory=list)
+    commands_run: list[str] = field(default_factory=list)
     schemas: dict[str, Schema | None] = field(default_factory=dict)
 
 
@@ -146,6 +150,7 @@ async def fake_check(request: CheckRequest) -> Ran:
     """Green unless the world says otherwise for this check."""
     name = request.check.name
     world.checks.append(name)
+    world.commands_run.append(request.check.command)
     return Ran(name=name, command=request.check.command, exit_code=0 if green(name) else 1)
 
 
@@ -174,6 +179,12 @@ async def fake_without_tests(request: PathsRequest) -> list[str]:
     return []
 
 
+@activity.defn(name="autocode_old_tests")
+async def fake_old_tests(request: OldTestsRequest) -> list[str]:
+    world.old_tests_asked.append(request)
+    return world.old_tests
+
+
 @activity.defn(name="autocode_test_hashes")
 async def fake_hashes(request: FolderRequest) -> dict[str, str]:
     return dict(world.hashes)
@@ -189,6 +200,7 @@ ACTIVITIES = [
     fake_check,
     fake_missing,
     fake_without_tests,
+    fake_old_tests,
     fake_hashes,
 ]
 
@@ -271,6 +283,15 @@ async def test_red_runs_the_old_tests_then_every_new_folder_before_any_code() ->
         "tests/csv/R2 tests",
         "tests/csv/main tests",
     ]
+
+
+async def test_the_old_tests_leave_out_the_features_own_folder() -> None:
+    await _run(old_tests=["tests/core"])
+
+    [asked] = world.old_tests_asked
+    assert (asked.test_dirs, asked.feature_dir) == (COMMANDS["test_dirs"], f"tests/{FEATURE}")
+    assert "pytest -q tests/core" in world.commands_run
+    assert f"pytest -q tests/core tests/{FEATURE}/R1" in world.commands_run
 
 
 async def test_parallel_units_are_built_in_waves_after_the_shared_modules() -> None:
