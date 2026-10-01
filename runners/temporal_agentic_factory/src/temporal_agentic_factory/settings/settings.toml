@@ -107,3 +107,8 @@ max_attempts = 3    # tries before the workflow fails; a missing file is final a
 [tutorial_locate_activity]
 timeout_sec = 30    # checking the tutorial's folder name and making its specs/ folder
 max_attempts = 3    # tries before the workflow fails; a bad name or a folder in use is final anyway
+
+[autocode_activity]
+close_margin_sec = 30  # an activity's start-to-close: the autocode app's git or command timeout plus this
+files_timeout_sec = 60  # checking a stage's files on disk, or hashing the feature's tests
+max_attempts = 2       # tries of an autocode activity; a dirty tree, a red test or a timeout is final anyway

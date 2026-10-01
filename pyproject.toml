@@ -17,6 +17,7 @@ factory-settings = { workspace = true }
 distill = { workspace = true }
 research = { workspace = true }
 tutorial = { workspace = true }
+autocode = { workspace = true }
 
 [dependency-groups]
 dev = [

@@ -11,6 +11,15 @@ from temporal_agentic_factory.client import connect
 from temporal_agentic_factory.settings.load import settings
 from temporal_agentic_factory.watchers.beads.tick import BeadsPollActivity
 from temporal_agentic_factory.watchers.beads.workflow import BeadsPollWorkflow
+from temporal_agentic_factory.workflows.autocode.activities import (
+    autocode_branch,
+    autocode_check,
+    autocode_commit,
+    autocode_folders_without_tests,
+    autocode_missing_files,
+    autocode_test_hashes,
+)
+from temporal_agentic_factory.workflows.autocode.workflow import AutocodeWorkflow
 from temporal_agentic_factory.workflows.distill.activities import fetch_source, verify_entry
 from temporal_agentic_factory.workflows.distill.workflow import DistillWorkflow
 from temporal_agentic_factory.workflows.job.record import RecordActivity
@@ -41,6 +50,7 @@ async def serve(identity: str) -> None:
                 DistillWorkflow,
                 ResearchWorkflow,
                 TutorialWorkflow,
+                AutocodeWorkflow,
                 BeadsPollWorkflow,
                 CleanerWorkflow,
             ],
@@ -64,6 +74,12 @@ def _activities(store: Store) -> list[Callable[..., Any]]:
         locate_target,
         read_candidates,
         locate_tutorial,
+        autocode_branch,
+        autocode_commit,
+        autocode_check,
+        autocode_missing_files,
+        autocode_folders_without_tests,
+        autocode_test_hashes,
         BeadsPollActivity().poll,
         clean_history,
     ]

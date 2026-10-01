@@ -5,6 +5,7 @@ import typer
 from typer import _click
 from typer.core import TyperGroup
 
+from temporal_agentic_factory.cli.autocode import autocode
 from temporal_agentic_factory.cli.distill import distill
 from temporal_agentic_factory.cli.errors import fail
 from temporal_agentic_factory.cli.job import run
@@ -44,3 +45,4 @@ run_app.command(name="job", short_help="One coder job on a prompt.")(run)
 run_app.command(name="research", short_help="A focus question into a folder of digests.")(research)
 run_app.command(name="distill", short_help="One source into a knowledge-base entry.")(distill)
 run_app.command(name="tutorial", short_help="A topic into tutorial chapters.")(tutorial)
+run_app.command(name="autocode", short_help="A feature spec into tested, committed code.")(autocode)

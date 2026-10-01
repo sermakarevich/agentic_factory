@@ -302,9 +302,10 @@ roles share (`runner.py`, `coders.py`, `other_coders.py`, `client.py`, `identity
   override, then app settings.
 - `af run <workflow> ...` is the one verb that starts a workflow
   (`cli/run.py`, the only place the workflows are listed): `job`, `research`,
-  `distill`, `tutorial`. `af run` and `af run --help` list them with one line
-  each, the shell completes their names, and a name it does not know fails
-  with `unknown workflow 'x'; choose from: job, research, distill, tutorial`
+  `distill`, `tutorial`, `autocode`. `af run` and `af run --help` list them
+  with one line each, the shell completes their names, and a name it does
+  not know fails with
+  `unknown workflow 'x'; choose from: job, research, distill, tutorial, autocode`
   (plus `to run a job: af run job "<prompt>"` when it looks like a prompt).
 - `factory run job PROMPT [--workdir] [--provider] [--model] [--timeout-sec]
   [--stall-sec] [--context-limit-tokens] [--tools]` starts one job and
@@ -729,6 +730,87 @@ af run tutorial "Grafana dashboards for beginners" --name grafana --formats md,i
 waits and prints the `TutorialOutcome` as JSON; `--detach` prints the
 workflow id. `--review-rounds` and `--<role>-provider`/`--<role>-model`
 override the settings.
+
+## Autocode
+
+A feature spec becomes tested, committed code on the branch
+`autocode/<feature>` of a git repo, ported from fleet's autocode. The docs
+land in `docs/<feature>/` (`REQUIREMENTS.md`, `failures/<unit>.md`), the
+tests in `tests/<feature>/<unit>/` plus `tests/<feature>/main/` for the
+end-to-end ones. Code, not a coder, runs git, the tests, the red/green
+checks and the test lock: a coder never runs a git command that changes
+anything, and its scratch goes in `.local/` (kept out of git through
+`info/exclude`). Every stage that changed files is one commit; nothing is
+pushed.
+
+The application half lives in `app/autocode`, plain Python with no Temporal
+and no import from another app:
+
+- `contract.py`: `AutocodeRequest` (repo, feature slug, spec as a file's
+  absolute path or the text, provider, model, review_model; left-out fields
+  come from settings), `Requirements` and its `Unit`s (`M<n>` a shared
+  module, `R<n>` a requirement, each with the ids it builds on, checked for
+  a buildable order), `Commands` (test, test_dirs, lint, typecheck),
+  `Findings`, `Check`, `Ran`, `Commit`, `Gate`, `Spend` and the result
+  `Autocoded`.
+- `order.py`: `waves(units, parallel)`: one unit per wave, or with
+  `parallel` the shared modules first, then the requirements, each wave the
+  units whose `after` is built.
+- `run.py`: where a run's files land and `Autocode`, the state the workflow
+  grows, with the checks it runs (one per unit, red, suite, gate).
+- `written.py`: the files a stage was to write that are missing, the test
+  folders that hold no test file.
+- `lock.py`: a sha256 per test file, and what changed against the locked set.
+- `git.py`: the branch (refused off a clean tree or outside a repo) and one
+  commit per stage, made only on the feature branch, skipped when nothing
+  changed.
+- `command.py`: one of the repo's commands run with a timeout; its exit
+  code and output tail.
+- `prompts/`: one template per job, `rules.md` pasted into each.
+- `settings.toml`: provider, model, review model, job timeout and stall,
+  implement, gate and resubmit attempts, test and git timeouts, the output
+  tail.
+
+The runner half lives in `runners/temporal_agentic_factory/workflows/autocode/`:
+`activities.py` (branch, commit, check, missing files, folders without
+tests, test hashes, bounded by `[autocode_activity]`) and `workflow.py`
+(`AutocodeWorkflow`, type name `autocode`); the command is
+`cli/autocode.py`. Every job is a child job workflow:
+
+```
+branch (activity: autocode/<feature>, checked out or made; a dirty tree stops the run)
+requirements (states the units in build order; writes REQUIREMENTS.md)        commit
+failures/<unit> (every unit at once)                                           commit
+baseline (states the repo's commands; its test command must pass, else BaselineRed)
+scaffold (stubs only)                                                          commit
+tests/<unit> (every unit at once), e2e (tests/<feature>/main)                  commit
+red: the old tests green, every new test folder red; then the tests are locked
+implement/<unit> in waves; red: implement/<unit>/fix/<n> in the same session,
+    up to implement_attempts (3); the lock checked                            commit per unit
+align (the code against the spec); the suite green, the lock held              commit
+review (review_model, states findings); review-fix when there are any          commit
+gate: lint, typecheck, full suite, feature tests; gate/fix/<n> up to
+    gate_attempts (2)                                                          commit
+```
+
+Every job's verdict must be `done`, else the run fails (`JobNotDone`). A
+stated output is validated in the workflow, and an invalid one is asked
+again in the same session (`<job>/resubmit/<n>`, up to resubmit_attempts),
+since `af output submit` checks the JSON schema only. Every failure is a
+non-retryable `ApplicationError` typed by what went wrong (`BaselineRed`,
+`FilesMissing`, `TestsMissing`, `TestsGreenBeforeCode`, `UnitRed`,
+`SuiteRed`, `TestsChanged`, `GateRed`, ...). With `parallel` the units of a
+wave share one work tree, so their commits are taken one at a time. The
+status line names the stage throughout.
+
+```
+af run autocode --repo ~/git/app --feature csv-export --spec ~/specs/csv_export.md
+```
+
+waits and prints the `Autocoded` (repo, branch, commits, units, findings,
+spend, gate) as JSON; `--detach` prints the workflow id. `--provider` and
+`--model` override the settings; `--model` leaves the review on its own
+model unless a provider is given.
 
 ## Submitting tasks
 

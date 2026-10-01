@@ -15,7 +15,7 @@ from temporal_agentic_factory.cli.errors import (
 from temporal_agentic_factory.cli.ids import new_id
 from temporal_agentic_factory.settings.load import settings
 
-WORKFLOWS = ("job", "research", "distill", "tutorial")
+WORKFLOWS = ("job", "research", "distill", "tutorial", "autocode")
 
 
 def test_cli_lists_commands() -> None:

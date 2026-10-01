@@ -126,6 +126,12 @@ class CandidatesActivitySettings(Table):
     max_attempts: int
 
 
+class AutocodeActivitySettings(Table):
+    close_margin_sec: int
+    files_timeout_sec: int
+    max_attempts: int
+
+
 class Settings(Table):
     temporal: TemporalSettings
     runner: RunnerSettings
@@ -147,3 +153,4 @@ class Settings(Table):
     locate_activity: LocateActivitySettings
     candidates_activity: CandidatesActivitySettings
     tutorial_locate_activity: LocateActivitySettings
+    autocode_activity: AutocodeActivitySettings

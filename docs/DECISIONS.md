@@ -482,6 +482,20 @@ queues.
   two submits through. Workflows start freely and wait in the queue; the
   execute activity has no schedule-to-start timeout. `af runner` keeps the
   workflows and the quick activities.
+- **Autocode is a Temporal workflow where code runs git and the tests** (Oct 1).
+  autocode ported from fleet as a Temporal workflow; code runs git, tests,
+  red/green and the test lock, coders never run git; every job's verdict
+  must be done. The domain (contract, build waves, lock, git, commands,
+  prompts) lives in `app/autocode`; the runner's activities wrap it and its
+  workflow orders the jobs. Stages that changed files are one commit each on
+  `autocode/<feature>`; parallel units share one work tree, so their commits
+  are taken one at a time.
+- **Autocode validates a stated output in the workflow and asks again**
+  (Oct 1). `af output submit` checks the JSON schema only, and a schema
+  cannot say "every `after` names an earlier unit". The workflow validates
+  with pydantic and sends the problems back in the same session
+  (`<job>/resubmit/<n>`, up to `resubmit_attempts`) before failing with
+  `StructuredOutputInvalid`.
 
 ## 4. Cross-cutting
 

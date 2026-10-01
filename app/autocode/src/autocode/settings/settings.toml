@@ -1,0 +1,17 @@
+# Defaults of the autocode application. Override without editing this file:
+#   - settings.local.toml next to it (git-ignored), same layout;
+#   - environment variables AF_<TABLE>__<KEY>, e.g. AF_AUTOCODE__GATE_ATTEMPTS=1;
+#   - a .env file in the repo root, read on start.
+
+[autocode]
+provider = "claude"        # the coder every autocode job runs on
+model = "sonnet"           # its model for every job but the review; "" would mean the harness default
+review_model = "opus"      # the review job's model: a fresh check of spec vs code wants the stronger model
+job_timeout_sec = 3600     # one job's own limit: a unit implemented with its tests run
+job_stall_sec = 900        # a job with no event for this long is killed; a test run may be silent a while
+implement_attempts = 3     # fix jobs a unit whose tests are still red gets before the workflow fails
+gate_attempts = 2          # fix jobs a red gate (lint, typecheck, full suite) gets before the workflow fails
+resubmit_attempts = 1      # follow-up jobs asked to fix a submitted output the workflow's checks refused
+test_timeout_sec = 1800    # one command's limit (a test run, lint, typecheck); killed after it
+git_timeout_sec = 60       # one git call's limit
+output_tail_chars = 6000   # the last characters of a command's output kept for the fix job and the result

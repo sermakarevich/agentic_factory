@@ -54,6 +54,15 @@ agentic_factory/
         prompts/              # flat .md templates, one per job, house_style pasted into each, and prompt.py
         settings/             # root, levels, formats, review rounds, timeouts, one table per role
       tests/                  # contract, plan, review, run, prompts, settings
+    autocode/               # the application behind the autocode workflow: a feature spec into tested, committed code
+      pyproject.toml        # package `autocode`; depends on factory_settings
+      justfile
+      src/autocode/         # contract (request, units, commands, findings, runs, result), order (build waves),
+                            # run (the state, where a run's files land, its checks), written (files and test
+                            # folders checked), lock (test hashes), git (branch, commit), command (a repo command run)
+        prompts/              # flat .md templates, one per job, rules pasted into each, and prompt.py
+        settings/             # provider, models, timeouts, attempts, output tail
+      tests/                  # contract, order, lock, run, prompts, written, settings
   runners/
     temporal_agentic_factory/ # Temporal binding: installs `agentic_factory`
       pyproject.toml        # package `temporal_agentic_factory`
@@ -73,6 +82,8 @@ agentic_factory/
                               # and child distill runs)
           tutorial/           # activities (locate_tutorial), workflow (designer, chapters at
                               # once with review rounds, finish)
+          autocode/           # activities (branch, commit, check, file checks, test hashes), workflow
+                              # (requirements to gate; code runs git, tests and the test lock)
         watchers/             # things that watch a state and start workflows
           beads/              # client (bd calls on the database af owns), home ([beads].home),
                               # models, shell (`bd` subprocess, captured or forwarded), markers (the
@@ -86,7 +97,7 @@ agentic_factory/
                               # (cleaner: one clean), schedule (the cleaner schedule: start, status)
         cli/                  # app (the `af` typer app), run (the `af run` group: the one list of
                               # workflows), one module per subject (job, distill, research,
-                              # tutorial: `af run <workflow>`; coders), errors, ids (readable
+                              # tutorial, autocode: `af run <workflow>`; coders), errors, ids (readable
                               # workflow ids), options, providers (refuses a provider with no settings table), workflows
                               # (status, result, list, cancel, terminate, health)
           beads/              # app (the `af beads` group), opened (the configured database),
@@ -99,7 +110,7 @@ agentic_factory/
         settings/             # server address, activity limits, [providers.<name>] coder limits, one table per workflow
                               # and activity ([job_activity], [distill_workflow],
                               # [research_workflow], [locate_activity], [candidates_activity],
-                              # [tutorial_locate_activity], [job_workflow],
+                              # [tutorial_locate_activity], [autocode_activity], [job_workflow],
                               # [submission_activity], ...)
       tests/                  # mirrors src: workflows/<subject>/, watchers/beads/, cleaner/, cli/;
                               # fakes.py and workers.py (a main worker plus one per coder queue),
@@ -162,10 +173,17 @@ plan and its checks, the review rule, what each job is asked, where a
 tutorial lands). It holds no Temporal and no import from another app; the
 runner's tutorial workflow orders its jobs.
 
+**app/autocode** owns the autocode domain: how a feature spec becomes
+tested code on `autocode/<feature>` (the request, the units and their build
+order, where the docs and tests land, what each job is asked, the test
+lock, and the git and command calls the workflow's activities make). It
+holds no Temporal and no import from another app; the runner's autocode
+workflow orders its jobs and checks.
+
 **runners/temporal_agentic_factory** owns the engine binding and the
 workflows. It wraps app functions as Temporal activities, implements the
 workflows that compose them (the job workflow, the job with structured
-output, distill, research, tutorial) and exposes the CLI (`runner`, `coders`, `run job|research|distill|tutorial`,
+output, distill, research, tutorial, autocode) and exposes the CLI (`runner`, `coders`, `run job|research|distill|tutorial|autocode`,
 `beads`, `cleaner`, `attributes`). It is grouped by role, then by subject
 inside each role: `workflows/` holds one folder per workflow with its
 activities, `watchers/` the things that watch a state and start
