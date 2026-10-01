@@ -41,7 +41,7 @@ class RecordActivitySettings(Table):
     max_attempts: int
 
 
-class SummariseWorkflowSettings(Table):
+class DistillWorkflowSettings(Table):
     provider: str
     model: str
     job_timeout_sec: int
@@ -67,6 +67,6 @@ class Settings(Table):
     report_activity: ReportActivitySettings
     structured_output_activity: StructuredOutputActivitySettings
     record_activity: RecordActivitySettings
-    summarise_workflow: SummariseWorkflowSettings
+    distill_workflow: DistillWorkflowSettings
     fetch_activity: FetchActivitySettings
     verify_activity: VerifyActivitySettings

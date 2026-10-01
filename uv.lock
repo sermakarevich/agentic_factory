@@ -10,9 +10,9 @@ resolution-markers = [
 members = [
     "agentic-factory",
     "agentic-factory-workspace",
+    "distill",
     "factory-settings",
     "factory-store",
-    "summarise",
     "temporal-agentic-factory",
 ]
 
@@ -219,6 +219,21 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/d8/53/6f443c9a4a8358a93a6792e2acffb9d9d5cb0a5cfd8802644b7b1c9a02e4/colorama-0.4.6.tar.gz", hash = "sha256:08695f5cb7ed6e0531a20572697297273c47b8cae5a63ffc6d6ed5c201be6e44", size = 27697, upload-time = "2022-10-25T02:36:22.414Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/d1/d6/3965ed04c63042e047cb6a3e6ed1a63a35087b6a609aa3a15ed8ac56c221/colorama-0.4.6-py2.py3-none-any.whl", hash = "sha256:4f1d9991f5acc0ca119f9d443620b77f9d6b33703e51011c16baf57afb285fc6", size = 25335, upload-time = "2022-10-25T02:36:20.889Z" },
+]
+
+[[package]]
+name = "distill"
+version = "0.1.0"
+source = { editable = "app/distill" }
+dependencies = [
+    { name = "factory-settings" },
+    { name = "pydantic" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "factory-settings", editable = "common/factory_settings" },
+    { name = "pydantic", specifier = ">=2.8" },
 ]
 
 [[package]]
@@ -994,29 +1009,14 @@ asyncio = [
 ]
 
 [[package]]
-name = "summarise"
-version = "0.1.0"
-source = { editable = "app/summarise" }
-dependencies = [
-    { name = "factory-settings" },
-    { name = "pydantic" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "factory-settings", editable = "common/factory_settings" },
-    { name = "pydantic", specifier = ">=2.8" },
-]
-
-[[package]]
 name = "temporal-agentic-factory"
 version = "0.1.0"
 source = { editable = "runners/temporal_agentic_factory" }
 dependencies = [
     { name = "agentic-factory" },
+    { name = "distill" },
     { name = "dynaconf" },
     { name = "factory-settings" },
-    { name = "summarise" },
     { name = "temporalio" },
     { name = "typer" },
 ]
@@ -1024,9 +1024,9 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "agentic-factory", editable = "app/agentic_factory" },
+    { name = "distill", editable = "app/distill" },
     { name = "dynaconf", specifier = ">=3.3.5" },
     { name = "factory-settings", editable = "common/factory_settings" },
-    { name = "summarise", editable = "app/summarise" },
     { name = "temporalio", specifier = ">=1.8" },
     { name = "typer", specifier = ">=0.12" },
 ]

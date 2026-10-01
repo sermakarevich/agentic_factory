@@ -5,17 +5,17 @@ from factory_settings.shared import shared
 from factory_store.store import Store
 from temporalio.worker import Worker
 
+from temporal_agentic_factory.activities.distill import fetch_source, verify_entry
 from temporal_agentic_factory.activities.job import JobActivity
 from temporal_agentic_factory.activities.record import RecordActivity
 from temporal_agentic_factory.activities.report import ReportActivity
 from temporal_agentic_factory.activities.session import SessionActivity
 from temporal_agentic_factory.activities.structured_output import StructuredOutputActivity
-from temporal_agentic_factory.activities.summarise import fetch_source, verify_entry
 from temporal_agentic_factory.client import connect
 from temporal_agentic_factory.settings.load import settings
+from temporal_agentic_factory.workflows.distill import DistillWorkflow
 from temporal_agentic_factory.workflows.job import JobWorkflow
 from temporal_agentic_factory.workflows.structured_output import JobWithStructuredOutputWorkflow
-from temporal_agentic_factory.workflows.summarise import SummariseWorkflow
 
 
 async def serve(identity: str) -> None:
@@ -29,7 +29,7 @@ async def serve(identity: str) -> None:
             client,
             task_queue=settings.temporal.task_queue,
             identity=identity,
-            workflows=[JobWorkflow, JobWithStructuredOutputWorkflow, SummariseWorkflow],
+            workflows=[JobWorkflow, JobWithStructuredOutputWorkflow, DistillWorkflow],
             activities=_activities(store, identity),
             max_concurrent_activities=settings.runner.max_concurrent_activities,
         )

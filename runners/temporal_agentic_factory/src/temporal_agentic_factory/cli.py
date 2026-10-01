@@ -14,22 +14,22 @@ from agentic_factory.job.defaults import with_default_model
 from agentic_factory.job.outcome import JobOutcome
 from agentic_factory.job.structured_output.contract import Schema
 from agentic_factory.logging_setup import configure_logging
-from summarise.contract import SummariseRequest
+from distill.contract import DistillRequest
 from temporal_agentic_factory import search_attributes
 from temporal_agentic_factory.client import connect
 from temporal_agentic_factory.identity import runner_identity
 from temporal_agentic_factory.runner import serve
 from temporal_agentic_factory.settings.load import settings
+from temporal_agentic_factory.workflows.distill import (
+    DistilledEntry,
+    DistillWorkflow,
+    distill_job,
+)
 from temporal_agentic_factory.workflows.job import JobWorkflow
 from temporal_agentic_factory.workflows.structured_output import (
     JobWithStructuredOutput,
     JobWithStructuredOutputWorkflow,
     StructuredOutputJob,
-)
-from temporal_agentic_factory.workflows.summarise import (
-    SummarisedEntry,
-    SummariseWorkflow,
-    summarise_job,
 )
 
 app = typer.Typer(no_args_is_help=True, help="agentic_factory on Temporal.")
@@ -91,7 +91,7 @@ def run(
 
 
 @app.command()
-def summarise(
+def distill(
     url: Annotated[str, typer.Argument(help="http(s) URL, or a local .pdf/.md/.txt path")],
     topic: Annotated[
         str, typer.Option(help="snake_case research topic to file the entry under")
@@ -103,13 +103,13 @@ def summarise(
 ) -> None:
     """Turn one source into a knowledge-base entry on Temporal and wait for
     it. Prints the entry's folder, plan and fetched source as JSON."""
-    request = SummariseRequest(
+    request = DistillRequest(
         url=_source_url(url),
         topic=topic,
         research_target=research_target,
         **_given({"chunk_chars": chunk_chars}),
     )
-    typer.echo(asyncio.run(_summarised_entry(request)).model_dump_json(indent=2))
+    typer.echo(asyncio.run(_distilled_entry(request)).model_dump_json(indent=2))
 
 
 def _source_url(url: str) -> str:
@@ -167,16 +167,16 @@ async def _job_with_structured_output(job: Job, schema: Schema) -> JobWithStruct
     return await _awaited(handle)
 
 
-async def _summarised_entry(request: SummariseRequest) -> SummarisedEntry:
-    """The summarise workflow started and waited for. The UI columns show
-    the coder every summarise job runs on, from the job the prompts go into."""
+async def _distilled_entry(request: DistillRequest) -> DistilledEntry:
+    """The distill workflow started and waited for. The UI columns show
+    the coder every distill job runs on, from the job the prompts go into."""
     client = await connect()
     handle = await client.start_workflow(
-        SummariseWorkflow.run,
+        DistillWorkflow.run,
         request,
-        id=f"summarise-{uuid4().hex[: settings.cli.job_id_chars]}",
+        id=f"distill-{uuid4().hex[: settings.cli.job_id_chars]}",
         task_queue=settings.temporal.task_queue,
-        search_attributes=search_attributes.at_start(summarise_job(prompt="")),
+        search_attributes=search_attributes.at_start(distill_job(prompt="")),
     )
     return await _awaited(handle)
 

@@ -29,10 +29,10 @@ agentic_factory/
         settings/             # settings.toml holds every default; model.py types it; load.py reads it
       scripts/              # run_job.py, run_step.py: dev entry points behind `just`
       tests/
-    summarise/                # the application behind the summarise workflow: one source into a knowledge-base entry
-      pyproject.toml        # package `summarise`; depends on factory_settings only
+    distill/                # the application behind the distill workflow: one source into a knowledge-base entry
+      pyproject.toml        # package `distill`; depends on factory_settings only
       justfile
-      src/summarise/          # contract (request, fetched source, plan, filed entry), sources, chunking, fetch, verify, topics, vault
+      src/distill/          # contract (request, fetched source, plan, filed entry), sources, chunking, fetch, verify, topics, vault
         prompts/              # plan, wiki, digest, summary, explainer, questions, critical_thinking, index, file: one prompt per job
         settings/             # vault folders, fetch limits and throttles, chunk bounds, verify minimum
       tests/
@@ -41,8 +41,8 @@ agentic_factory/
       pyproject.toml        # package `temporal_agentic_factory`
       justfile
       src/temporal_agentic_factory/  # cli, client, runner, identity (host:pid:sha), search_attributes (the ui's columns)
-        activities/           # session, job, report, structured_output, record: one class each; summarise: the fetch and verify functions; failure, heartbeat: what only activities need
-        workflows/            # job, structured_output, summarise: the workflows composing the activities
+        activities/           # session, job, report, structured_output, record: one class each; distill: the fetch and verify functions; failure, heartbeat: what only activities need
+        workflows/            # job, structured_output, distill: the workflows composing the activities
         settings/             # server address, activity limits, one table per workflow
       tests/
     argo_agentic_factory/     # NOT built. README only, see "Why runners/"
@@ -81,16 +81,16 @@ atomic abstractions:
 Every function here is callable from a test or a script with no engine
 running. A new step or job feature is added here and only here.
 
-**app/summarise** owns the summarise domain: how a source is fetched and
+**app/distill** owns the distill domain: how a source is fetched and
 cut into chunks, what each job is asked (`prompts/`), how a finished
 entry is checked, where the vault's folders are. It holds no Temporal
-and no `agentic_factory` import; the runner's summarise workflow orders
+and no `agentic_factory` import; the runner's distill workflow orders
 its steps.
 
 **runners/temporal_agentic_factory** owns the engine binding and the
 workflows. It wraps app functions as Temporal activities, implements the
 workflows that compose them (the job workflow, the job with structured
-output, summarise) and exposes the CLI (`runner`, `run`, `summarise`,
+output, distill) and exposes the CLI (`runner`, `run`, `distill`,
 `attributes`). Workflows are implemented here because their code is
 written against the engine API, and every artifact a workflow needs
 (its activities, its settings table, its cli command) lives here next to
@@ -118,7 +118,7 @@ runners/*  →  app/*  →  common/*
 
 Imports point down only. `app/` never imports a runner. `common/`
 never imports an app. Two packages in the same layer do not import
-each other (`summarise` does not import `agentic_factory`); what they
+each other (`distill` does not import `agentic_factory`); what they
 share moves down a layer.
 
 ## Structure rules
@@ -190,7 +190,7 @@ How to apply when reviewing or refactoring:
 - `uv` workspace: the root `pyproject.toml` lists members under
   `[tool.uv.workspace]`; each package declares its own dependencies.
   `runners/temporal_agentic_factory` depends on `agentic_factory` and
-  `summarise` as workspace members.
+  `distill` as workspace members.
 - `just check` at the root runs every package's `check` (ruff, mypy,
   pytest). Each package's `justfile` is self-contained so a package can
   be checked alone.

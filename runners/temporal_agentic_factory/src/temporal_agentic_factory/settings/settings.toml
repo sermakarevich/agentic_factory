@@ -31,10 +31,10 @@ max_attempts = 3        # tries of the extraction before the workflow fails; "no
 timeout_sec = 30    # two store queries: the tries read, the job row written
 max_attempts = 5    # tries before the workflow gives the row up and logs it
 
-[summarise_workflow]
-provider = "opencode"                              # the coder every summarise job runs on
+[distill_workflow]
+provider = "opencode"                              # the coder every distill job runs on
 model = "opencode-go/muse-spark-1.3-contributor"   # its model; "" would mean the harness default
-job_timeout_sec = 3600   # one summarise job's own limit; the biggest wiki chunk takes minutes, not an hour
+job_timeout_sec = 3600   # one distill job's own limit; the biggest wiki chunk takes minutes, not an hour
 job_stall_sec = 600      # a job with no event for this long is killed
 index_attempts = 3       # index job runs (the first, then one per failed verification) before the workflow fails
 

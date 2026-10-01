@@ -9,7 +9,7 @@ def test_cli_lists_commands() -> None:
     assert "runner" in result.output
 
 
-def test_cli_offers_summarise() -> None:
-    result = CliRunner().invoke(app, ["summarise", "--help"])
+def test_cli_offers_distill() -> None:
+    result = CliRunner().invoke(app, ["distill", "--help"])
     assert result.exit_code == 0
     assert "--topic" in result.output and "--research-target" in result.output
