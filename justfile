@@ -3,7 +3,7 @@ set positional-arguments
 # agentic_factory — monorepo commands. Run `just` to list them.
 # Each package has its own justfile; these recipes fan out to them.
 
-packages := "common/factory_settings common/factory_store common/factory_prompts app/agentic_factory app/distill app/research runners/temporal_agentic_factory"
+packages := "common/factory_settings common/factory_store app/agentic_factory app/distill app/research runners/temporal_agentic_factory"
 
 # default: show available recipes
 default:

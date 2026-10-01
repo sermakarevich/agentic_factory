@@ -589,11 +589,14 @@ sources one module per kind** (Oct 1).
   each other, so the `[vault]` table and its readers moved down a layer.
   Distill keeps what is its own: `[entry].pdf_copy_max_bytes` for the plan
   prompt and `[fetch].work_root` for the run work folder.
-- **The prompt renderer is a common package** (Oct 1). `distill`'s
-  `rendered(folder, name, values)` was needed by `research` too and an app
-  never imports another app, so it moved down a layer to
-  `common/factory_prompts`. Both apps fill their `.md` templates with it;
-  it stays one function, strict on missing variables.
+- **The prompt renderer is two lines of stdlib inlined in each app's
+  prompt module** (Oct 1). `distill`'s `rendered(folder, name, values)`
+  was shared with `research` through a common package; that package is
+  dropped and each app's prompt module holds its own two-line
+  `_rendered` (`read_text` plus `string.Template(...).substitute`),
+  strict on missing variables. Below a few lines of stdlib glue two
+  copies beat a package (pyproject, justfile, tests, lock entry, a
+  check step).
 - **Research ranks with the judge step, not with a chat model** (Oct 1).
   Scoring is three jev questions asked verbatim over each candidate's
   metadata (relevance, kind, authority): calibrated, cheap, and the three

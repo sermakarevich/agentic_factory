@@ -11,7 +11,6 @@ members = [
     "agentic-factory",
     "agentic-factory-workspace",
     "distill",
-    "factory-prompts",
     "factory-settings",
     "factory-store",
     "research",
@@ -230,14 +229,12 @@ name = "distill"
 version = "0.1.0"
 source = { editable = "app/distill" }
 dependencies = [
-    { name = "factory-prompts" },
     { name = "factory-settings" },
     { name = "pydantic" },
 ]
 
 [package.metadata]
 requires-dist = [
-    { name = "factory-prompts", editable = "common/factory_prompts" },
     { name = "factory-settings", editable = "common/factory_settings" },
     { name = "pydantic", specifier = ">=2.8" },
 ]
@@ -250,11 +247,6 @@ sdist = { url = "https://files.pythonhosted.org/packages/71/e4/723ba469856bb493c
 wheels = [
     { url = "https://files.pythonhosted.org/packages/95/41/b38501c34c40c3261868a2af8ed5fffe3e6d889c680638708de27eb57788/dynaconf-3.3.5-py3-none-any.whl", hash = "sha256:b3b4a753d5c866fc85466b65fc58d4954f6ed7dc8aa67f2b15bcbfd85d184687", size = 271426, upload-time = "2026-08-05T19:50:23.802Z" },
 ]
-
-[[package]]
-name = "factory-prompts"
-version = "0.1.0"
-source = { editable = "common/factory_prompts" }
 
 [[package]]
 name = "factory-settings"
@@ -901,14 +893,12 @@ name = "research"
 version = "0.1.0"
 source = { editable = "app/research" }
 dependencies = [
-    { name = "factory-prompts" },
     { name = "factory-settings" },
     { name = "pydantic" },
 ]
 
 [package.metadata]
 requires-dist = [
-    { name = "factory-prompts", editable = "common/factory_prompts" },
     { name = "factory-settings", editable = "common/factory_settings" },
     { name = "pydantic", specifier = ">=2.8" },
 ]

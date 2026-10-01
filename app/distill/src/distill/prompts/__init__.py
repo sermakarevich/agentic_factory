@@ -1,6 +1,6 @@
 from pathlib import Path
+from string import Template
 
-from factory_prompts.template import rendered
 from factory_settings import vault
 from pydantic import BaseModel
 
@@ -19,15 +19,15 @@ class Entry(BaseModel):
 
 def plan_prompt(request: DistillRequest, fetched: FetchedSource, run_date: str) -> str:
     """Plan where the entry lives and state it."""
-    text = rendered(FOLDER, "plan", _values(request, fetched, run_date))
+    text = _rendered(FOLDER, "plan", _values(request, fetched, run_date))
     if fetched.kind == "repo":
-        text += rendered(FOLDER, "plan_repo_track", {})
+        text += _rendered(FOLDER, "plan_repo_track", {})
     return text
 
 
 def page_prompt(name: str, entry: Entry) -> str:
     """One reader page: digest, summary, explainer, questions, critical_thinking, file."""
-    return rendered(
+    return _rendered(
         FOLDER,
         _template(name, entry.fetched.kind),
         _values(entry.request, entry.fetched, entry.run_date, entry.plan),
@@ -36,7 +36,7 @@ def page_prompt(name: str, entry: Entry) -> str:
 
 def wiki_prompt(entry: Entry, chunk: FetchedChunk) -> str:
     """One wiki page for one chunk."""
-    return rendered(
+    return _rendered(
         FOLDER,
         _template("wiki", entry.fetched.kind),
         _values(
@@ -56,10 +56,10 @@ def wiki_prompt(entry: Entry, chunk: FetchedChunk) -> str:
 def index_prompt(entry: Entry, problems: list[str]) -> str:
     """Folder index, plus minimal fixes when the verifier named problems."""
     values = _values(entry.request, entry.fetched, entry.run_date, entry.plan)
-    text = rendered(FOLDER, "index", values)
+    text = _rendered(FOLDER, "index", values)
     if problems:
         values["problems"] = _listed(problems)
-        text += rendered(FOLDER, "index_feedback", values)
+        text += _rendered(FOLDER, "index_feedback", values)
     return text
 
 
@@ -114,8 +114,14 @@ def _closing(kind: str) -> str:
 def _folder_section(request: DistillRequest, values: dict[str, object]) -> str:
     """Fixed folder when the request names one, derived routing otherwise."""
     if request.target_dir:
-        return rendered(FOLDER, "plan_folder_fixed", values)
-    return rendered(FOLDER, "plan_folder_derived", values)
+        return _rendered(FOLDER, "plan_folder_fixed", values)
+    return _rendered(FOLDER, "plan_folder_derived", values)
+
+
+def _rendered(folder: Path, name: str, values: dict[str, object]) -> str:
+    """The template `name.md` in `folder` with `values` filled in."""
+    text = (folder / f"{name}.md").read_text(encoding="utf-8")
+    return Template(text).substitute(values)
 
 
 def _listed(problems: list[str]) -> str:

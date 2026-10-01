@@ -2,8 +2,8 @@
 
 import json
 from pathlib import Path
+from string import Template
 
-from factory_prompts.template import rendered
 from factory_settings import vault
 
 from research.contract import Lens, SourceOutcome, Status, Subtopic
@@ -18,7 +18,7 @@ def prompt(
 ) -> str:
     """The template `name` (a job: discover, assign, topic, digest, overview,
     agreements, disagreements, open_questions, lens, index) filled for this run."""
-    return rendered(FOLDER, name, values(research, subtopic, lens))
+    return _rendered(FOLDER, name, values(research, subtopic, lens))
 
 
 def values(
@@ -97,3 +97,9 @@ def _shortlist_table(research: Research) -> str:
                 f"{item.scores.relevance:g} | {item.title} |  |"
             )
     return "\n".join(["| # | status | kind | score | source | sub-topic |", *rows])
+
+
+def _rendered(folder: Path, name: str, values: dict[str, object]) -> str:
+    """The template `name.md` in `folder` with `values` filled in."""
+    text = (folder / f"{name}.md").read_text(encoding="utf-8")
+    return Template(text).substitute(values)
