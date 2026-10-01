@@ -39,3 +39,11 @@ demo_schema := '{"type":"object","properties":{"status":{"type":"string","enum":
 # One step, a structured-output request (OpenCode Go API): just step ["prompt" ["schema json or @file" [--model ...]]]
 step prompt=demo_prompt schema=demo_schema *ARGS:
     prompt="$1"; schema="$2"; shift 2; uv run python scripts/run_step.py "$prompt" --schema "$schema" "$@"
+
+# Demo input for `just judge` with no arguments.
+demo_state := "I was charged twice for the same order and nobody answers my emails. I want a refund today."
+demo_questions := '{"tone":{"kind":"choice","question":"What is the tone?","options":{"calm":null,"angry":null}},"urgency":{"kind":"score","question":"How urgent is it?","levels":["can wait","this week","today"]},"billing":{"kind":"check","question":"Is this about billing?"}}'
+
+# One judge step, typed questions over a state (TypeSafe jev API): just judge ["state" ["questions json or @file" [--model ...]]]
+judge state=demo_state questions=demo_questions *ARGS:
+    state="$1"; questions="$2"; shift 2; uv run python scripts/run_judge.py "$state" --questions "$questions" "$@"

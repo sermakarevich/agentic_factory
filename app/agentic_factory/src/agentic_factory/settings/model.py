@@ -38,6 +38,18 @@ class OpencodeGoSettings(Table):
     retry_after_default_sec: int
 
 
+class TypeSafeSettings(Table):
+    default_model: str
+    price_per_m_input_usd: float
+    retry_after_default_sec: int
+
+
+class JudgeSettings(Table):
+    provider: Literal["typesafe"]
+    timeout_sec: int
+    typesafe: TypeSafeSettings
+
+
 class StepSettings(Table):
     provider: Literal["opencode"]
     reasoning: Reasoning
@@ -45,6 +57,7 @@ class StepSettings(Table):
     timeout_sec: int
     error_clip_chars: int
     opencode: OpencodeGoSettings
+    judge: JudgeSettings
 
 
 class LogSettings(Table):

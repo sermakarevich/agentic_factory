@@ -9,6 +9,7 @@ dependencies = [
     "factory-store",
     "openai>=3.22.0",
     "pydantic>=2.8",
+    "typesafe-sdk>=0.7",
 ]
 
 [build-system]

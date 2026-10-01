@@ -7,6 +7,7 @@ from temporalio.worker import Worker
 
 from temporal_agentic_factory.activities.distill import fetch_source, verify_entry
 from temporal_agentic_factory.activities.job import JobActivity
+from temporal_agentic_factory.activities.judge import judge
 from temporal_agentic_factory.activities.record import RecordActivity
 from temporal_agentic_factory.activities.report import ReportActivity
 from temporal_agentic_factory.activities.session import SessionActivity
@@ -47,4 +48,5 @@ def _activities(store: Store, identity: str) -> list[Callable[..., Any]]:
         RecordActivity(store).record_job,
         fetch_source,
         verify_entry,
+        judge,
     ]

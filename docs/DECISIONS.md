@@ -492,6 +492,14 @@ harness is its job.
   folder as is, with only the same-source and foreign-entry checks. A
   target dir and a topic are refused together. The research workflow,
   which picks one folder for many sources, will pass it to each child.
+- **The judge is a second kind of step, not a provider of the llm step**
+  (Oct 1). A judgment has no prompt and no output schema: it is named
+  typed questions over one state, answered with probabilities, by a model
+  that cannot write text and bills differently. Forcing that into `Step`
+  would mean a prompt nobody reads and a schema the provider ignores. So
+  `step/judge/` has its own contract, client base, catalog and engine,
+  and shares the failure family, the event stream and the activity
+  pattern with the llm step. First client: TypeSafe jev.
 - **No hardcoded knobs.** Every tunable (a size, limit, timeout, default)
   lives in `settings.toml` with a typed field and a one-line comment;
   facts of a protocol (an env var name, a header, a prompt) stay as named

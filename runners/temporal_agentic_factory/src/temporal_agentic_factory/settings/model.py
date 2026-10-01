@@ -36,6 +36,11 @@ class StructuredOutputActivitySettings(Table):
     max_attempts: int
 
 
+class JudgeActivitySettings(Table):
+    close_margin_sec: int
+    max_attempts: int
+
+
 class RecordActivitySettings(Table):
     timeout_sec: int
     max_attempts: int
@@ -66,6 +71,7 @@ class Settings(Table):
     job_activity: JobActivitySettings
     report_activity: ReportActivitySettings
     structured_output_activity: StructuredOutputActivitySettings
+    judge_activity: JudgeActivitySettings
     record_activity: RecordActivitySettings
     distill_workflow: DistillWorkflowSettings
     fetch_activity: FetchActivitySettings

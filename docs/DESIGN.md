@@ -8,7 +8,7 @@ that drives coder CLIs, the abstractions below, and the artifacts.
 
 | # | Name | Meaning | Temporal shape |
 |---|------|---------|----------------|
-| 0 | **step** | one structured-output request to a model (needs an API key) | short activity |
+| 0 | **step** | one structured-output request to a model (needs an API key); its second kind, the **judge step**, asks typed questions over a state and gets probabilities back | short activity |
 | 1 | **job** | one headless harness run (`claude -p`, `codex`, `opencode`); cheap tokens via subscription | long activity with heartbeats |
 | 2 | **workflow** | jobs and steps composed: a job, a step that shapes its output, another job; Python around them (worktree, bead status); static or dynamic fan-out | workflow made of activities |
 | 4 | **watcher** | monitors a state (beads, X) and starts workflows | long-running workflow with a timer loop; deterministic run ids |
@@ -598,6 +598,38 @@ artifact store keyed by run / job / try, referenced by path. The
 store exists so a run can be re-executed from step N reusing earlier
 results, and for human review. It is a store of outputs, not of
 process state. No task.json, no attempts log, no signal files.
+
+## Judge step
+
+Lives in `agentic_factory/step/judge/`: the second kind of step. The llm
+step takes a prompt and a schema and gets text shaped to the schema; the
+judge step takes a **state** (text or JSON) and named **questions** and
+gets **answers with probabilities** back. No prompt, no schema, no tools.
+Used where a workflow branches on a judgment: rank papers by relevance,
+accept or reject a draft, route a ticket. The TypeSafe jev model answers
+in well under a second and bills input tokens only; the client's price
+per million lives in settings so the result carries `cost_usd`.
+
+- Questions: `Choice(question, options: name -> meaning, focus)`,
+  `Score(question, levels lowest first, focus)`, `Check(question, yes, no,
+  focus)`. `focus` is what the judge should attend to in the state.
+- `Judgment` — provider (default typesafe), state, questions (at least
+  one), model (empty = client default), timeout_sec (settings).
+- `JudgmentResult` — answers by name, model, tokens, cost_usd,
+  duration_sec. `.choice(name)`, `.score(name)`, `.check(name)` return the
+  typed answer or raise `BadOutput` when the name or kind does not match.
+- Answers: `ChoiceAnswer(choice, confidence, probabilities)`,
+  `ScoreAnswer(score, confidence, probabilities, legend)` keyed by level
+  index, `CheckAnswer(yes)` the probability of yes.
+- `JudgeClient` is the client base (`client.py`), `catalog.py` picks one
+  by provider name, `typesafe.py` is the only client so far; failures map
+  to the same `JobFailed` family as the llm step (`RateLimited` carries the
+  retry-after, `TimedOut`, `NetworkError`, `ProviderError`).
+- `engine.run(judgment, callback, client)` emits one AI event (the answers
+  as JSON, usage, cost) and a FINISHED event, then returns the result.
+- Runner: `activities/judge.py` is the activity, `workflows/judge.py::run_judgment`
+  calls it with the judgment's timeout plus `[judge_activity]` margin and
+  the table's retry policy. `just judge` in the app runs one from the CLI.
 
 ## Decisions so far
 

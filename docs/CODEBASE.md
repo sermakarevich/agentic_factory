@@ -23,11 +23,12 @@ agentic_factory/
           summary/            # contract, prompt, block, parse, repair: the coder's own summary
           report/             # contract, conversation, step, build: the report a model writes over the run
           structured_output/  # contract, prompt, step, extract: the output asked for in the prompt, picked out by a step, saved
-        step/                 # contract, reasoning, engine, defaults
+        step/                 # contract, reasoning, engine, defaults: the llm step
+          judge/              # question, answer, contract, client, catalog, defaults, engine, typesafe: the judge step
           providers/          # client base, catalog; opencode/ (client)
         callbacks/            # log, json_lines, fanout, journal: the callbacks a run's start, events and end go to
         settings/             # settings.toml holds every default; model.py types it; load.py reads it
-      scripts/              # run_job.py, run_step.py: dev entry points behind `just`
+      scripts/              # run_job.py, run_step.py, run_judge.py: dev entry points behind `just`
       tests/
     distill/                # the application behind the distill workflow: one source into a knowledge-base entry
       pyproject.toml        # package `distill`; depends on factory_settings only
@@ -41,8 +42,8 @@ agentic_factory/
       pyproject.toml        # package `temporal_agentic_factory`
       justfile
       src/temporal_agentic_factory/  # cli, client, runner, identity (host:pid:sha), search_attributes (the ui's columns)
-        activities/           # session, job, report, structured_output, record: one class each; distill: the fetch and verify functions; failure, heartbeat: what only activities need
-        workflows/            # job, structured_output, distill: the workflows composing the activities
+        activities/           # session, job, report, structured_output, record: one class each; distill: the fetch and verify functions; judge: the judge function; failure, heartbeat: what only activities need
+        workflows/            # job, structured_output, distill: the workflows composing the activities; judge: run_judgment for workflows that branch on an answer
         settings/             # server address, activity limits, one table per workflow
       tests/
     argo_agentic_factory/     # NOT built. README only, see "Why runners/"

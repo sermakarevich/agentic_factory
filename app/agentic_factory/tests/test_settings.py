@@ -26,5 +26,7 @@ def test_every_knob_is_a_setting() -> None:
     assert settings.job.failure_tail_chars > 0
     assert settings.harness.claude.autocompact_min_tokens >= 100_000
     assert settings.step.opencode.retry_after_default_sec > 0
+    assert settings.step.judge.timeout_sec > 0
+    assert settings.step.judge.typesafe.price_per_m_input_usd > 0
     assert settings.conversation.tool_output_chars > 0
     assert settings.report.max_chars > 0

@@ -35,6 +35,15 @@ base_url = "https://opencode.ai/zen/go/v1"
 user_agent = "agentic-factory/0.1"   # Go refuses generic SDK agents
 retry_after_default_sec = 60         # wait after a rate limit that names no retry-after
 
+[step.judge]
+provider = "typesafe"         # which judge answers: typesafe
+timeout_sec = 60              # a judgment is one short call; the step's own limit
+
+[step.judge.typesafe]
+default_model = "jev-latest"
+price_per_m_input_usd = 0.042   # what jev bills per million input tokens; output is free
+retry_after_default_sec = 60    # wait after a rate limit that names no retry-after
+
 [log]
 content_width = 160           # longest event text on one log line
 
