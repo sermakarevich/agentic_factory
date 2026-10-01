@@ -485,6 +485,13 @@ harness is its job.
   `common/`. Workflow-specific Temporal artifacts (the workflow, its
   activities, its settings table, its cli command) live in the runner,
   next to the workflow they serve, not in the app they order.
+- **A distill request may name its folder** (Oct 1). Fleet's summarise
+  flow had no target folder: `topic` files the entry under a research
+  topic and `research_target` is a provenance line only. Distill keeps
+  both and adds `target_dir`: the plan job writes the entry into that
+  folder as is, with only the same-source and foreign-entry checks. A
+  target dir and a topic are refused together. The research workflow,
+  which picks one folder for many sources, will pass it to each child.
 - **No hardcoded knobs.** Every tunable (a size, limit, timeout, default)
   lives in `settings.toml` with a typed field and a one-line comment;
   facts of a protocol (an env var name, a header, a prompt) stay as named

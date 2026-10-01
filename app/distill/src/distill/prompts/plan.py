@@ -8,8 +8,6 @@ from distill.settings.load import settings
 
 def plan_prompt(request: DistillRequest, fetched: FetchedSource, run_date: str) -> str:
     """The prompt, given the request, what fetch made, and the run date as YYYY-MM-DD."""
-    research = vault.research_dir()
-    investment = vault.investment_dir()
     pdf_mb = settings.vault.pdf_copy_max_bytes / 1_000_000
     text = f"""\
 You are planning where a fetched source will live in the knowledge base.
@@ -22,6 +20,65 @@ Run work dir (absolute): {fetched.work_dir}
    - {fetched.work_dir}/chunks.json (chunk index/slug/title list)
    Do not read {fetched.work_dir}/chunks/*.md: chunk bodies belong to later workers.
 
+{_folder_section(request, fetched, run_date)}
+
+3. Create the layout and copy the source:
+   - mkdir -p <research_dir>/source <research_dir>/wiki/images
+   - Copy {fetched.source_md} to <research_dir>/source/source.md.
+   - If {fetched.work_dir}/source.pdf exists and is smaller than {pdf_mb:g} MB, copy it to
+     <research_dir>/source/source.pdf too; otherwise pin the PDF location ({request.url}) at the
+     top of <research_dir>/source/source.md.
+
+4. Write <research_dir>/source/plan.md: a table mapping each chunk slug to its planned wiki
+   page NN-<kebab-topic>.md plus a one-line "covers" note per row.
+
+5. State the plan: research_dir (the absolute research dir), slug (the PascalName),
+   title ("{fetched.title}") and type ("{fetched.type}").
+   Type rule from the source kind ({fetched.kind}): youtube → Video, pdf → Paper,
+   x/article → Article, repo → Codebase. This run: {fetched.type}.
+
+Do not run git commands.
+Do not run git.
+"""
+    if fetched.kind == "repo":
+        text += """
+6. Codebase track (this run, kind repo): the chunk list is one entry per macro
+   component plus an overview. Name each wiki page after its component
+   (NN-<kebab-component>.md, e.g. 02-graph-storage.md), overview first,
+   ordered by structural importance. The type for this run is "Codebase".
+"""
+    return text
+
+
+def _folder_section(request: DistillRequest, fetched: FetchedSource, run_date: str) -> str:
+    """Step 2: the entry folder, fixed by the request or derived by the job."""
+    if request.target_dir:
+        return _fixed_folder(request, fetched)
+    return _derived_folder(request, fetched, run_date)
+
+
+def _fixed_folder(request: DistillRequest, fetched: FetchedSource) -> str:
+    """The request names the folder: the job only checks what is already there."""
+    return f"""\
+2. The entry folder was chosen up front: <research_dir> is {request.target_dir}
+   and the slug is its basename. Do NOT derive a folder name and do NOT ask
+   where the entry lives.
+   - If the folder does not exist, create it.
+   - If it holds source/source.md whose `Source:` line equals this run's
+     input ({request.url}, exact string match), this is a re-run: refresh
+     source/source.md from {fetched.source_md} and continue.
+   - If it holds source/source.md with a different `Source:` line, or a
+     `sources/` subdirectory (a research epic hub), it belongs to another
+     entry: ask with mcp__ask_human__ask_human_question, passing
+     context=<this run's source url {request.url}>. Never overwrite it.
+   - A folder without source/source.md (empty or half built) is used as is."""
+
+
+def _derived_folder(request: DistillRequest, fetched: FetchedSource, run_date: str) -> str:
+    """No folder was named: the job routes by subject and provenance."""
+    research = vault.research_dir()
+    investment = vault.investment_dir()
+    return f"""\
 2. Decide the route from the title and chunk list:
    - Provenance-first rule (BEFORE deriving any folder name): search
      {research}/*/source/source.md and
@@ -57,31 +114,4 @@ Run work dir (absolute): {fetched.work_dir}
      above found nothing (epic hubs carry no source/source.md, so that
      search never matches them). A candidate that collides with an epic hub,
      including a case-only collision per the macOS rule, is always case 2
-     above: ask, never reuse, never write entry files into the hub.
-
-3. Create the layout and copy the source:
-   - mkdir -p <research_dir>/source <research_dir>/wiki/images
-   - Copy {fetched.source_md} to <research_dir>/source/source.md.
-   - If {fetched.work_dir}/source.pdf exists and is smaller than {pdf_mb:g} MB, copy it to
-     <research_dir>/source/source.pdf too; otherwise pin the PDF location ({request.url}) at the
-     top of <research_dir>/source/source.md.
-
-4. Write <research_dir>/source/plan.md: a table mapping each chunk slug to its planned wiki
-   page NN-<kebab-topic>.md plus a one-line "covers" note per row.
-
-5. State the plan: research_dir (the absolute research dir), slug (the PascalName),
-   title ("{fetched.title}") and type ("{fetched.type}").
-   Type rule from the source kind ({fetched.kind}): youtube → Video, pdf → Paper,
-   x/article → Article, repo → Codebase. This run: {fetched.type}.
-
-Do not run git commands.
-Do not run git.
-"""
-    if fetched.kind == "repo":
-        text += """
-6. Codebase track (this run, kind repo): the chunk list is one entry per macro
-   component plus an overview. Name each wiki page after its component
-   (NN-<kebab-component>.md, e.g. 02-graph-storage.md), overview first,
-   ordered by structural importance. The type for this run is "Codebase".
-"""
-    return text
+     above: ask, never reuse, never write entry files into the hub."""

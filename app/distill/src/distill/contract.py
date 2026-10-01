@@ -4,7 +4,7 @@ final folder the filing job states."""
 
 from enum import StrEnum
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from distill.settings.load import settings
 
@@ -24,6 +24,21 @@ class DistillRequest(BaseModel):
     research_target: str = Field(
         default="", description="Free text recorded as a Research-Target provenance line."
     )
+    target_dir: str = Field(
+        default="",
+        description="Absolute folder the entry is written into as is; when empty the plan "
+        "job derives research/<PascalName> or investment/<date>-<PascalName>.",
+    )
+
+    @model_validator(mode="after")
+    def target_dir_is_absolute_and_final(self) -> "DistillRequest":
+        """A target dir is a full path and the entry's last home: a topic would
+        move it away again, so the two never come together."""
+        if self.target_dir and not self.target_dir.startswith("/"):
+            raise ValueError(f"target_dir must be an absolute path, got {self.target_dir!r}")
+        if self.target_dir and self.topic:
+            raise ValueError("target_dir and topic cannot both be set: pick one home")
+        return self
 
 
 class EntryType(StrEnum):

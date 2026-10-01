@@ -13,3 +13,4 @@ def test_cli_offers_distill() -> None:
     result = CliRunner().invoke(app, ["distill", "--help"])
     assert result.exit_code == 0
     assert "--topic" in result.output and "--research-target" in result.output
+    assert "--target-dir" in result.output

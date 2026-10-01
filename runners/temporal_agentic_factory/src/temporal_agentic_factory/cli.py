@@ -100,6 +100,9 @@ def distill(
     research_target: Annotated[
         str, typer.Option(help="free text kept as the entry's Research-Target line")
     ] = "",
+    target_dir: Annotated[
+        str, typer.Option(help="folder the entry is written into as is (not with --topic)")
+    ] = "",
 ) -> None:
     """Turn one source into a knowledge-base entry on Temporal and wait for
     it. Prints the entry's folder, plan and fetched source as JSON."""
@@ -107,6 +110,7 @@ def distill(
         url=_source_url(url),
         topic=topic,
         research_target=research_target,
+        target_dir=_absolute(target_dir) if target_dir else "",
         **_given({"chunk_chars": chunk_chars}),
     )
     typer.echo(asyncio.run(_distilled_entry(request)).model_dump_json(indent=2))

@@ -293,8 +293,8 @@ the two engines; workflows compose them; retries never appear in workflow code.
   [--stall-sec] [--context-limit-tokens] [--tools]` starts one job and
   waits; `just run` at the root. The workdir is made absolute by the CLI and
   created by the job engine. `factory distill URL [--topic]
-  [--chunk-chars] [--research-target]` starts the distill workflow and
-  waits. `factory runner` polls.
+  [--chunk-chars] [--research-target] [--target-dir]` starts the distill
+  workflow and waits. `factory runner` polls.
 
 Learned from the restart test (runner killed mid-job, restarted): Temporal
 failed the try with a heartbeat timeout, try 2 started with attempt 2 in
@@ -435,7 +435,8 @@ logic:
   a thread, a `SourceError` mapped to a retryable `ApplicationError`
   only when it says `transient`), `workflows/distill.py`
   (`DistillWorkflow`, type name `distill`) and the `factory
-  distill URL [--topic] [--chunk-chars] [--research-target]` command.
+  distill URL [--topic] [--chunk-chars] [--research-target] [--target-dir]`
+  command.
 
 The workflow orders the app's steps: fetch (activity, under
 `<fetch.work_root>/<workflow id>`), plan (a job with structured output,
@@ -445,7 +446,11 @@ and critical thinking at once, then the index job followed by the verify
 activity; the verifier's problems go back into the next index job's
 prompt, up to `distill_workflow.index_attempts` runs, after which the
 workflow fails with `EntryNotVerified`. With a topic, a last job moves
-the entry under it and states the final path (`FiledEntry`). Every job
+the entry under it and states the final path (`FiledEntry`). With a
+`target_dir` (CLI `--target-dir`, made absolute) the plan job skips the
+routing rules and writes the entry into that folder as is; the request
+refuses a target dir together with a topic, since the topic would move the
+entry away again. Every job
 is built by `distill_job(prompt)`: the coder, model and limits of the
 runner's `distill_workflow` table, in the vault. A job that failed for
 good raises through `run_job_or_fail`, so the chain stops where fleet

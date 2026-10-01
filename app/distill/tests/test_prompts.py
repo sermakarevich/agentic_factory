@@ -38,6 +38,14 @@ def test_plan_reads_the_manifest_and_states_the_plan() -> None:
     assert "Codebase track" not in text
 
 
+def test_plan_with_a_target_dir_fixes_the_folder_instead_of_routing() -> None:
+    request = DistillRequest(url="https://example.com/paper", target_dir="/kb/notes/Paper")
+    text = plan_prompt(request, _fetched("pdf"), "2026-09-30")
+    assert "<research_dir> is /kb/notes/Paper" in text and "Do NOT derive" in text
+    assert "Investment/finance topic" not in text and "Provenance-first rule" not in text
+    assert "State the plan" in text
+
+
 def test_plan_adds_the_codebase_track_for_a_clone() -> None:
     assert "Codebase track" in plan_prompt(REQUEST, _fetched("repo"), "2026-09-30")
 
