@@ -6,10 +6,13 @@ _SNAKE_CASE_RE = re.compile(r"^[a-z][a-z0-9_]*$")
 
 
 def existing_topics() -> list[str]:
-    """Sorted names of the topic folders on disk (empty when unreadable)."""
+    """Sorted names of the topic folders on disk, hidden ones (`.obsidian`)
+    left out; empty when unreadable."""
     base = research_topics_dir()
     try:
-        entries = [path for path in base.iterdir() if path.is_dir()]
+        entries = [
+            path for path in base.iterdir() if path.is_dir() and not path.name.startswith(".")
+        ]
     except OSError:
         return []
     return sorted(path.name for path in entries)
@@ -29,6 +32,7 @@ def validate_topic(value: str | None) -> str:
         known_str = ", ".join(known) if known else "none found on disk"
         raise ValueError(
             f"input topic {topic!r} does not exist under research_topics/ "
-            f"(existing topics: {known_str}); create one with `ai new {topic}`"
+            f"(existing topics: {known_str}); "
+            f'create one with `ai add topic {topic} --desc "<one line>"`'
         )
     return topic

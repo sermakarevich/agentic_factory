@@ -7,7 +7,7 @@ from distill import topics
 
 @pytest.fixture
 def research_topics(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    for name in ("agents", "storage"):
+    for name in ("agents", "storage", ".obsidian"):
         (tmp_path / name).mkdir()
     (tmp_path / "index.md").write_text("")
     monkeypatch.setattr(topics, "research_topics_dir", lambda: tmp_path)
@@ -30,4 +30,9 @@ def test_a_badly_formed_topic_is_refused(research_topics: Path, value: str) -> N
 
 def test_an_unknown_topic_lists_the_known_ones(research_topics: Path) -> None:
     with pytest.raises(ValueError, match="agents, storage"):
+        topics.validate_topic("compute")
+
+
+def test_an_unknown_topic_says_how_to_create_it(research_topics: Path) -> None:
+    with pytest.raises(ValueError, match="ai add topic compute --desc"):
         topics.validate_topic("compute")
