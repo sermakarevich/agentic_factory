@@ -1,4 +1,4 @@
-"""Bead shapes: what `fleet ready --json` reports and what a tick tracks."""
+"""Bead shapes: what `bd ready --json` reports with its af metadata, and what a tick tracks."""
 
 from pydantic import BaseModel, Field
 
@@ -6,17 +6,16 @@ from pydantic import BaseModel, Field
 class Bead(BaseModel):
     """One startable bead with the routing context a spawn needs.
 
-    All strings, "" when unset: the shape of `fleet ready --json` rows.
-    `isolation` is carried but not acted on; the runner has no isolation.
+    All strings, "" when unset. `provider`, `cwd` and `model` come from the
+    bead's metadata; an empty model means the provider's default.
     """
 
     id: str
     title: str = ""
     description: str = ""
-    coder: str = ""
+    provider: str = ""
     model: str = ""
     cwd: str = ""
-    isolation: str = ""
 
 
 class BeadState(BaseModel):

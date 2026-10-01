@@ -6,7 +6,7 @@ import typer
 
 from agentic_factory.logging_setup import configure_logging
 from temporal_agentic_factory.cli import workflows
-from temporal_agentic_factory.cli.beads import beads_app
+from temporal_agentic_factory.cli.beads.app import beads_app
 from temporal_agentic_factory.cli.coders import coders
 from temporal_agentic_factory.cli.distill import distill
 from temporal_agentic_factory.cli.errors import run_coro

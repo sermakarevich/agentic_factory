@@ -14,8 +14,10 @@ from temporalio.common import RetryPolicy
 with workflow.unsafe.imports_passed_through():
     from temporal_agentic_factory.settings.load import settings
     from temporal_agentic_factory.watchers.beads.client import BeadsClient
+    from temporal_agentic_factory.watchers.beads.home import configured_home
     from temporal_agentic_factory.watchers.beads.models import PollSummary
     from temporal_agentic_factory.watchers.beads.poll import poll_once
+    from temporal_agentic_factory.watchers.beads.shell import run_bd
     from temporal_agentic_factory.watchers.beads.temporal import TemporalWorkflows
 
 
@@ -40,8 +42,9 @@ class BeadsPollActivity:
         """The tick's I/O: `bd` subprocesses and workflow starts, all here."""
         cfg = settings.beads_poller
         return await poll_once(
-            BeadsClient(timeout_sec=cfg.command_timeout_sec),
+            BeadsClient(configured_home(), settings.beads.command_timeout_sec, run_bd),
             TemporalWorkflows(),
+            providers=list(settings.providers),
             batch_limit=cfg.batch_limit,
             orphan_timeout_sec=cfg.orphan_timeout_sec,
             now=datetime.now(UTC),

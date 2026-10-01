@@ -65,7 +65,7 @@ def test_cli_status_and_list_help() -> None:
 def test_cli_beads_group() -> None:
     assert CliRunner().invoke(app, ["beads", "--help"]).exit_code == 0
     group = CliRunner().invoke(app, ["beads", "--help"]).output
-    for command in ("ready", "poll", "schedule", "unschedule"):
+    for command in ("init", "add", "list", "show", "close", "ready", "poll", "schedule"):
         assert command in group
 
 

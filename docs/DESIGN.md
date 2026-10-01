@@ -21,8 +21,8 @@ Vocabulary rules:
 - The process that polls Temporal task queues is the **runner**, never
   "worker". "Worker" is not a concept here any more (decision Sep 2026, below).
 - **run** = one execution of a workflow. **try** = one attempt of an
-  activity. The word "task" is avoided (beads task, Temporal task and
-  fleet task all differ).
+  activity. The word "task" is avoided (a beads task and a Temporal task
+  differ).
 
 ## Use case
 
@@ -663,6 +663,35 @@ factory research agents,safety \
   --target literature-review --topic agents --lenses tech,ai
 ```
 
+## Submitting tasks
+
+A coder task is a bead in the one beads database af owns, at `[beads].home`
+(`~/.agentic_factory/beads`). Every `bd` call runs with that folder as its
+cwd, so the database never depends on where a command is started.
+
+1. `af beads init` once: makes the folder and runs `bd init` there with the
+   prefix `af`. A second run changes nothing; it prints the path.
+2. `af beads add "Fix the flaky test" --cwd ~/git/repo --provider opencode
+   [--model M] [--priority 0-4] [--body TEXT | --body-file F]` adds an open
+   bead and prints its id. Its routing lives on the bead as bd metadata:
+   `af_provider`, `af_cwd` (an absolute, existing folder) and `af_model`
+   (left out for the provider's default). A provider with no
+   `[providers.<name>]` table is refused.
+3. The poller (`af beads schedule`, or `af beads poll` while developing)
+   takes ready beads by priority (`bd ready --sort priority`, up to
+   `[beads_poller] batch_limit`), claims each one and starts its job
+   workflow `bead-<id>`. A ready bead with no provider or workdir in its
+   metadata, an unconfigured provider or a missing folder stays open; the
+   tick summary says why.
+4. Watch it with `af list` or the Temporal UI (the Name column is the bead
+   id). When the job completes, the next tick comments `[af] done: ...` on
+   the bead and closes it; a failed job leaves it in_progress with a note.
+
+`af beads list`, `af beads show ID` and `af beads close ID [--reason R]`
+print what `bd` prints (`--json` passes through for list and show). Every
+command but `init` and `unschedule` stops with one line naming
+`af beads init` while the folder holds no database.
+
 ## Materialization
 
 What a job did must outlive the try that did it: a retry, a runner restart
@@ -736,7 +765,7 @@ the Go base url and user agent, reasoning and token limits of steps.
 `settings/load.py` loads it with dynaconf and validates it into the pydantic
 models of `settings/model.py`, so code reads `settings.step.max_tokens`, never a bare key.
 The runner package repeats the pattern for its own `[temporal]`, `[runner]`,
-`[cli]` and activity tables. The loader itself lives once, in
+`[cli]`, `[beads]` (the beads database's home) and activity tables. The loader itself lives once, in
 `common/factory_settings` (`load(model, folder)`), which also holds the
 values more than one package needs: the store's url in `[store]`. Every
 settings model is a `Table` with `extra="forbid"`, so a misspelled key in a
@@ -869,7 +898,8 @@ per million lives in settings so the result carries `cost_usd`.
   model speaks one protocol: chat completions (glm, kimi, deepseek,
   longcat) or Responses (muse-spark, grok, gpt luna).
 - Beads is an input source (watcher) and an output target (a workflow
-  updates status), not the internal state store.
+  updates status), not the internal state store. af owns its beads
+  database at `~/.agentic_factory/beads` and calls `bd` directly.
 - One watcher at most (beads). X monitoring is a schedule whose first
   activity runs `x watch check`.
 - No YAML workflow language. Graphs are Python; a data-driven DAG

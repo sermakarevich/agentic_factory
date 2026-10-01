@@ -1,9 +1,10 @@
 """Bead to job: which beads the puller takes, and what job each becomes.
 
-Only beads whose coder maps to a known harness are taken; anything else is
-left for fleet workers, with the reason recorded in the tick summary.
+Only beads whose metadata names a configured provider and a workdir are taken;
+anything else is left open, with the reason recorded in the tick summary.
 """
 
+from collections.abc import Collection
 from pathlib import Path
 
 from pydantic import BaseModel
@@ -12,8 +13,6 @@ from agentic_factory.job.coders.catalog import harness_for
 from agentic_factory.job.contract import Job
 from agentic_factory.job.defaults import with_default_model
 from temporal_agentic_factory.watchers.beads.models import Bead
-
-PROVIDERS = {"claude": "claude", "opencode": "opencode"}
 
 
 class BeadDecision(BaseModel):
@@ -24,12 +23,19 @@ class BeadDecision(BaseModel):
     skip: str = ""
 
 
-def decide(bead: Bead) -> BeadDecision:
-    """The job for a bead, or the skip with its reason."""
-    provider = PROVIDERS.get(bead.coder.strip().lower())
-    if provider is None:
-        return BeadDecision(bead_id=bead.id, skip=f"no harness for coder {bead.coder!r}")
-    if not bead.cwd or not Path(bead.cwd).is_dir():
+def decide(bead: Bead, providers: Collection[str]) -> BeadDecision:
+    """The job for a bead, or the skip with its reason. `providers` are the
+    configured ones: a bead for any other would wait in a queue nobody polls."""
+    provider = bead.provider.strip().lower()
+    if not provider:
+        return BeadDecision(bead_id=bead.id, skip="no provider in the bead's metadata")
+    if provider not in providers:
+        return BeadDecision(
+            bead_id=bead.id, skip=f"provider {provider!r} has no [providers.{provider}] table"
+        )
+    if not bead.cwd:
+        return BeadDecision(bead_id=bead.id, skip="no workdir in the bead's metadata")
+    if not Path(bead.cwd).is_dir():
         return BeadDecision(bead_id=bead.id, skip=f"workdir not a directory: {bead.cwd!r}")
     prompt = f"{bead.title}\n\n{bead.description}".strip()
     if not prompt:

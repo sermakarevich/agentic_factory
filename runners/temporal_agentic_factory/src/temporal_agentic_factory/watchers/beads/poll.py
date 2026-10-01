@@ -5,6 +5,7 @@ State lives in beads comments (`[af] workflow ...` markers) and workflow ids
 new beads, the workflow id absorbs them for spawns.
 """
 
+from collections.abc import Collection
 from datetime import UTC, datetime
 from typing import Protocol
 
@@ -46,14 +47,16 @@ class UnknownWorkflow(Exception):
 async def poll_once(
     beads: BeadsClient,
     flows: Workflows,
+    providers: Collection[str],
     batch_limit: int,
     orphan_timeout_sec: int,
     now: datetime,
 ) -> PollSummary:
-    """Reconcile, then spawn: the summary of what this tick did."""
+    """Reconcile, then spawn: the summary of what this tick did. Only beads for
+    one of `providers` are spawned."""
     summary = PollSummary()
     await _reconcile(beads, flows, summary, orphan_timeout_sec, now)
-    await _spawn(beads, flows, summary, batch_limit)
+    await _spawn(beads, flows, summary, providers, batch_limit)
     return summary
 
 
@@ -154,24 +157,29 @@ async def _spawn(
     beads: BeadsClient,
     flows: Workflows,
     summary: PollSummary,
+    providers: Collection[str],
     batch_limit: int,
 ) -> None:
     """Ready beads claimed and spawned, up to the batch; their coder runs wait
     in their provider's queue for a free slot."""
     try:
-        candidates = beads.ready()
+        candidates = beads.ready(batch_limit)
     except BeadsError as error:
         summary.errors.append(f"ready list failed: {error}")
         return
-    for bead in candidates[:batch_limit]:
-        await _spawned_one(beads, flows, summary, bead)
+    for bead in candidates:
+        await _spawned_one(beads, flows, summary, providers, bead)
 
 
 async def _spawned_one(
-    beads: BeadsClient, flows: Workflows, summary: PollSummary, bead: Bead
+    beads: BeadsClient,
+    flows: Workflows,
+    summary: PollSummary,
+    providers: Collection[str],
+    bead: Bead,
 ) -> None:
     """One ready bead claimed, its job started and marked; or why not, in the summary."""
-    decision = decide(bead)
+    decision = decide(bead, providers)
     if decision.job is None:
         summary.skipped[bead.id] = decision.skip
         return

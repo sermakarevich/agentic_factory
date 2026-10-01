@@ -61,16 +61,21 @@ agentic_factory/
           research/           # activities (locate_target, read_candidates), workflow (the chain of jobs
                               # and child distill runs)
         watchers/             # long-running things that watch a state and start workflows
-          beads/              # client, mapping, models, poll, shell, temporal, workflow (the beads poller)
+          beads/              # client (bd calls on the database af owns), home ([beads].home), mapping,
+                              # models, poll, shell (`bd` subprocess), temporal, workflow (the poller)
         cli/                  # app (the `af` typer app), one module per subject (job: `run`, distill,
-                              # research, beads, coders), errors, ids (readable workflow ids), options,
+                              # research, coders), errors, ids (readable workflow ids), options,
                               # providers (refuses a provider with no settings table), workflows
                               # (status, result, list, cancel, terminate, health)
+          beads/              # app (the `af beads` group), opened (the configured database),
+                              # database (init, add, list, show, close), poller (ready, poll,
+                              # schedule, unschedule)
         settings/             # server address, activity limits, [providers.<name>] coder limits, one table per workflow
                               # and activity ([job_activity], [distill_workflow],
                               # [research_workflow], [locate_activity], [candidates_activity], ...)
       tests/                  # mirrors src: workflows/<subject>/, watchers/beads/, cli/; fakes.py and
-                              # workers.py (a main worker plus one per coder queue) at the top
+                              # workers.py (a main worker plus one per coder queue) and fake_bd.py
+                              # (a scripted `bd`) at the top
     argo_agentic_factory/     # NOT built. README only, see "Why runners/"
   common/
     factory_settings/       # the settings loader (dynaconf + pydantic) and the values every package shares

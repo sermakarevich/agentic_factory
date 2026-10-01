@@ -677,3 +677,15 @@ sources one module per kind** (Oct 1).
   arithmetic lives there. `locate` and `candidates` folded into
   `activities.py`. Rejected: one prompt module per job (a function per
   template added nothing but a name).
+- **af owns its beads database at ~/.agentic_factory/beads; fleet no longer
+  used** (2026-10-01). The watcher shelled out to `fleet ready --json` and
+  `fleet bd ...`, so stopping fleet's supervisor stopped the beads intake.
+  Now every call is plain `bd` run with `[beads].home` as its cwd
+  (`BEADS_DIR` dropped from its environment, so the cwd alone picks the
+  database), `af beads init` makes it with the prefix `af`, and
+  `af beads add` writes the routing as bd metadata on the bead itself
+  (`af_provider`, `af_cwd`, `af_model`). A ready bead needs a configured
+  provider and an existing workdir or it stays open with the reason in the
+  tick summary. Rejected: a task.json beside each bead (a second source of
+  truth that `bd` does not move with the bead) and keeping fleet's
+  `coder`/`isolation` row keys (nothing downstream used `isolation`).
