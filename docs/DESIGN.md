@@ -663,6 +663,68 @@ factory research agents,safety \
   --target literature-review --topic agents --lenses tech,ai
 ```
 
+## Tutorial
+
+A topic becomes a tutorial in the vault at `knowledge/tutorials/<name>/`:
+numbered chapters (`NN_<slug>.md` and/or `.ipynb`), a runnable `project/`
+when the topic needs code, and an `index.md`; one line is added to
+`knowledge/tutorials/index.md`. Nothing is committed.
+
+The application half lives in `app/tutorial`, plain Python with no Temporal
+and no import from another app:
+
+- `contract.py`: `TutorialRequest` (topic, name, formats, level,
+  review_rounds, a `Coder` per role: designer, writer, reviewer; left-out
+  fields come from settings), `TutorialPlan` and its `Chapter`s (number,
+  slug, title, spec_path, formats, outputs), `Review` (passed, problems),
+  `Finished` (index path, fixes), `Spend` and the outcomes
+  (`ChapterOutcome`, `TutorialOutcome`).
+- `plan.py`: `plan_problems(plan, allowed)`, every reason a plan cannot be
+  built (no chapters, repeated numbers, slugs, specs or outputs, a spec not
+  under `specs/`, an output outside the folder or on a file another stage
+  writes, a missing `NN_<slug>.<format>` output).
+- `review.py`: `after_review(review, rewrites, review_rounds)`: done when it
+  passed, rewrite while rounds are left, failed after.
+- `run.py`: where tutorials land (`tutorials_dir()`), `located_dir` (the
+  folder made with its `specs/`, refused when it holds files) and
+  `Tutorial`, the state the workflow grows.
+- `prompts/`: one self-contained template per job (`name`, `design`,
+  `write`, `rewrite`, `review`, `finish`) with `house_style.md` pasted in;
+  every path in them is absolute.
+- `settings.toml`: root, levels, formats, review rounds, the style example
+  tutorial, the notebook command, the naming and finish timeouts, and one
+  table per role (provider, model, timeout, stall).
+
+The runner half lives in `runners/temporal_agentic_factory/workflows/tutorial/`:
+`activities.py` (`locate_tutorial`, bounded by `[tutorial_locate_activity]`)
+and `workflow.py` (`TutorialWorkflow`, type name `tutorial`); the command is
+`cli/tutorial.py`. Every job is a child job workflow, as in research:
+
+```
+name (designer coder, states the folder name; only when --name is left out)
+folder (locate activity: refused when it exists and is not empty)
+design (states the plan; writes plan.md, specs/NN_<slug>.md, project/ when needed)
+    the plan checked in the workflow: a bad plan stops the run (BadPlan)
+every chapter at once:
+    write/NN, review/NN (states passed, problems)
+    rewrite/NN/1, review/NN/1, ... while review_rounds (2) last
+    still failing: the chapter is marked failed, the others carry on
+finish (consistency pass, index.md, the line in the tutorials index)
+```
+
+A writer job that failed for good, or a review job that stated nothing, is
+a failed review for that round. The outcome lists every chapter with its
+status, rewrites and last problems, plus the cost and tokens summed per
+chapter and in total. There is no human gate.
+
+```
+af tutorial "Grafana dashboards for beginners" --name grafana --formats md,ipynb --level beginner
+```
+
+waits and prints the `TutorialOutcome` as JSON; `--detach` prints the
+workflow id. `--review-rounds` and `--<role>-provider`/`--<role>-model`
+override the settings.
+
 ## Submitting tasks
 
 A coder task is a bead in the one beads database af owns, at `[beads].home`

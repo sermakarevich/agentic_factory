@@ -44,6 +44,14 @@ agentic_factory/
         prompts/              # flat .md templates, one per job, and prompt.py: prompt() and values()
         settings/             # shortlist size, reserve share, lenses, candidate bounds, abstract limit
       tests/                  # contract, rank, run, prompts, settings
+    tutorial/               # the application behind the tutorial workflow: a topic into numbered chapters
+      pyproject.toml        # package `tutorial`; depends on factory_settings
+      justfile
+      src/tutorial/         # contract (request, plan, review, outcomes), plan (plan checks), review
+                            # (the rewrite-or-not rule), run (the state, where a tutorial lands, the folder made)
+        prompts/              # flat .md templates, one per job, house_style pasted into each, and prompt.py
+        settings/             # root, levels, formats, review rounds, timeouts, one table per role
+      tests/                  # contract, plan, review, run, prompts, settings
   runners/
     temporal_agentic_factory/ # Temporal binding: installs `agentic_factory`
       pyproject.toml        # package `temporal_agentic_factory`
@@ -61,6 +69,8 @@ agentic_factory/
           distill/            # workflow, activities (fetch + verify), name (a source's url tail)
           research/           # activities (locate_target, read_candidates), workflow (the chain of jobs
                               # and child distill runs)
+          tutorial/           # activities (locate_tutorial), workflow (designer, chapters at
+                              # once with review rounds, finish)
         watchers/             # things that watch a state and start workflows
           beads/              # client (bd calls on the database af owns), home ([beads].home),
                               # models, shell (`bd` subprocess, captured or forwarded), markers (the
@@ -73,7 +83,7 @@ agentic_factory/
                               # clean (the clean_history activity: list, select, delete), workflow
                               # (cleaner: one clean), schedule (the cleaner schedule: start, status)
         cli/                  # app (the `af` typer app), one module per subject (job: `run`, distill,
-                              # research, coders), errors, ids (readable workflow ids), options,
+                              # research, tutorial, coders), errors, ids (readable workflow ids), options,
                               # providers (refuses a provider with no settings table), workflows
                               # (status, result, list, cancel, terminate, health)
           beads/              # app (the `af beads` group), opened (the configured database),
@@ -84,7 +94,8 @@ agentic_factory/
           cleaner.py          # the `af cleaner` group: start, stop, restart, status, run
         settings/             # server address, activity limits, [providers.<name>] coder limits, one table per workflow
                               # and activity ([job_activity], [distill_workflow],
-                              # [research_workflow], [locate_activity], [candidates_activity], ...)
+                              # [research_workflow], [locate_activity], [candidates_activity],
+                              # [tutorial_locate_activity], ...)
       tests/                  # mirrors src: workflows/<subject>/, watchers/beads/, cleaner/, cli/;
                               # fakes.py and workers.py (a main worker plus one per coder queue),
                               # fake_bd.py (a scripted `bd`) and fake_schedules.py (schedules and
@@ -141,11 +152,17 @@ no Temporal and no `agentic_factory` import; the runner's research
 workflow will order its steps. What it shares with distill lives down a
 layer: the vault's folders in `common/factory_settings`.
 
+**app/tutorial** owns the tutorial domain: how a topic becomes numbered
+chapters under `knowledge/tutorials/<name>/` (the request, the designer's
+plan and its checks, the review rule, what each job is asked, where a
+tutorial lands). It holds no Temporal and no import from another app; the
+runner's tutorial workflow orders its jobs.
+
 **runners/temporal_agentic_factory** owns the engine binding and the
 workflows. It wraps app functions as Temporal activities, implements the
 workflows that compose them (the job workflow, the job with structured
-output, distill, research) and exposes the CLI (`runner`, `coders`, `run`,
-`distill`, `research`, `beads`, `attributes`). It is grouped by role, then by subject
+output, distill, research, tutorial) and exposes the CLI (`runner`, `coders`, `run`,
+`distill`, `research`, `tutorial`, `beads`, `attributes`). It is grouped by role, then by subject
 inside each role: `workflows/` holds one folder per workflow with its
 activities, `watchers/` the things that watch a state and start
 workflows (the beads poll schedule), `cleaner/` the schedule that deletes old

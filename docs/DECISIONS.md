@@ -783,3 +783,19 @@ sources one module per kind** (Oct 1).
   count for all closed runs (a failed tick would be deleted by the next good
   one before anyone reads it), and cleaning every type (jobs' history is
   worth its 24 h retention).
+- **Tutorials are their own app and workflow** (2026-10-01). `af tutorial
+  "<topic>"` writes `knowledge/tutorials/<name>/` through the `tutorial`
+  app and workflow. The designer is one structured-output job that writes
+  its plan and one spec per chapter to disk (`plan.md`, `specs/NN_<slug>.md`)
+  and states the plan, which the workflow checks before any writer starts:
+  the specs on disk are what writers and reviewers read, so the prompts stay
+  short and a run can be read afterwards. Chapters fan out, one writer job
+  each, all at once; each is reviewed by a structured-output job, and a
+  failing chapter gets at most `review_rounds` (2) rewrites, then is marked
+  failed while the others finish. A shared `project/` is scaffolded by the
+  designer; a writer only adds files named for its chapter. One finish job
+  does the consistency pass and the indexes. No approval gate and no git
+  commit. Rejected: one job writing the whole tutorial (too long for one
+  context, nothing to review per chapter), an unbounded review loop (cost
+  with no end), and failing the run on one bad chapter (the rest is worth
+  keeping).

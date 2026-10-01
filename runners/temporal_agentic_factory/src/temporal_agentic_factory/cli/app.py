@@ -13,6 +13,7 @@ from temporal_agentic_factory.cli.distill import distill
 from temporal_agentic_factory.cli.errors import run_coro
 from temporal_agentic_factory.cli.job import run
 from temporal_agentic_factory.cli.research import research
+from temporal_agentic_factory.cli.tutorial import tutorial
 from temporal_agentic_factory.client import connect
 from temporal_agentic_factory.identity import runner_identity
 from temporal_agentic_factory.runner import serve
@@ -54,6 +55,7 @@ app.command()(coders)
 app.command()(run)
 app.command()(distill)
 app.command()(research)
+app.command()(tutorial)
 app.command(name="status")(workflows.status)
 app.command(name="describe")(workflows.status)
 app.command(name="result")(workflows.result)

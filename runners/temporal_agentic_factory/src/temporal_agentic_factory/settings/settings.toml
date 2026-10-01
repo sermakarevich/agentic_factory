@@ -104,3 +104,7 @@ max_attempts = 3    # tries before the workflow fails; a bad topic is final anyw
 [candidates_activity]
 timeout_sec = 30    # reading one JSON file the discover job wrote
 max_attempts = 3    # tries before the workflow fails; a missing file is final anyway
+
+[tutorial_locate_activity]
+timeout_sec = 30    # checking the tutorial's folder name and making its specs/ folder
+max_attempts = 3    # tries before the workflow fails; a bad name or a folder in use is final anyway

@@ -147,3 +147,4 @@ class Settings(Table):
     research_workflow: ResearchWorkflowSettings
     locate_activity: LocateActivitySettings
     candidates_activity: CandidatesActivitySettings
+    tutorial_locate_activity: LocateActivitySettings

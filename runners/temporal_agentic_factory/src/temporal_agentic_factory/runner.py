@@ -24,6 +24,8 @@ from temporal_agentic_factory.workflows.structured_output.extract import Structu
 from temporal_agentic_factory.workflows.structured_output.workflow import (
     JobWithStructuredOutputWorkflow,
 )
+from temporal_agentic_factory.workflows.tutorial.activities import locate_tutorial
+from temporal_agentic_factory.workflows.tutorial.workflow import TutorialWorkflow
 
 
 async def serve(identity: str) -> None:
@@ -43,6 +45,7 @@ async def serve(identity: str) -> None:
                 JobWithStructuredOutputWorkflow,
                 DistillWorkflow,
                 ResearchWorkflow,
+                TutorialWorkflow,
                 BeadsPollWorkflow,
                 CleanerWorkflow,
             ],
@@ -65,6 +68,7 @@ def _activities(store: Store) -> list[Callable[..., Any]]:
         judge,
         locate_target,
         read_candidates,
+        locate_tutorial,
         BeadsPollActivity().poll,
         clean_history,
     ]

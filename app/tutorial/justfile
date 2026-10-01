@@ -1,0 +1,29 @@
+set positional-arguments
+
+# tutorial — the tutorial application package. Run `just` to list.
+
+default:
+    @just --list
+
+# lint source and tests
+lint:
+    uv run ruff check src tests
+
+# format source and tests
+fmt:
+    uv run ruff format src tests
+
+# fail if anything needs formatting
+fmt-check:
+    uv run ruff format --check src tests
+
+# static types
+typecheck:
+    uv run mypy src
+
+# unit tests
+test *ARGS:
+    uv run pytest -q -p no:cacheprovider tests {{ARGS}}
+
+# one command that says "green"
+check: lint fmt-check typecheck test

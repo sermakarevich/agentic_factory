@@ -16,6 +16,7 @@ factory-store = { workspace = true }
 factory-settings = { workspace = true }
 distill = { workspace = true }
 research = { workspace = true }
+tutorial = { workspace = true }
 
 [dependency-groups]
 dev = [

@@ -1,0 +1,33 @@
+# Defaults of the tutorial application. Override without editing this file:
+#   - settings.local.toml next to it (git-ignored), same layout;
+#   - environment variables AF_<TABLE>__<KEY>, e.g. AF_TUTORIAL__REVIEW_ROUNDS=1;
+#   - a .env file in the repo root, read on start.
+
+[tutorial]
+root = "knowledge/tutorials"                         # where tutorials land, relative to the vault's workdir
+levels = ["beginner", "intermediate", "advanced"]    # the reader levels a request may name
+level = "beginner"                                   # the reader level when the request names none
+formats = ["md", "ipynb"]                            # the chapter formats allowed when the request names none
+review_rounds = 2                                    # rewrite rounds a failing chapter gets before it is marked failed
+style_example = "grafana"                            # the tutorial folder every prompt points at as a model of the house style
+notebook_command = "uv run jupyter nbconvert --to notebook --execute --inplace"  # how a notebook is run end to end
+naming_timeout_sec = 900                             # the naming job's own limit (designer coder): pick a folder name
+finish_timeout_sec = 3600                            # the finish job's own limit (designer coder): consistency pass and index
+
+[designer]
+provider = "claude"     # the coder that names, designs and finishes the tutorial
+model = "opus"          # its model: planning a whole tutorial wants the stronger model
+timeout_sec = 7200      # the design job's own limit; it may search the web and scaffold project/
+stall_sec = 600         # a job with no event for this long is killed
+
+[writer]
+provider = "opencode"                              # the coder every chapter writer runs on
+model = "opencode-go/muse-spark-1.3-contributor"   # its model; "" would mean the harness default
+timeout_sec = 3600                                 # one writer job's own limit, notebook runs included
+stall_sec = 900                                    # a writer may wait on a long notebook cell; killed after this long silent
+
+[reviewer]
+provider = "claude"     # the coder every chapter review runs on
+model = "sonnet"        # its model
+timeout_sec = 2400      # one review job's own limit, code and notebook runs included
+stall_sec = 900         # killed after this long with no event
