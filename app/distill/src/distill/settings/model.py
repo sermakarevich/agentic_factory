@@ -1,11 +1,7 @@
 from factory_settings.table import Table
 
 
-class VaultSettings(Table):
-    workdir: str
-    research: str
-    investment: str
-    research_topics: str
+class EntrySettings(Table):
     pdf_copy_max_bytes: int
 
 
@@ -53,7 +49,7 @@ class VerifySettings(Table):
 
 
 class Settings(Table):
-    vault: VaultSettings
+    entry: EntrySettings
     fetch: FetchSettings
     repo: RepoSettings
     chunking: ChunkingSettings

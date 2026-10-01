@@ -23,7 +23,7 @@ def test_env_overrides_a_nested_key(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_every_knob_is_a_setting() -> None:
-    assert settings.vault.pdf_copy_max_bytes > 0
+    assert settings.entry.pdf_copy_max_bytes > 0
     assert settings.fetch.work_root
     assert settings.repo.max_file_bytes > 0
     assert settings.chunking.slug_chars > 0

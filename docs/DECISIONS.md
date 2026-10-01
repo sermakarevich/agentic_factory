@@ -394,6 +394,22 @@ queues.
   `run_job_with_report`. That became `run_job_or_fail` in
   `job/workflow.py`; the structured-output helper and every distill
   job use it.
+- **The research run has no human gate yet** (Oct 1). Fleet's research
+  flow stopped at the shortlist for a person to approve it. The runner's
+  research workflow skips that stop: the plan goes straight from the
+  assign job to the source runs, and the shortlist is what the judge and
+  the assign job say. The gate comes back as a signal when wanted, not
+  as a second workflow.
+- **One child distill workflow per fresh source, failing softly** (Oct 1).
+  One dead source must not sink the run: a child run that failed becomes
+  a `skipped` ledger row with its reason, and the digests read only what
+  was filed. At most `sources_at_once` children run together, since each
+  one spends several coder slots.
+- **Planning jobs run on a stronger model than writing jobs** (Oct 1).
+  Discover searches the web and assign reads the ranked rows; both run
+  on the planning coder and model with the longer planning timeout. The
+  writing jobs (topic digests, aggregates, lenses, index) ride the
+  subscription coder the distill jobs use.
 
 ## 4. Cross-cutting
 
@@ -540,6 +556,20 @@ harness is its job.
   muse-spark, worktree isolation, one spec file per task, dependencies
   declared at creation), reviewed line by line against the spec and
   checked with ruff, mypy strict and pytest before each push.
+- **Distill: prompts as one API over flat templates,
+sources one module per kind** (Oct 1).
+  Ten prompt folders (each an `__init__.py`, a `prompt.py` building a dict
+  by hand, a `.md`) became `prompts/__init__.py`: one `Entry` plus
+  `plan/page/wiki/index_prompt` over flat `*.md` files, the repo variant
+  picked by file existence. A 914-line `sources.py` became `sources/`
+  with one module per kind behind one `{SourceKind: fetcher}` table; the
+  workflow's stages became data (`READER_STAGES`) with one `_written`
+  helper whose status line counts jobs in as they finish.
+- **Rejected.** Keeping the ported fleet layout: ten near-identical prompt
+  dicts, a route table of lambdas, one function per workflow stage.
+- **Why.** Prompts are read as prose far more often than code; code only
+  chooses and fills. Proven byte-identical: every prompt rendered for a
+  text and a repo source before and after, pinned by `tests/test_prompts.py`.
 - **Distill prompt text lives in .md files, Python only chooses and fills** (Oct 1).
   Prompts are read and edited far more often than code; a text file diffs
   and reviews as prose, with no escaping for braces or quotes. Python keeps
@@ -554,3 +584,38 @@ harness is its job.
   max_concurrent_activities` per process, so N runners run N times as
   many coder jobs at once; lower the setting if the machine is
   loaded.
+- **The vault paths are shared settings in `common/factory_settings`** (Oct 1).
+  A second app needs the same knowledge-base folders and apps never import
+  each other, so the `[vault]` table and its readers moved down a layer.
+  Distill keeps what is its own: `[entry].pdf_copy_max_bytes` for the plan
+  prompt and `[fetch].work_root` for the run work folder.
+- **The prompt renderer is a common package** (Oct 1). `distill`'s
+  `rendered(folder, name, values)` was needed by `research` too and an app
+  never imports another app, so it moved down a layer to
+  `common/factory_prompts`. Both apps fill their `.md` templates with it;
+  it stays one function, strict on missing variables.
+- **Research ranks with the judge step, not with a chat model** (Oct 1).
+  Scoring is three jev questions asked verbatim over each candidate's
+  metadata (relevance, kind, authority): calibrated, cheap, and the three
+  questions are facts of the flow, kept as named constants beside their
+  one user in `research/rank.py`. A chat model ranking the same list was
+  rejected: uncalibrated scores, full-context cost, and wording that
+  drifts per run.
+- **The discover job states a path, the file holds the candidates** (Oct 1).
+  The candidate list is too big for a structured output (tens of rows with
+  abstracts), so discover writes `<target>/candidates.json` and states
+  only `candidates_path` in its final message. The ranking, the plan and
+  the ledger all read the file from there.
+- **Research is one state, one candidate, flat prompts** (Oct 1). The first
+  port was mechanical: three models for one candidate (scored, ranked, plain),
+  two for one planned source, 30 prompt files for 10 jobs, domain logic in a
+  450-line workflow. Now one `Candidate` carries `status` and `scores` through
+  every stage, one `PlannedSource` is linked when it has an `origin`, one
+  `Research` state model grows as the workflow goes and answers what the
+  prompts ask (`run.py`), and `prompts/prompt.py` fills the flat `.md`
+  templates from one `values` function, as distill's does. The judge
+  questions are one plain dict in `rank.py`; the runner only converts them to
+  `Question` and the answers to plain values, so no question text or level
+  arithmetic lives there. `locate` and `candidates` folded into
+  `activities.py`. Rejected: one prompt module per job (a function per
+  template added nothing but a name).

@@ -14,7 +14,7 @@ from agentic_factory.job.contract import Job, JobResult
 from agentic_factory.job.outcome import JobOutcome
 from agentic_factory.job.report.contract import JobReport, Verdict
 from distill.contract import DistillRequest, EntryType, FetchedChunk, FetchedSource
-from temporal_agentic_factory.distill.fetch import FetchRequest
+from temporal_agentic_factory.distill.activities import FetchRequest
 from temporal_agentic_factory.distill.workflow import DistilledEntry, DistillWorkflow
 from temporal_agentic_factory.job import search_attributes
 from temporal_agentic_factory.job.execute import TryResult
@@ -210,7 +210,7 @@ async def test_every_activity_is_labeled_with_its_job_in_the_ui() -> None:
             "summary",
             "explainer",
             "questions",
-            "critical thinking",
+            "critical_thinking",
             "index/1",
             "index/2",
         ]

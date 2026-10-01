@@ -31,12 +31,19 @@ agentic_factory/
       scripts/              # run_job.py, run_step.py, run_judge.py: dev entry points behind `just`
       tests/
     distill/                # the application behind the distill workflow: one source into a knowledge-base entry
-      pyproject.toml        # package `distill`; depends on factory_settings only
+      pyproject.toml        # package `distill`; depends on factory_settings and factory_prompts
       justfile
-      src/distill/          # contract (request, fetched source, plan, filed entry), sources, chunking, fetch, verify, topics, vault
-        prompts/              # one folder per job with prompt.py plus .md templates, and template.py the one renderer every job uses
-        settings/             # vault folders, fetch limits and throttles, chunk bounds, verify minimum
-      tests/
+      src/distill/          # contract, sources (one module per kind), chunking, fetch, verify, topics
+        prompts/              # one prompt API over flat .md templates, filled with factory_prompts
+        settings/             # entry pdf limit, fetch limits and throttles, chunk bounds, verify minimum
+      tests/                  # contract, fetch, prompts, settings, topics, verify, boilerplate, chunking, sources
+    research/               # the application behind the research workflow: a focus question into a folder of digests
+      pyproject.toml        # package `research`; depends on factory_settings and factory_prompts
+      justfile
+      src/research/         # contract (request, candidate, plan, outcomes), run (the state and where a run lands), rank (judge questions, scores, order)
+        prompts/              # flat .md templates, one per job, and prompt.py: prompt() and values(), filled with factory_prompts
+        settings/             # shortlist size, reserve share, lenses, candidate bounds, abstract limit
+      tests/                  # contract, rank, run, prompts, settings
   runners/
     temporal_agentic_factory/ # Temporal binding: installs `agentic_factory`
       pyproject.toml        # package `temporal_agentic_factory`
@@ -45,16 +52,25 @@ agentic_factory/
         job/                  # workflow, session, execute, report, record, search_attributes (the ui's columns), cli (the `run` command)
         structured_output/    # workflow, extract: the output asked for in the prompt, picked out by a step
         judge/                # workflow (run_judgment), activity: the judge step for workflows that branch on an answer
-        distill/              # workflow, fetch, verify, cli (the `distill` command)
+        distill/              # workflow, activities (fetch + verify), cli (the `distill` command)
+        research/             # activities (locate_target, read_candidates), workflow (the chain of jobs
+                              # and child distill runs), cli (the `research` command)
         settings/             # server address, activity limits, one table per workflow
+                              # and activity ([job_activity], [distill_workflow],
+                              # [research_workflow], [locate_activity], [candidates_activity], ...)
       tests/
     argo_agentic_factory/     # NOT built. README only, see "Why runners/"
   common/
     factory_settings/       # the settings loader (dynaconf + pydantic) and the values every package shares
       pyproject.toml        # package `factory_settings`
       justfile
-      src/factory_settings/ # table.py (Table base), load.py (load), shared.py + settings.toml ([store] url)
+      src/factory_settings/ # table.py (Table base), load.py (load), vault.py (knowledge-base folders), shared.py + settings.toml ([store] url, [vault] folders)
       tests/
+    factory_prompts/        # the one prompt renderer every app fills its .md templates with
+      pyproject.toml        # package `factory_prompts`
+      justfile
+      src/factory_prompts/  # template.py (rendered), py.typed
+      tests/                # test_template.py
     factory_store/          # the database: schema.py (tables), store.py (async API), clean.py, migrations/ (alembic)
       pyproject.toml        # package `factory_store`
       justfile              # check, migrate, revision
@@ -84,17 +100,28 @@ atomic abstractions:
 Every function here is callable from a test or a script with no engine
 running. A new step or job feature is added here and only here.
 
-**app/distill** owns the distill domain: how a source is fetched and
-cut into chunks, what each job is asked (`prompts/`), how a finished
-entry is checked, where the vault's folders are. It holds no Temporal
+**app/distill** owns the distill domain: how a source is fetched (one
+module per kind behind one `fetch`) and cut into chunks, what each job
+is asked (one prompt API over flat `.md` templates), how a finished
+entry is checked. The vault's folders live in `common/factory_settings`
+(`vault.py`), shared with the research app, and the prompt renderer in
+`common/factory_prompts` (`template.py`), shared with it too. It holds no Temporal
 and no `agentic_factory` import; the runner's distill workflow orders
 its steps.
+
+**app/research** owns the research domain: how a focus question becomes
+a folder of digests (the request, the candidates, the judge ranking, the
+plan, what each job is asked (`prompts/`), where a run lands). It holds
+no Temporal and no `agentic_factory` import; the runner's research
+workflow will order its steps. What it shares with distill lives down a
+layer: the vault's folders in `common/factory_settings`, the prompt
+renderer in `common/factory_prompts`.
 
 **runners/temporal_agentic_factory** owns the engine binding and the
 workflows. It wraps app functions as Temporal activities, implements the
 workflows that compose them (the job workflow, the job with structured
-output, distill) and exposes the CLI (`runner`, `run`, `distill`,
-`attributes`). It is grouped by subject: one folder per workflow holds
+output, distill, research) and exposes the CLI (`runner`, `run`, `distill`,
+`research`, `attributes`). It is grouped by subject: one folder per workflow holds
 its workflow, activities and cli command. Workflows are implemented here because their code is
 written against the engine API, and every artifact a workflow needs
 (its activities, its settings table, its cli command) lives here next to
@@ -109,7 +136,9 @@ Workflows on Kubernetes, Prefect, plain cron), only a new folder under
 **common/** holds libraries that two or more apps need, one named
 package per folder. Today: `factory_store`, the database (schema,
 migrations, async API) that both the app's callbacks and the runner's
-activities write through. A module moves here only when a second app needs it,
+activities write through; `factory_settings`, the settings loader and
+the values every package shares; `factory_prompts`, the one prompt
+renderer every app fills its `.md` templates with. A module moves here only when a second app needs it,
 never speculatively. `common/` is a folder of packages, not a Python
 module named `common`; the rule against `common.py` files still holds
 inside every package.

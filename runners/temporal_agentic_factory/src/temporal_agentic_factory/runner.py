@@ -6,8 +6,7 @@ from factory_store.store import Store
 from temporalio.worker import Worker
 
 from temporal_agentic_factory.client import connect
-from temporal_agentic_factory.distill.fetch import fetch_source
-from temporal_agentic_factory.distill.verify import verify_entry
+from temporal_agentic_factory.distill.activities import fetch_source, verify_entry
 from temporal_agentic_factory.distill.workflow import DistillWorkflow
 from temporal_agentic_factory.job.execute import JobActivity
 from temporal_agentic_factory.job.record import RecordActivity

@@ -5,6 +5,7 @@ description = "The distill application: fetch a source, chunk it, and the prompt
 requires-python = ">=3.13"
 dependencies = [
     "factory-settings",
+    "factory-prompts",
     "pydantic>=2.8",
 ]
 

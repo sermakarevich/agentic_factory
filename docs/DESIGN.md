@@ -431,23 +431,26 @@ It is split in two places, by the rule that a runner holds no domain
 logic:
 
 - `app/distill` is a second application, plain Python with no Temporal
-  and no import from `agentic_factory`: the source fetch and chunking
-  (`sources.py`, `chunking.py`, `fetch.py`), the check of a finished entry
-  (`verify.py`), the topic list (`topics.py`), the vault paths
-  (`vault.py`), the contracts the steps exchange (`DistillRequest`,
-  `FetchedSource`, `EntryPlan`, `FiledEntry`) and one folder per job
-  under `prompts/` with `prompt.py` plus `.md` templates. The prompt text
-  lives in the `.md` files and Python only chooses and fills: which
-  template, which optional section, and the variables. Its `settings.toml`
-  holds the vault folders, fetch limits (60 s per http call, 180 s per
+  and no import from `agentic_factory`: the contracts the steps
+  exchange (`contract.py`: `DistillRequest`, `FetchedSource`, `EntryPlan`,
+  `FiledEntry`), the source fetch (`sources/`: one module per kind behind
+  one `fetch`), the chunking (`chunking/`: text and repo), the
+  fetch-and-chunk entry point (`fetch.py`), the check of a finished entry
+  (`verify.py`), the topic list (`topics.py`), and one prompt API over
+  flat `.md` templates (`prompts/`). The prompt text lives in the `.md` files and Python only
+  chooses and fills: which template, which optional section, and the
+  variables. The vault paths (`vault.py`) are shared settings in
+  `common/factory_settings`, read as `factory_settings.vault`, since the
+  research app needs the same folders. Its `settings.toml` holds the
+  entry PDF limit, fetch limits (60 s per http call, 180 s per
   cli call, retry delays, throttles per tool), chunk bounds and the
   verifier's minimum size. Every function runs from a test with nothing
   else up.
-- The runner holds what only Temporal needs: `distill/fetch.py`
+- The runner holds what only Temporal needs: `distill/activities.py`
   (`fetch_source`: the app's blocking fetch on a thread, a `SourceError`
-  mapped to a retryable `ApplicationError` only when it says `transient`),
-  `distill/verify.py` (`verify_entry`: the app's check on a thread),
-  `distill/workflow.py` (`DistillWorkflow`, type name `distill`) and the
+  mapped to a retryable `ApplicationError` only when it says `transient`;
+  `verify_entry`: the app's check on a thread), `distill/workflow.py`
+  (`DistillWorkflow`, type name `distill`) and the
   `factory distill URL [--topic] [--chunk-chars] [--research-target]
   [--target-dir]` command.
 
@@ -464,7 +467,7 @@ the entry under it and states the final path (`FiledEntry`). With a
 routing rules and writes the entry into that folder as is; the request
 refuses a target dir together with a topic, since the topic would move the
 entry away again. Every job
-is built by `distill_job(name, prompt)`: the coder, model and limits of the
+is built by `_job(name, prompt)`: the coder, model and limits of the
 runner's `distill_workflow` table, in the vault, named `plan`, `wiki/3`,
 `digest`, `index/2` and so on. A job that failed for
 good raises through `run_job_or_fail`, so the chain stops where fleet
@@ -493,6 +496,97 @@ readable, all Temporal features, none of them history-changing:
 Child workflows per job (one named row per job in the parent's timeline,
 a history a fifth of the size) are the next step and wait for the
 research workflow, which needs child workflows anyway.
+
+## The research workflow
+
+The second workflow with a chain of jobs, ported from fleet's research
+flow: a focus question becomes a folder of digests in the vault at
+`research_topics/<topic>/research/<target>/`.
+
+It is split the same way distill is: the application half lives in
+`app/research`, plain Python with no Temporal and no import from
+`agentic_factory` or `distill`, and the Temporal composition (the
+workflow that orders the steps, the distill child runs, the judge step)
+lives in the runner.
+
+- `contract.py` names what the steps exchange: `ResearchRequest`
+  (topics, focus, target, topic, counts), one `Candidate` for every
+  stage (the discover job writes it to `<target>/candidates.json` with a
+  `Status` of candidate or in_kb; the ranking adds `scores` and moves the
+  status to shortlist, reserve or rejected), `PlannedSource` (fresh, or
+  linked when it has an `origin`), `ResearchPlan` (sources, subtopics,
+  lenses; `fresh` and `linked` are properties), `SourceOutcome` (one per
+  fresh source after its distill child run) and `ResearchedTopic` (the
+  workflow's result).
+- `rank.py` holds the flow's three jev questions as one plain constant in
+  the shape the judge step validates (relevance, kind, authority);
+  `judge_questions(focus)` fills the focus, `scored(candidate, answers)`
+  turns the raw answers into `Scores`, `ranked(candidates, n_sources,
+  reserve_share)` orders them: relevance first, kind then authority on
+  ties; the top `n_sources` shortlist, the next share reserve, the rest
+  rejected, the in-KB matches last and unscored.
+- `run.py` names where a run lands (the target folder, the topic page)
+  and holds `Research`, the one state model the workflow grows (request,
+  target dir, candidates, plan, source outcomes) with the questions the
+  prompts ask of it: the fresh sources and outcomes of a sub-topic, the
+  source count, the date range, the ranked rows the assign job reads.
+- `prompts/` holds one flat `.md` template per job (`discover`, `assign`,
+  `topic`, `digest`, `overview`, `agreements`, `disagreements`,
+  `open_questions`, `lens`, `index`) and one module, `prompt.py`:
+  `prompt(name, research, subtopic, lens)` fills a template, `values`
+  collects every variable any template names, with the two tables (source
+  resolution, shortlist) rendered there as strings.
+- Its `settings.toml` holds the shortlist size, the reserve share, the
+  lenses, the candidate count bounds and the abstract limit. Every
+  function runs from a test with nothing else up.
+
+The runner half lives in `runners/temporal_agentic_factory/research/`:
+`activities.py` (`locate_target`: the topic checked as the child distill
+runs check it, then the run's folder made; `read_candidates`: the discover
+file read back and validated), `workflow.py` (`ResearchWorkflow`, type name
+`research`) and the `factory research` command. The workflow is a short
+story of one small function per stage over the app's `Research` state and
+holds no domain logic: it converts the app's question dicts to judge
+questions and the judge's answers to plain values, nothing more. There is
+no human gate: the plan goes straight from the assign job to the source runs.
+
+```
+target dir (locate activity)
+discover (planning job, states the candidates file) + read it (activity)
+ranking (one judge step per fresh candidate, all at once)
+assign (planning job, states the plan)
+sources (one child distill run per fresh source, at most
+    `sources_at_once` at once; a dead source is skipped, never fatal)
+topic digests (one job per sub-topic, all at once)
+aggregates (digest, overview, agreements, disagreements and
+    open questions, all at once), then lenses (one job per lens, all at once)
+index (job, states the hub index)
+```
+
+Every job is built by `research_job(name, prompt, planning=False)`: the
+coder, model and limits of the runner's `research_workflow` table, in the
+vault, named `discover`, `topic/01`, `lens/tech` and so on. The two
+planning jobs (discover, assign) pass `planning=True` for the table's
+`planning_provider`/`planning_model` and the longer `planning_timeout_sec`:
+searching the web and assigning from scores wants the stronger model, while
+the writing jobs ride the subscription coder. One helper, `written(stage,
+prompts)`, runs a named set of jobs at once and keeps the status line.
+A child distill run that failed becomes a `skipped` ledger row with its
+reason; the workflow never fails because one source did. Status lines and
+job names label the run in the UI the way distill's do. The table also
+holds `sources_at_once`, and `[locate_activity]` and
+`[candidates_activity]` bound the two short activities.
+
+`factory research TOPICS --focus FOCUS --target TARGET --topic TOPIC
+[--n-sources] [--lenses] [--date-from] [--kinds] [--detach]
+[--workflow-id]` starts one run and waits, printing the `ResearchedTopic`
+as JSON:
+
+```
+factory research agents,safety \
+  --focus "What can coding agents do for literature review, for researchers?" \
+  --target literature-review --topic agents --lenses tech,ai
+```
 
 ## Materialization
 

@@ -3,11 +3,7 @@
 #   - environment variables AF_<TABLE>__<KEY>, e.g. AF_CHUNKING__CHARS_DEFAULT=8000;
 #   - a .env file in the repo root, read on start.
 
-[vault]
-workdir = "~/.ai"                                     # where every distill job runs: the knowledge-base repo
-research = "~/.ai/knowledge/research"                 # entries with no topic go here as research/<PascalName>
-investment = "~/.ai/knowledge/investment"             # finance entries go here as investment/<YYYY-MM-DD>-<PascalName>
-research_topics = "~/.ai/knowledge/research_topics"   # one folder per topic; a filed entry moves under its topic
+[entry]
 pdf_copy_max_bytes = 2000000                          # a source PDF up to this size is copied into the entry; a bigger one is linked
 
 [fetch]

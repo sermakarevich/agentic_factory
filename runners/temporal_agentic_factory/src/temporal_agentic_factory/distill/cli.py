@@ -1,18 +1,12 @@
-"""The `distill` command: one source turned into a knowledge-base entry."""
-
-import asyncio
-from typing import Annotated
-from uuid import uuid4
+from collections.abc import Coroutine
+from typing import Annotated, Any
 
 import typer
+from temporalio.client import WorkflowHandle
 
 from distill.contract import DistillRequest
 from temporal_agentic_factory.client import awaited, connect
-from temporal_agentic_factory.distill.workflow import (
-    DistilledEntry,
-    DistillWorkflow,
-    distill_job,
-)
+from temporal_agentic_factory.distill.workflow import DistilledEntry, DistillWorkflow, _job
 from temporal_agentic_factory.job import search_attributes
 from temporal_agentic_factory.options import absolute, given, source_url
 from temporal_agentic_factory.settings.load import settings
@@ -20,19 +14,14 @@ from temporal_agentic_factory.settings.load import settings
 
 def distill(
     url: Annotated[str, typer.Argument(help="http(s) URL, or a local .pdf/.md/.txt path")],
-    topic: Annotated[
-        str, typer.Option(help="snake_case research topic to file the entry under")
-    ] = "",
+    topic: Annotated[str, typer.Option(help="snake_case research topic")] = "",
     chunk_chars: Annotated[int | None, typer.Option(help="target characters per chunk")] = None,
-    research_target: Annotated[
-        str, typer.Option(help="free text kept as the entry's Research-Target line")
-    ] = "",
-    target_dir: Annotated[
-        str, typer.Option(help="folder the entry is written into as is (not with --topic)")
-    ] = "",
+    research_target: Annotated[str, typer.Option(help="free text as Research-Target line")] = "",
+    target_dir: Annotated[str, typer.Option(help="folder the entry is written into as is")] = "",
+    detach: Annotated[bool, typer.Option("--detach", help="submit without waiting")] = False,
+    workflow_id: Annotated[str | None, typer.Option(help="workflow id to start with")] = None,
 ) -> None:
-    """Turn one source into a knowledge-base entry on Temporal and wait for
-    it. Prints the entry's folder, plan and fetched source as JSON."""
+    """Submit one source; wait and print the entry folder, or just its id."""
     request = DistillRequest(
         url=source_url(url),
         topic=topic,
@@ -40,20 +29,47 @@ def distill(
         target_dir=absolute(target_dir) if target_dir else "",
         **given({"chunk_chars": chunk_chars}),
     )
-    typer.echo(asyncio.run(_distilled_entry(request)).model_dump_json(indent=2))
+    if detach:
+        typer.echo(_run_coro(_submitted_id(request, _new_id(workflow_id))))
+    else:
+        typer.echo(
+            _run_coro(_distilled_entry(request, _new_id(workflow_id))).model_dump_json(indent=2)
+        )
 
 
-async def _distilled_entry(request: DistillRequest) -> DistilledEntry:
-    """The distill workflow started and waited for. The UI columns show
-    the coder every distill job runs on, from the job the prompts go into;
-    the run's summary is the source."""
-    client = await connect()
-    handle = await client.start_workflow(
+def _run_coro[T](coro: Coroutine[Any, Any, T]) -> T:
+    """`cli.errors.run_coro`, imported late: this module loads before the `cli` package."""
+    from temporal_agentic_factory.cli.errors import run_coro
+
+    return run_coro(coro)
+
+
+def _new_id(workflow_id: str | None) -> str:
+    """`cli.ids.new_id`, imported late for the same reason."""
+    from temporal_agentic_factory.cli.ids import new_id
+
+    return new_id("distill", workflow_id)
+
+
+async def _submitted_id(request: DistillRequest, wid: str) -> str:
+    """Workflow started but not waited for."""
+    handle = await _started(request, wid)
+    typer.echo(f"started {handle.id}", err=True)
+    return handle.id
+
+
+async def _distilled_entry(request: DistillRequest, wid: str) -> DistilledEntry:
+    """Workflow started and waited for."""
+    return await awaited(await _started(request, wid))
+
+
+async def _started(request: DistillRequest, wid: str) -> WorkflowHandle[Any, DistilledEntry]:
+    """Handle for the distill workflow with the run's search attributes."""
+    return await (await connect()).start_workflow(
         DistillWorkflow.run,
         request,
-        id=f"distill-{uuid4().hex[: settings.cli.job_id_chars]}",
+        id=wid,
         task_queue=settings.temporal.task_queue,
-        search_attributes=search_attributes.at_start(distill_job("", "")),
+        search_attributes=search_attributes.at_start(_job("", "")),
         static_summary=request.url,
     )
-    return await awaited(handle)

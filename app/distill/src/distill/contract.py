@@ -1,10 +1,6 @@
-"""What the distill workflow passes around: the request that starts it,
-the fetched source the jobs read, the plan the first job states, and the
-final folder the filing job states."""
-
 from enum import StrEnum
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, computed_field, model_validator
 
 from distill.settings.load import settings
 
@@ -32,13 +28,22 @@ class DistillRequest(BaseModel):
 
     @model_validator(mode="after")
     def target_dir_is_absolute_and_final(self) -> "DistillRequest":
-        """A target dir is a full path and the entry's last home: a topic would
-        move it away again, so the two never come together."""
+        """A target dir is absolute and final: a topic would move it away again."""
         if self.target_dir and not self.target_dir.startswith("/"):
             raise ValueError(f"target_dir must be an absolute path, got {self.target_dir!r}")
         if self.target_dir and self.topic:
             raise ValueError("target_dir and topic cannot both be set: pick one home")
         return self
+
+
+class SourceKind(StrEnum):
+    """Which route fetches a URL."""
+
+    youtube = "youtube"
+    x = "x"
+    pdf = "pdf"
+    article = "article"
+    repo = "repo"
 
 
 class EntryType(StrEnum):
@@ -60,19 +65,32 @@ class FetchedChunk(BaseModel):
     chars: int
 
 
+_TYPE_OF_KIND = {
+    SourceKind.youtube: EntryType.video,
+    SourceKind.pdf: EntryType.paper,
+    SourceKind.x: EntryType.article,
+    SourceKind.article: EntryType.article,
+    SourceKind.repo: EntryType.codebase,
+}
+
+
 class FetchedSource(BaseModel):
-    """What the fetch step made: the source on disk with its provenance, and
-    the chunks the wiki jobs write pages for."""
+    """What the fetch step made: the source on disk with its provenance."""
 
     work_dir: str
     source_md: str
     source_pdf: str = Field(default="", description="Empty when no PDF was downloaded.")
     repo_dir: str = Field(default="", description="Empty when the source is not a clone.")
     title: str
-    kind: str
-    type: EntryType
+    kind: SourceKind
     fetched_at: str
     chunks: list[FetchedChunk]
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def type(self) -> EntryType:
+        """The entry kind the summary names, derived from the fetch route."""
+        return _TYPE_OF_KIND[self.kind]
 
 
 class EntryPlan(BaseModel):

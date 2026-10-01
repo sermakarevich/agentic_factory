@@ -1,28 +1,14 @@
-"""The fetch step: one source in, the files the jobs read out.
-
-Given a request and a work dir, it checks the topic, fetches the source by
-its kind, writes `source.md` with a provenance header, cuts the text (or the
-clone) into chunks, writes one file per chunk plus `chunks.json`, and
-returns the manifest. A `SourceError` says whether a retry could help
-(`transient`); a bad topic is a `ValueError`.
-"""
-
 import json
 from datetime import UTC, datetime
 from pathlib import Path
 
-from distill.chunking import Chunk, chunk_chars_in_bounds, chunk_repo, chunk_text
-from distill.contract import DistillRequest, EntryType, FetchedChunk, FetchedSource
-from distill.sources import Source, SourceError, SourceKind, fetch
+from distill.chunking import Chunk, chunk_chars_in_bounds
+from distill.chunking.repo import chunk_repo
+from distill.chunking.text import chunk_text
+from distill.contract import DistillRequest, FetchedChunk, FetchedSource, SourceKind
+from distill.settings.load import settings
+from distill.sources import Source, SourceError, fetch
 from distill.topics import validate_topic
-
-ENTRY_TYPE_OF_KIND = {
-    SourceKind.youtube: EntryType.video,
-    SourceKind.pdf: EntryType.paper,
-    SourceKind.x: EntryType.article,
-    SourceKind.article: EntryType.article,
-    SourceKind.repo: EntryType.codebase,
-}
 
 NO_CONTENT = (
     "source has no substantive content after README boilerplate "
@@ -46,11 +32,15 @@ def fetch_source(request: DistillRequest, work_dir: Path) -> FetchedSource:
         source_pdf=_existing(base / "source.pdf"),
         repo_dir=_existing(base / "repo"),
         title=source.title,
-        kind=source.kind.value,
-        type=ENTRY_TYPE_OF_KIND[source.kind],
+        kind=source.kind,
         fetched_at=fetched_at,
         chunks=_written_chunks(base, chunks),
     )
+
+
+def work_dir_for(run_id: str) -> Path:
+    """Where one run keeps its source.md, chunks/ and downloads."""
+    return Path(settings.fetch.work_root).expanduser() / run_id
 
 
 def _made_dir(work_dir: Path) -> Path:
