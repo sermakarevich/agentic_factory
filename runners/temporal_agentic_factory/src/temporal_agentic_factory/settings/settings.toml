@@ -23,6 +23,10 @@ min_retry_delay_sec = 1     # the shortest wait after a rate limit whose reset t
 close_margin_sec = 60   # start-to-close = the app's step.timeout_sec + this; the step's own timeout fires first
 max_attempts = 3        # tries of the report step before the workflow gives it up
 
+[record_activity]
+timeout_sec = 30    # two store queries: the tries read, the job row written
+max_attempts = 5    # tries before the workflow gives the row up and logs it
+
 [structured_output_activity]
 close_margin_sec = 60   # start-to-close = two of the app's step.timeout_sec (last message, then the conversation) + this
 max_attempts = 3        # tries of the extraction before the workflow fails; "not stated" is final and skips them
@@ -30,10 +34,6 @@ max_attempts = 3        # tries of the extraction before the workflow fails; "no
 [judge_activity]
 close_margin_sec = 30   # start-to-close = the judgment's timeout_sec + this; the step's own timeout fires first
 max_attempts = 3        # tries of the judge step before the workflow gives it up
-
-[record_activity]
-timeout_sec = 30    # two store queries: the tries read, the job row written
-max_attempts = 5    # tries before the workflow gives the row up and logs it
 
 [distill_workflow]
 provider = "opencode"                              # the coder every distill job runs on

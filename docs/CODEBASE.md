@@ -34,16 +34,18 @@ agentic_factory/
       pyproject.toml        # package `distill`; depends on factory_settings only
       justfile
       src/distill/          # contract (request, fetched source, plan, filed entry), sources, chunking, fetch, verify, topics, vault
-        prompts/              # plan, wiki, digest, summary, explainer, questions, critical_thinking, index, file: one prompt per job
+        prompts/              # one folder per job with prompt.py plus .md templates, and template.py the one renderer every job uses
         settings/             # vault folders, fetch limits and throttles, chunk bounds, verify minimum
       tests/
   runners/
     temporal_agentic_factory/ # Temporal binding: installs `agentic_factory`
       pyproject.toml        # package `temporal_agentic_factory`
       justfile
-      src/temporal_agentic_factory/  # cli, client, runner, identity (host:pid:sha), search_attributes (the ui's columns)
-        activities/           # session, job, report, structured_output, record: one class each; distill: the fetch and verify functions; judge: the judge function; failure, heartbeat: what only activities need
-        workflows/            # job, structured_output, distill: the workflows composing the activities; judge: run_judgment for workflows that branch on an answer
+      src/temporal_agentic_factory/  # failure, heartbeat (what activities share), client, runner, identity, options, cli
+        job/                  # workflow, session, execute, report, record, search_attributes (the ui's columns), cli (the `run` command)
+        structured_output/    # workflow, extract: the output asked for in the prompt, picked out by a step
+        judge/                # workflow (run_judgment), activity: the judge step for workflows that branch on an answer
+        distill/              # workflow, fetch, verify, cli (the `distill` command)
         settings/             # server address, activity limits, one table per workflow
       tests/
     argo_agentic_factory/     # NOT built. README only, see "Why runners/"
@@ -92,7 +94,8 @@ its steps.
 workflows. It wraps app functions as Temporal activities, implements the
 workflows that compose them (the job workflow, the job with structured
 output, distill) and exposes the CLI (`runner`, `run`, `distill`,
-`attributes`). Workflows are implemented here because their code is
+`attributes`). It is grouped by subject: one folder per workflow holds
+its workflow, activities and cli command. Workflows are implemented here because their code is
 written against the engine API, and every artifact a workflow needs
 (its activities, its settings table, its cli command) lives here next to
 it. It contains no domain logic: if a function does not mention

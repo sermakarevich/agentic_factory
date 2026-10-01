@@ -5,18 +5,19 @@ from factory_settings.shared import shared
 from factory_store.store import Store
 from temporalio.worker import Worker
 
-from temporal_agentic_factory.activities.distill import fetch_source, verify_entry
-from temporal_agentic_factory.activities.job import JobActivity
-from temporal_agentic_factory.activities.judge import judge
-from temporal_agentic_factory.activities.record import RecordActivity
-from temporal_agentic_factory.activities.report import ReportActivity
-from temporal_agentic_factory.activities.session import SessionActivity
-from temporal_agentic_factory.activities.structured_output import StructuredOutputActivity
 from temporal_agentic_factory.client import connect
+from temporal_agentic_factory.distill.fetch import fetch_source
+from temporal_agentic_factory.distill.verify import verify_entry
+from temporal_agentic_factory.distill.workflow import DistillWorkflow
+from temporal_agentic_factory.job.execute import JobActivity
+from temporal_agentic_factory.job.record import RecordActivity
+from temporal_agentic_factory.job.report import ReportActivity
+from temporal_agentic_factory.job.session import SessionActivity
+from temporal_agentic_factory.job.workflow import JobWorkflow
+from temporal_agentic_factory.judge.activity import judge
 from temporal_agentic_factory.settings.load import settings
-from temporal_agentic_factory.workflows.distill import DistillWorkflow
-from temporal_agentic_factory.workflows.job import JobWorkflow
-from temporal_agentic_factory.workflows.structured_output import JobWithStructuredOutputWorkflow
+from temporal_agentic_factory.structured_output.extract import StructuredOutputActivity
+from temporal_agentic_factory.structured_output.workflow import JobWithStructuredOutputWorkflow
 
 
 async def serve(identity: str) -> None:

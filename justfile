@@ -45,6 +45,14 @@ temporal-health:
 runner *ARGS:
     just --justfile runners/temporal_agentic_factory/justfile --working-directory runners/temporal_agentic_factory runner "$@"
 
+# start N runner processes in the background on this machine (default 2), logs under ~/.local/share/agentic_factory/runner-logs
+runners N="2":
+    just --justfile runners/temporal_agentic_factory/justfile --working-directory runners/temporal_agentic_factory runners {{N}}
+
+# stop every runner process on this machine, each by its exact pid
+runners-stop:
+    just --justfile runners/temporal_agentic_factory/justfile --working-directory runners/temporal_agentic_factory runners-stop
+
 # Start one job on Temporal and wait for it (needs `just temporal` and `just runner`): just run "prompt" --model ...
 run *ARGS:
     just --justfile runners/temporal_agentic_factory/justfile --working-directory runners/temporal_agentic_factory run "$@"

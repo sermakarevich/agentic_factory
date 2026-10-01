@@ -32,6 +32,15 @@ check: lint fmt-check typecheck test
 runner *ARGS:
     uv run factory runner "$@"
 
+# start N runner processes in the background on this machine, each with its own log file: just runners 2
+runners N="2":
+    mkdir -p "{{runner_logs}}"
+    for i in $(seq {{N}}); do nohup uv run factory runner > "{{runner_logs}}/runner-$(date +%Y%m%d-%H%M%S)-$i.log" 2>&1 & echo "runner $! started"; done
+
+# stop every runner process on this machine, each by its exact pid; Temporal retries the activities they were running
+runners-stop:
+    for pid in $(pgrep -f "[f]actory runner"); do kill "$pid" && echo "runner $pid stopped"; done
+
 # start one job on Temporal and wait for it: just run "prompt" [--provider claude] [--model ...]
 run *ARGS:
     uv run factory run "$@"
@@ -39,6 +48,7 @@ run *ARGS:
 # Temporal dev server: one binary, SQLite file, web UI. Data survives restarts.
 # Use the IP, not "localhost": that resolves to ::1 first on macOS and the server is IPv4 only.
 temporal_data := env("XDG_DATA_HOME", env("HOME") + "/.local/share") + "/agentic_factory"
+runner_logs := temporal_data + "/runner-logs"
 temporal_ip := "127.0.0.1"
 temporal_port := "7233"
 temporal_ui_port := "8233"

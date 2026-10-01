@@ -374,7 +374,7 @@ queues.
   distill flow was a YAML graph over 1,900 lines of tools (sources,
   chunking, verify, topics) and prompt files. The tools and prompts moved
   as they were into `app/distill`; the graph became
-  `workflows/distill.py` in the runner, with the fetch and the verifier
+  `distill/workflow.py` in the runner, with the fetch and the verifier
   as activities and every other step a job. Rejected: a distill
   package inside `agentic_factory` (a second domain in the first app's
   tree), and workflow code in the app (it is written against the
@@ -392,7 +392,7 @@ queues.
 - **A job that must succeed raises** (Sep 30). Chained workflows kept
   writing `if outcome.result is None: raise ApplicationError(...)` after
   `run_job_with_report`. That became `run_job_or_fail` in
-  `workflows/job.py`; the structured-output helper and every distill
+  `job/workflow.py`; the structured-output helper and every distill
   job use it.
 
 ## 4. Cross-cutting
@@ -509,6 +509,13 @@ harness is its job.
   details are metadata, not history, so they change no replay. Child
   workflows per job, the bigger restructuring of the timeline, wait for
   the research workflow.
+- **The runner is grouped by subject, not by Temporal kind** (Oct 1).
+  `activities/distill.py` and `workflows/distill.py` were one subject
+  in two folders, which the structure rules forbid (group by subject,
+  never by kind). Now one folder per workflow holds its workflow,
+  activities and cli command, with the two modules every subject's
+  activities use (`failure`, `heartbeat`) at the package root; the
+  settings file stays one, tables ordered by subject.
 - **No hardcoded knobs.** Every tunable (a size, limit, timeout, default)
   lives in `settings.toml` with a typed field and a one-line comment;
   facts of a protocol (an env var name, a header, a prompt) stay as named
@@ -520,8 +527,9 @@ harness is its job.
   `process/` (spawning, environment, workdir, output tail), `summary/`
   (the coder's own summary: shape, prompt, block, parse, repair) and
   `report/` (the conversation and the step that judges it); `step/` has
-  `providers/`; the runner keeps what only activities use under
-  `activities/`. A prefix shared by siblings (`summary_*.py`) is the sign
+  `providers/`; the runner groups by subject, one folder per workflow
+  with its workflow, activities and cli command, and keeps what the
+  subjects share (`failure`, `heartbeat`) at the package root. A prefix shared by siblings (`summary_*.py`) is the sign
   a folder is due. Rejected: `models/`, `utils/`, `helpers/` folders that
   group by kind and put one subject in three places.
 - **Harness calls preferred over API calls for cost**; both are activities.
@@ -532,3 +540,17 @@ harness is its job.
   muse-spark, worktree isolation, one spec file per task, dependencies
   declared at creation), reviewed line by line against the spec and
   checked with ruff, mypy strict and pytest before each push.
+- **Distill prompt text lives in .md files, Python only chooses and fills** (Oct 1).
+  Prompts are read and edited far more often than code; a text file diffs
+  and reviews as prose, with no escaping for braces or quotes. Python keeps
+  only the choice of template, the optional section, and the variables.
+  The one renderer is `string.Template`, strict: a missing variable raises.
+- **Two runner processes on one machine, not one bigger one** (Oct 1).
+  One runner meant every code change killed every job in flight on
+  restart, and a crash stopped the whole factory. `just runners N`
+  starts N processes polling the same queue; each has its own identity
+  in the UI and its own log, and one can be restarted while the other
+  keeps its jobs. Concurrency is still `[runner]
+  max_concurrent_activities` per process, so N runners run N times as
+  many coder jobs at once; lower the setting if the machine is
+  loaded.

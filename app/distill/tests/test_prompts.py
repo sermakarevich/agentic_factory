@@ -1,17 +1,19 @@
 """Every prompt names the files its job reads and writes, and the variant fits the kind."""
 
+from pathlib import Path
+
 import pytest
 
 from distill.contract import DistillRequest, EntryPlan, EntryType, FetchedChunk, FetchedSource
-from distill.prompts.critical_thinking import critical_thinking_prompt
-from distill.prompts.digest import digest_prompt
-from distill.prompts.explainer import explainer_prompt
-from distill.prompts.file import file_prompt
-from distill.prompts.index import index_prompt
-from distill.prompts.plan import plan_prompt
-from distill.prompts.questions import questions_prompt
-from distill.prompts.summary import summary_prompt
-from distill.prompts.wiki import wiki_prompt
+from distill.prompts.critical_thinking.prompt import critical_thinking_prompt
+from distill.prompts.digest.prompt import digest_prompt
+from distill.prompts.explainer.prompt import explainer_prompt
+from distill.prompts.file.prompt import file_prompt
+from distill.prompts.index.prompt import index_prompt
+from distill.prompts.plan.prompt import plan_prompt
+from distill.prompts.questions.prompt import questions_prompt
+from distill.prompts.summary.prompt import summary_prompt
+from distill.prompts.wiki.prompt import wiki_prompt
 
 REQUEST = DistillRequest(url="https://example.com/paper", topic="agents")
 CHUNK = FetchedChunk(index=1, slug="01-intro", title="Intro", path="/w/chunks/01-intro.md", chars=9)
@@ -99,3 +101,16 @@ def test_file_moves_into_the_topic_without_asking() -> None:
     text = file_prompt(REQUEST, _fetched("pdf"), PLAN)
     assert 'mv "/kb/research/Paper"' in text and "research_topics/agents/<Name>/" in text
     assert "do NOT ask" in text and "State path" in text
+
+
+def test_every_template_is_used() -> None:
+    prompts = Path(__file__).parent.parent / "src" / "distill" / "prompts"
+    for job in sorted(prompts.iterdir()):
+        if not job.is_dir():
+            continue
+        prompt = job / "prompt.py"
+        if not prompt.exists():
+            continue
+        text = prompt.read_text(encoding="utf-8")
+        for template in sorted(job.glob("*.md")):
+            assert f'"{template.stem}"' in text, f"{template.name} is unused"

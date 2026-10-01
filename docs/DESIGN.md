@@ -262,7 +262,7 @@ the two engines; workflows compose them; retries never appear in workflow code.
   reads the session's tries, sums them and writes the `job` row. One store
   write behind the `record_activity` timeout and retries; a write that
   failed for good is logged, the workflow still returns the outcome.
-- `JobWorkflow` (`workflows/job.py`, type name `job`) — one job, then its
+- `JobWorkflow` (`job/workflow.py`, type name `job`) — one job, then its
   report; returns a `JobOutcome`. Its `run_job_with_report(job)` helper makes the
   session first when the job has none,
   then carries the activity policy for any workflow
@@ -271,7 +271,7 @@ the two engines; workflows compose them; retries never appear in workflow code.
   Temporal is the backstop, and the retry policy from settings. App code is
   imported inside `imports_passed_through()`, because settings load on
   import and the sandbox would rerun that.
-- `JobWithStructuredOutputWorkflow` (`workflows/structured_output.py`,
+- `JobWithStructuredOutputWorkflow` (`structured_output/workflow.py`,
   type name `job_with_structured_output`) — a job plus the JSON schema of
   the structured output it must state; returns a `JobWithStructuredOutput`:
   the outcome and the output as a dict. Its
@@ -281,7 +281,7 @@ the two engines; workflows compose them; retries never appear in workflow code.
   extraction activity. A job that failed for good, or an output the coder
   never stated, fail the workflow: nothing downstream can run on made-up
   values. The caller owns the model and validates the dict with it.
-- `DistillWorkflow` (`workflows/distill.py`, type name `distill`) —
+- `DistillWorkflow` (`distill/workflow.py`, type name `distill`) —
   see "Distill workflow": the app's steps in order, jobs through
   `run_job_or_fail` and `run_job_with_structured_output`, the fetch and
   verify activities between them.
@@ -296,6 +296,15 @@ the two engines; workflows compose them; retries never appear in workflow code.
   created by the job engine. `factory distill URL [--topic]
   [--chunk-chars] [--research-target] [--target-dir]` starts the distill
   workflow and waits. `factory runner` polls.
+- Several runners share one machine: `just runners 2` starts two runner
+  processes in the background (one log file each under
+  `~/.local/share/agentic_factory/runner-logs/`), `just runners-stop`
+  stops them by exact pid. Every runner polls the same task queue under
+  its own identity (`host:pid:sha`), so the UI shows which one ran a
+  task, and each runs up to `[runner] max_concurrent_activities` coder
+  jobs: the machine's total is that number times the runner count. A
+  code change is rolled out one runner at a time: stop one, start one,
+  then the other, and jobs in flight stay on the runner that holds them.
 
 Learned from the restart test (runner killed mid-job, restarted): Temporal
 failed the try with a heartbeat timeout, try 2 started with attempt 2 in
@@ -426,18 +435,21 @@ logic:
   (`sources.py`, `chunking.py`, `fetch.py`), the check of a finished entry
   (`verify.py`), the topic list (`topics.py`), the vault paths
   (`vault.py`), the contracts the steps exchange (`DistillRequest`,
-  `FetchedSource`, `EntryPlan`, `FiledEntry`) and one prompt module per
-  job under `prompts/`. Its `settings.toml` holds the vault folders,
-  fetch limits (60 s per http call, 180 s per cli call, retry delays,
-  throttles per tool), chunk bounds and the verifier's minimum size.
-  Every function runs from a test with nothing else up.
-- The runner holds what only Temporal needs: `activities/distill.py`
-  (`fetch_source`, `verify_entry`: the app's two blocking functions on
-  a thread, a `SourceError` mapped to a retryable `ApplicationError`
-  only when it says `transient`), `workflows/distill.py`
-  (`DistillWorkflow`, type name `distill`) and the `factory
-  distill URL [--topic] [--chunk-chars] [--research-target] [--target-dir]`
-  command.
+  `FetchedSource`, `EntryPlan`, `FiledEntry`) and one folder per job
+  under `prompts/` with `prompt.py` plus `.md` templates. The prompt text
+  lives in the `.md` files and Python only chooses and fills: which
+  template, which optional section, and the variables. Its `settings.toml`
+  holds the vault folders, fetch limits (60 s per http call, 180 s per
+  cli call, retry delays, throttles per tool), chunk bounds and the
+  verifier's minimum size. Every function runs from a test with nothing
+  else up.
+- The runner holds what only Temporal needs: `distill/fetch.py`
+  (`fetch_source`: the app's blocking fetch on a thread, a `SourceError`
+  mapped to a retryable `ApplicationError` only when it says `transient`),
+  `distill/verify.py` (`verify_entry`: the app's check on a thread),
+  `distill/workflow.py` (`DistillWorkflow`, type name `distill`) and the
+  `factory distill URL [--topic] [--chunk-chars] [--research-target]
+  [--target-dir]` command.
 
 The workflow orders the app's steps: fetch (activity, under
 `<fetch.work_root>/<workflow id>`), plan (a job with structured output,
@@ -652,9 +664,10 @@ per million lives in settings so the result carries `cost_usd`.
   retry-after, `TimedOut`, `NetworkError`, `ProviderError`).
 - `engine.run(judgment, callback, client)` emits one AI event (the answers
   as JSON, usage, cost) and a FINISHED event, then returns the result.
-- Runner: `activities/judge.py` is the activity, `workflows/judge.py::run_judgment`
-  calls it with the judgment's timeout plus `[judge_activity]` margin and
-  the table's retry policy. `just judge` in the app runs one from the CLI.
+- Runner: `judge/activity.py` is the activity,
+  `judge/workflow.py::run_judgment` calls it with the judgment's
+  timeout plus `[judge_activity]` margin and the table's retry policy.
+  `just judge` in the app runs one from the CLI.
 
 ## Decisions so far
 
@@ -667,7 +680,7 @@ per million lives in settings so the result carries `cost_usd`.
   only, so gRPC hangs. Postgres, for the store, runs from the repo's
   docker compose (`just db`); the runner keeps running on the host either
   way, since it needs the coder CLIs, their auth stores and the worktrees.
-- The UI knows the job. `search_attributes.py` names six Keyword search
+- The UI knows the job. `job/search_attributes.py` names six Keyword
   attributes the server indexes: `Provider`, `Model`, `Workdir` set by the
   cli when it starts the workflow, `Runner` upserted by the workflow after
   the job activity (the identity of the runner that ran its last try, from
