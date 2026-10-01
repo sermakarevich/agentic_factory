@@ -14,5 +14,7 @@ placeholders left, and needless complexity. Do not fix anything and do not
 edit any file.
 
 Submit as the output one item per problem: the file (with the line when
-you know it), what is wrong, and what must change. No item when the code
-is right.
+you know it), what is wrong, and what must change. A problem in code goes
+in `code`; a problem in a test goes in `tests`, never in `code`: tests are
+locked, a fix job may not touch them, and the human reads `tests`. No item
+when the code is right.

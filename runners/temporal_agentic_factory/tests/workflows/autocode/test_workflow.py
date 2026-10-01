@@ -57,7 +57,8 @@ class World:
     jobs_to_green: dict[str, int] = field(default_factory=dict)  # unit: jobs until its tests pass
     tests_changed_by: str = ""  # the job after which a locked test changes
     verdicts: dict[str, Verdict] = field(default_factory=dict)  # job name: its verdict
-    findings: list[dict[str, str]] = field(default_factory=list)  # what the review submits
+    findings: list[dict[str, str]] = field(default_factory=list)  # code problems the review submits
+    test_findings: list[dict[str, str]] = field(default_factory=list)  # test problems it submits
     lint_red_runs: int = 0  # gate runs whose lint fails
     bad_requirements: int = 0  # requirements submissions that break the build order
     parallel: bool = False  # what the requirements job says of the units
@@ -125,7 +126,7 @@ def fake_output(name: str) -> dict[str, Any]:
     if name == "baseline":
         return COMMANDS
     if name == "review":
-        return {"items": world.findings}
+        return {"code": world.findings, "tests": world.test_findings}
     raise AssertionError(f"no fake output for {name}")
 
 
@@ -338,6 +339,15 @@ async def test_review_findings_go_to_a_fix_job_then_the_suite_and_a_commit() -> 
     fix = next(job for job in world.jobs if job.name == "review-fix")
     assert "No header row." in fix.prompt and fix.session_id == "session:review-fix"
     assert world.commits[-3:] == ["align", "review", "gate"] and result.findings == 1
+
+
+async def test_test_findings_go_to_the_result_and_never_to_a_fix_job() -> None:
+    finding = {"file": "tests/x/R1/test_a.py:3", "problem": "Duplicates main.", "fix": "Drop it."}
+    result = await _run(test_findings=[finding])
+
+    assert not any(job.name == "review-fix" for job in world.jobs)
+    assert result.findings == 0
+    assert [item.file for item in result.test_findings] == [finding["file"]]
 
 
 async def test_a_red_gate_gets_a_fix_job_then_passes() -> None:

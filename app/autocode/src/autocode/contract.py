@@ -164,7 +164,13 @@ class Findings(BaseModel):
     """What the review job submits."""
 
     model_config = ConfigDict(extra="forbid")
-    items: list[Finding] = Field(description="One per problem; empty when the code is right.")
+    code: list[Finding] = Field(
+        description="Problems in the code, one each; a fix job gets them. Empty when it is right."
+    )
+    tests: list[Finding] = Field(
+        description="Problems in a test, one each. Tests are locked, so these go to the human, "
+        "never to a fix job."
+    )
 
 
 class Check(BaseModel):
@@ -229,6 +235,9 @@ class Autocoded(BaseModel):
     branch: str
     commits: list[Commit]
     units: list[str]
-    findings: int = Field(description="What the review found, all of it given to the fix job.")
+    findings: int = Field(description="Code problems the review found, given to the fix job.")
+    test_findings: list[Finding] = Field(
+        description="Test problems the review found, left for the human: tests are locked."
+    )
     spend: Spend
     gate: Gate

@@ -496,6 +496,11 @@ queues.
   with pydantic and sends the problems back in the same session
   (`<job>/resubmit/<n>`, up to `resubmit_attempts`) before failing with
   `StructuredOutputInvalid`.
+- **Autocode's review splits code findings from test findings** (Oct 1).
+  The first live run failed at review-fix: the review asked for test edits,
+  the locked tests forbade them, and the fix job rightly reported partial.
+  Code findings go to the fix job; test findings go to the result for the
+  human, who alone may change a locked test.
 
 ## 4. Cross-cutting
 

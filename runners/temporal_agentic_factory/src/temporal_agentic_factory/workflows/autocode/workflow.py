@@ -234,16 +234,18 @@ async def aligned(run: Autocode, locked: Locked) -> Autocode:
 
 
 async def reviewed(run: Autocode, locked: Locked) -> Autocode:
-    """A review in a fresh session, on the review model; what it finds goes
-    to a fix job in a new session, then the suite again; committed."""
+    """A review in a fresh session, on the review model; the code problems it
+    finds go to a fix job in a new session, then the suite again; committed.
+    Test problems are kept for the human: the tests are locked."""
     status("reviewing the code")
     job = autocode_job(run, "review", prompt("review", run), model=run.request.review_model)
     findings, spend = await output_done(run, job, Findings)
-    run = run.model_copy(update={"findings": len(findings.items)}).spent(spend)
-    if not findings.items:
+    update = {"findings": len(findings.code), "test_findings": findings.tests}
+    run = run.model_copy(update=update).spent(spend)
+    if not findings.code:
         return run
-    status(f"fixing {len(findings.items)} review findings")
-    text = prompt("review_fix", run, findings=findings.items)
+    status(f"fixing {len(findings.code)} review findings")
+    text = prompt("review_fix", run, findings=findings.code)
     run = run.spent(spend_of(await job_done(autocode_job(run, "review-fix", text))))
     await suite_green(run, locked, "review fix")
     return await committed(run, "review")

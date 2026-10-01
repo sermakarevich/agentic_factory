@@ -11,6 +11,7 @@ from autocode.contract import (
     Check,
     Commands,
     Commit,
+    Finding,
     Gate,
     Requirements,
     Spend,
@@ -40,6 +41,7 @@ class Autocode(BaseModel):
     )
     commits: list[Commit] = []
     findings: int = 0
+    test_findings: list[Finding] = []
     spend: Spend = Field(default_factory=Spend)
 
     @property
@@ -129,6 +131,7 @@ class Autocode(BaseModel):
             commits=self.commits,
             units=self.requirements.ids,
             findings=self.findings,
+            test_findings=self.test_findings,
             spend=self.spend,
             gate=gate,
         )

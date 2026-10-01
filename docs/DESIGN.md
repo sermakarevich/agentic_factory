@@ -788,7 +788,8 @@ red: the old tests green, every new test folder red; then the tests are locked
 implement/<unit> in waves; red: implement/<unit>/fix/<n> in the same session,
     up to implement_attempts (3); the lock checked                            commit per unit
 align (the code against the spec); the suite green, the lock held              commit
-review (review_model, states findings); review-fix when there are any          commit
+review (review_model, states code and test findings); review-fix on the code   commit
+    ones; test findings go to the result for the human (tests are locked)
 gate: lint, typecheck, full suite, feature tests; gate/fix/<n> up to
     gate_attempts (2)                                                          commit
 ```
@@ -808,7 +809,7 @@ af run autocode --repo ~/git/app --feature csv-export --spec ~/specs/csv_export.
 ```
 
 waits and prints the `Autocoded` (repo, branch, commits, units, findings,
-spend, gate) as JSON; `--detach` prints the workflow id. `--provider` and
+test_findings, spend, gate) as JSON; `--detach` prints the workflow id. `--provider` and
 `--model` override the settings; `--model` leaves the review on its own
 model unless a provider is given.
 
