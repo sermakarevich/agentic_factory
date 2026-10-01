@@ -1,5 +1,6 @@
-"""The `af` command layer: the typer app (`app.py`), what every submit command
-shares (errors, ids, admission) and the commands on existing workflows.
+"""The `af` command layer: the typer app (`app.py`), one module per subject's
+commands (job, distill, research, beads), what every submit command shares
+(errors, ids, options, admission) and the commands on existing workflows.
 
 Submit:      af run "prompt" [--detach] [--workflow-id ID] [--force] | af distill URL | af research
 Pull (beads): af beads ready | af beads poll [--once] | af beads schedule | af beads unschedule

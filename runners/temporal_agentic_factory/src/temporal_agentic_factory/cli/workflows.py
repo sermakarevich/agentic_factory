@@ -1,6 +1,6 @@
 """The `af` workflow commands: list, status, result, cancel, terminate.
 
-Submit commands live next to their workflows (`job/cli.py`, `distill/cli.py`);
+Submit commands live beside this module, one per subject (`job.py`, `distill.py`);
 everything here only operates on workflows that already exist.
 """
 
@@ -20,9 +20,9 @@ from temporal_agentic_factory.cli.errors import (
     run_coro,
 )
 from temporal_agentic_factory.client import connect
-from temporal_agentic_factory.distill.workflow import DistilledEntry
 from temporal_agentic_factory.settings.load import settings
-from temporal_agentic_factory.structured_output.workflow import JobWithStructuredOutput
+from temporal_agentic_factory.workflows.distill.workflow import DistilledEntry
+from temporal_agentic_factory.workflows.structured_output.workflow import JobWithStructuredOutput
 
 RESULT_TYPES: dict[str, Any] = {
     "job": JobOutcome,

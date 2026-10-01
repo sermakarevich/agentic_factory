@@ -5,17 +5,17 @@ import logging
 import typer
 
 from agentic_factory.logging_setup import configure_logging
-from temporal_agentic_factory.beads.cli import beads_app
 from temporal_agentic_factory.cli import workflows
+from temporal_agentic_factory.cli.beads import beads_app
+from temporal_agentic_factory.cli.distill import distill
 from temporal_agentic_factory.cli.errors import run_coro
+from temporal_agentic_factory.cli.job import run
+from temporal_agentic_factory.cli.research import research
 from temporal_agentic_factory.client import connect
-from temporal_agentic_factory.distill.cli import distill
 from temporal_agentic_factory.identity import runner_identity
-from temporal_agentic_factory.job import search_attributes
-from temporal_agentic_factory.job.cli import run
-from temporal_agentic_factory.research.cli import research
 from temporal_agentic_factory.runner import serve
 from temporal_agentic_factory.settings.load import settings
+from temporal_agentic_factory.workflows.job import search_attributes
 
 app = typer.Typer(no_args_is_help=True, help="af: agentic_factory on Temporal.")
 

@@ -37,7 +37,7 @@ known-first-party = ["agentic_factory", "distill", "temporal_agentic_factory"]
 
 [tool.ruff.lint.per-file-ignores]  # replaces the root table, so repeat its tests entry
 "**/tests/**" = ["PLR2004", "PLR0913"]
-"**/cli.py" = ["PLR0913", "PLR0917"]  # many options per command
+"src/temporal_agentic_factory/cli/*.py" = ["PLR0913", "PLR0917"]  # many options per command
 
 [tool.mypy]
 python_version = "3.13"

@@ -545,7 +545,24 @@ harness is its job.
   never by kind). Now one folder per workflow holds its workflow,
   activities and cli command, with the two modules every subject's
   activities use (`failure`, `heartbeat`) at the package root; the
-  settings file stays one, tables ordered by subject.
+  settings file stays one, tables ordered by subject. Superseded by the
+  next bullet.
+- **The runner is grouped by role, then by subject inside each role** (Oct 1).
+  Top-level folders are `workflows/` (one folder per workflow with its
+  activities), `watchers/` (things that watch a state and start workflows,
+  the DESIGN word; today beads), `cli/` (the `af` command, one module per
+  subject: `job.py`, `distill.py`, `research.py`, `beads.py`) and
+  `settings/`. The subject folders had grown to mix a workflow, its
+  activities, its cli command and, for beads, a poller, so the root read as
+  a flat list of unlike things and the cli was spread over five folders.
+  Shared code goes to the nearest common ancestor: `failure` to
+  `workflows/` (only activities use it), `heartbeat` to `workflows/job/`
+  (only the job activity), `options` to `cli/`; `capacity`, used by the
+  cli and the beads watcher, stays at the root with `runner`, `client`
+  and `identity`. Imports point from cli to watchers to workflows, never
+  back. A pure move: every workflow, activity and search attribute name,
+  the settings tables and the beads schedule id are unchanged, so running
+  workflows and the schedule survive a runner restart.
 - **No hardcoded knobs.** Every tunable (a size, limit, timeout, default)
   lives in `settings.toml` with a typed field and a one-line comment;
   facts of a protocol (an env var name, a header, a prompt) stay as named
@@ -557,9 +574,8 @@ harness is its job.
   `process/` (spawning, environment, workdir, output tail), `summary/`
   (the coder's own summary: shape, prompt, block, parse, repair) and
   `report/` (the conversation and the step that judges it); `step/` has
-  `providers/`; the runner groups by subject, one folder per workflow
-  with its workflow, activities and cli command, and keeps what the
-  subjects share (`failure`, `heartbeat`) at the package root. A prefix shared by siblings (`summary_*.py`) is the sign
+  `providers/`; the runner groups by role (`workflows/`, `watchers/`,
+  `cli/`, `settings/`), then by subject inside each role. A prefix shared by siblings (`summary_*.py`) is the sign
   a folder is due. Rejected: `models/`, `utils/`, `helpers/` folders that
   group by kind and put one subject in three places.
 - **Harness calls preferred over API calls for cost**; both are activities.

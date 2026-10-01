@@ -5,21 +5,23 @@ from factory_settings.shared import shared
 from factory_store.store import Store
 from temporalio.worker import Worker
 
-from temporal_agentic_factory.beads.workflow import BeadsPollActivity, BeadsPollWorkflow
 from temporal_agentic_factory.client import connect
-from temporal_agentic_factory.distill.activities import fetch_source, verify_entry
-from temporal_agentic_factory.distill.workflow import DistillWorkflow
-from temporal_agentic_factory.job.execute import JobActivity
-from temporal_agentic_factory.job.record import RecordActivity
-from temporal_agentic_factory.job.report import ReportActivity
-from temporal_agentic_factory.job.session import SessionActivity
-from temporal_agentic_factory.job.workflow import JobWorkflow
-from temporal_agentic_factory.judge.activity import judge
-from temporal_agentic_factory.research.activities import locate_target, read_candidates
-from temporal_agentic_factory.research.workflow import ResearchWorkflow
 from temporal_agentic_factory.settings.load import settings
-from temporal_agentic_factory.structured_output.extract import StructuredOutputActivity
-from temporal_agentic_factory.structured_output.workflow import JobWithStructuredOutputWorkflow
+from temporal_agentic_factory.watchers.beads.workflow import BeadsPollActivity, BeadsPollWorkflow
+from temporal_agentic_factory.workflows.distill.activities import fetch_source, verify_entry
+from temporal_agentic_factory.workflows.distill.workflow import DistillWorkflow
+from temporal_agentic_factory.workflows.job.execute import JobActivity
+from temporal_agentic_factory.workflows.job.record import RecordActivity
+from temporal_agentic_factory.workflows.job.report import ReportActivity
+from temporal_agentic_factory.workflows.job.session import SessionActivity
+from temporal_agentic_factory.workflows.job.workflow import JobWorkflow
+from temporal_agentic_factory.workflows.judge.activity import judge
+from temporal_agentic_factory.workflows.research.activities import locate_target, read_candidates
+from temporal_agentic_factory.workflows.research.workflow import ResearchWorkflow
+from temporal_agentic_factory.workflows.structured_output.extract import StructuredOutputActivity
+from temporal_agentic_factory.workflows.structured_output.workflow import (
+    JobWithStructuredOutputWorkflow,
+)
 
 
 async def serve(identity: str) -> None:

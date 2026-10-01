@@ -222,6 +222,10 @@ called from an activity.
 
 `runners/temporal_agentic_factory`. Activities are one-line wrappers around
 the two engines; workflows compose them; retries never appear in workflow code.
+The package is grouped by role, then by subject: `workflows/` (one folder per
+workflow with its activities), `watchers/` (the beads poller), `cli/` (the `af`
+command, one module per subject) and `settings/`; the root holds what several
+roles share (`runner.py`, `client.py`, `identity.py`, `capacity.py`).
 
 - `create_session(job)` — the app's `create_session`, once per job before
   the first try; Temporal keeps the id in history, so a retry of the job
@@ -262,7 +266,7 @@ the two engines; workflows compose them; retries never appear in workflow code.
   reads the session's tries, sums them and writes the `job` row. One store
   write behind the `record_activity` timeout and retries; a write that
   failed for good is logged, the workflow still returns the outcome.
-- `JobWorkflow` (`job/workflow.py`, type name `job`) — one job, then its
+- `JobWorkflow` (`workflows/job/workflow.py`, type name `job`) — one job, then its
   report; returns a `JobOutcome`. Its `run_job_with_report(job)` helper makes the
   session first when the job has none,
   then carries the activity policy for any workflow
@@ -271,7 +275,7 @@ the two engines; workflows compose them; retries never appear in workflow code.
   Temporal is the backstop, and the retry policy from settings. App code is
   imported inside `imports_passed_through()`, because settings load on
   import and the sandbox would rerun that.
-- `JobWithStructuredOutputWorkflow` (`structured_output/workflow.py`,
+- `JobWithStructuredOutputWorkflow` (`workflows/structured_output/workflow.py`,
   type name `job_with_structured_output`) — a job plus the JSON schema of
   the structured output it must state; returns a `JobWithStructuredOutput`:
   the outcome and the output as a dict. Its
@@ -281,7 +285,7 @@ the two engines; workflows compose them; retries never appear in workflow code.
   extraction activity. A job that failed for good, or an output the coder
   never stated, fail the workflow: nothing downstream can run on made-up
   values. The caller owns the model and validates the dict with it.
-- `DistillWorkflow` (`distill/workflow.py`, type name `distill`) —
+- `DistillWorkflow` (`workflows/distill/workflow.py`, type name `distill`) —
   see "Distill workflow": the app's steps in order, jobs through
   `run_job_or_fail` and `run_job_with_structured_output`, the fetch and
   verify activities between them.
@@ -306,7 +310,8 @@ the two engines; workflows compose them; retries never appear in workflow code.
   code change is rolled out one runner at a time: stop one, start one,
   then the other, and jobs in flight stay on the runner that holds them.
 - A global job cap, `[limits] max_concurrent_jobs` (0 = no cap), bounds
-  the coder jobs across every spawner: `capacity.py` counts the running
+  the coder jobs across every spawner: `capacity.py` (at the root, since
+  the cli and the beads watcher both use it) counts the running
   `job` and `job_with_structured_output` workflows on the queue (distill
   and research are not counted: their coder work runs as those child
   workflows) and gives the free slots. `af run`, `af distill` and
@@ -456,12 +461,12 @@ logic:
   cli call, retry delays, throttles per tool), chunk bounds and the
   verifier's minimum size. Every function runs from a test with nothing
   else up.
-- The runner holds what only Temporal needs: `distill/activities.py`
+- The runner holds what only Temporal needs: `workflows/distill/activities.py`
   (`fetch_source`: the app's blocking fetch on a thread, a `SourceError`
   mapped to a retryable `ApplicationError` only when it says `transient`;
-  `verify_entry`: the app's check on a thread), `distill/workflow.py`
+  `verify_entry`: the app's check on a thread), `workflows/distill/workflow.py`
   (`DistillWorkflow`, type name `distill`) and the
-  `factory distill URL [--topic] [--chunk-chars] [--research-target]
+  `cli/distill.py` command `factory distill URL [--topic] [--chunk-chars] [--research-target]
   [--target-dir]` command.
 
 The workflow orders the app's steps: fetch (activity, under
@@ -550,11 +555,11 @@ lives in the runner.
   lenses, the candidate count bounds and the abstract limit. Every
   function runs from a test with nothing else up.
 
-The runner half lives in `runners/temporal_agentic_factory/research/`:
+The runner half lives in `runners/temporal_agentic_factory/workflows/research/`:
 `activities.py` (`locate_target`: the topic checked as the child distill
 runs check it, then the run's folder made; `read_candidates`: the discover
 file read back and validated), `workflow.py` (`ResearchWorkflow`, type name
-`research`) and the `factory research` command. The workflow is a short
+`research`); the `factory research` command is `cli/research.py`. The workflow is a short
 story of one small function per stage over the app's `Research` state and
 holds no domain logic: it converts the app's question dicts to judge
 questions and the judge's answers to plain values, nothing more. There is

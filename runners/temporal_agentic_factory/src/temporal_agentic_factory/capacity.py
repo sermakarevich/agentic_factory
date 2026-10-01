@@ -14,8 +14,10 @@ The hard per-machine limit stays `[runner] max_concurrent_activities`.
 from temporalio import workflow
 from temporalio.client import Client
 
-from temporal_agentic_factory.job.workflow import JobWorkflow
-from temporal_agentic_factory.structured_output.workflow import JobWithStructuredOutputWorkflow
+from temporal_agentic_factory.workflows.job.workflow import JobWorkflow
+from temporal_agentic_factory.workflows.structured_output.workflow import (
+    JobWithStructuredOutputWorkflow,
+)
 
 CODER_WORKFLOWS = (JobWorkflow, JobWithStructuredOutputWorkflow)
 
