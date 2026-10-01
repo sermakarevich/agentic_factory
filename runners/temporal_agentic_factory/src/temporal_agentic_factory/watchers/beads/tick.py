@@ -17,7 +17,7 @@ class BeadsPollActivity:
     @activity.defn
     async def poll(self) -> PollSummary:
         """The tick's I/O: `bd` subprocesses and workflow starts, all here."""
-        cfg = settings.beads_watcher
+        cfg = settings.beads_poller
         return await poll_once(
             BeadsClient(configured_home(), settings.beads.command_timeout_sec, run_bd),
             TemporalWorkflows(),

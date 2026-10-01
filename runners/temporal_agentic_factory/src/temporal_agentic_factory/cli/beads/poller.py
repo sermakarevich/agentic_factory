@@ -19,24 +19,24 @@ def ready() -> None:
     """Show startable beads as JSON: what the next tick would pull."""
     client = opened()
     with beads_failures():
-        beads = client.ready(settings.beads_watcher.batch_limit)
+        beads = client.ready(settings.beads_poller.batch_limit)
     typer.echo(json.dumps([bead.model_dump() for bead in beads], indent=2))
 
 
 def poll(
     once: Annotated[bool, typer.Option("--once", help="one tick now, then exit")] = False,
 ) -> None:
-    """Run one poll tick in this process, for debugging; the loop is the watcher
-    (`af beads start`)."""
+    """Run one poll tick in this process, for debugging; the ticks come from the
+    schedule (`af beads start`)."""
     if not once:
-        fail("the poll loop is the watcher now: `af beads start`; `--once` runs one tick here")
+        fail("the ticks come from the schedule: `af beads start`; `--once` runs one tick here")
     client = opened()
     typer.echo(run_coro(_ticked(client)).model_dump_json(indent=2))
 
 
 async def _ticked(client: BeadsClient) -> PollSummary:
     """One tick with real beads and real workflows."""
-    cfg = settings.beads_watcher
+    cfg = settings.beads_poller
     return await poll_once(
         client,
         TemporalWorkflows(),

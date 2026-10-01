@@ -41,11 +41,11 @@ temporal-tailscale:
 temporal-health:
     just --justfile runners/temporal_agentic_factory/justfile --working-directory runners/temporal_agentic_factory temporal-health
 
-# start the Temporal runner (polls task queues), after starting the beads watcher
+# start the Temporal runner (polls task queues), after (re)creating the beads poll schedule
 runner *ARGS:
     just --justfile runners/temporal_agentic_factory/justfile --working-directory runners/temporal_agentic_factory runner "$@"
 
-# start N runner processes in the background on this machine (default 2), logs under ~/.local/share/agentic_factory/runner-logs; then the beads watcher
+# start N runner processes in the background on this machine (default 2), logs under ~/.local/share/agentic_factory/runner-logs; then the beads poll schedule
 runners N="2":
     just --justfile runners/temporal_agentic_factory/justfile --working-directory runners/temporal_agentic_factory runners {{N}}
 

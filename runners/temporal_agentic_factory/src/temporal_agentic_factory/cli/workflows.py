@@ -24,7 +24,7 @@ from temporal_agentic_factory.cli.errors import (
 )
 from temporal_agentic_factory.client import connect
 from temporal_agentic_factory.settings.load import settings
-from temporal_agentic_factory.watchers.beads.control import WatcherStatus, watcher_status
+from temporal_agentic_factory.watchers.beads.control import ScheduleStatus, schedule_status
 from temporal_agentic_factory.workflows.distill.workflow import DistilledEntry
 from temporal_agentic_factory.workflows.job.coder_queue import coder_queue
 from temporal_agentic_factory.workflows.job.search_attributes import NAME
@@ -36,7 +36,9 @@ RESULT_TYPES: dict[str, Any] = {
     "distill": DistilledEntry,
 }
 
-WATCHER_DOWN = "beads watcher not running: no beads are pulled; start it with `af beads start`"
+SCHEDULE_DOWN = (
+    "beads poll schedule missing or paused: no beads are pulled; start it with `af beads start`"
+)
 
 
 def _result_type_for(workflow_type: str) -> Any | None:
@@ -247,11 +249,11 @@ async def _terminated(workflow_id: str, run_id: str | None, reason: str) -> None
 def health() -> None:
     """Check the Temporal server answers: prints address, namespace, task
     queue, which processes poll each provider's coder queue (none: start
-    `af coders`) and whether the beads watcher runs (not: a warning)."""
+    `af coders`) and whether the beads poll schedule fires (not: a warning)."""
     info = run_coro(_health_info())
     typer.echo(json.dumps(info, indent=2))
-    if not info["beads_watcher"]["running"]:
-        typer.echo(f"af: warning: {WATCHER_DOWN}", err=True)
+    if "warning" in info["beads_schedule"]:
+        typer.echo(f"af: warning: {SCHEDULE_DOWN}", err=True)
 
 
 async def _health_info() -> dict[str, Any]:
@@ -266,21 +268,17 @@ async def _health_info() -> dict[str, Any]:
             coder_queue(name): await _pollers(client, coder_queue(name))
             for name in settings.providers
         },
-        "beads_watcher": watcher_field(
-            await watcher_status(
-                client,
-                settings.beads_watcher.workflow_id,
-                settings.beads_watcher.query_timeout_sec,
-            )
+        "beads_schedule": schedule_field(
+            await schedule_status(client, settings.beads_poller.schedule_id)
         ),
     }
 
 
-def watcher_field(found: WatcherStatus) -> dict[str, Any]:
-    """The watcher's state for `af health`; a warning in it when it does not run."""
+def schedule_field(found: ScheduleStatus) -> dict[str, Any]:
+    """The schedule's state for `af health`; a warning in it when it is missing or paused."""
     field = found.model_dump(mode="json")
-    if not found.running:
-        field["warning"] = WATCHER_DOWN
+    if not found.exists or found.paused:
+        field["warning"] = SCHEDULE_DOWN
     return field
 
 

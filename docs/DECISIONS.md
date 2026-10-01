@@ -689,8 +689,9 @@ sources one module per kind** (Oct 1).
   tick summary. Rejected: a task.json beside each bead (a second source of
   truth that `bd` does not move with the bead) and keeping fleet's
   `coder`/`isolation` row keys (nothing downstream used `isolation`).
-- **beads watcher: one long-running workflow with continue-as-new instead of a
-  Schedule; keep last N runs** (2026-10-01). The `beads-poll` Schedule started
+- **Superseded by "back to a Schedule" below.** **beads watcher: one
+  long-running workflow with continue-as-new instead of a Schedule; keep last
+  N runs** (2026-10-01). The `beads-poll` Schedule started
   a one-tick workflow every 10 s, 8,600 runs a day, and made the Temporal UI
   unusable. Now one `beads_watcher` workflow (fixed id `beads-watcher`) runs
   the unchanged tick activity, sleeps `interval_sec` and repeats; a failed
@@ -739,3 +740,21 @@ sources one module per kind** (Oct 1).
   `bd`). af's own names win, so `af beads bd status` is the way to bd's.
   Rejected: wrapping each bd command (always behind bd), and telling users to
   `cd ~/.agentic_factory/beads && bd ...` (easy to run in the wrong folder).
+- **Back to a Schedule for beads, every 30 s, with a cleaner that keeps the
+  last run** (2026-10-01). Supersedes the long-running watcher above. The
+  user prefers one schedule row with a visible next run over a workflow that
+  never ends. Schedule `beads-poll` starts a one-tick `beads_poll` run every
+  `interval_sec` (30 s), overlap SKIP so a slow tick never stacks; the run
+  ticks, trims, and returns the tick's summary as its result. A failed tick
+  still trims, then fails the run (a red row, simpler than a failed summary).
+  The flood that made us leave the first schedule is solved by the cleaner,
+  not by fewer runs: every run deletes all closed `beads_poll` (and leftover
+  `beads_watcher`) runs but the newest `keep_runs` (1), never the running one
+  and never another type. `af beads start` creates or replaces the schedule
+  and terminates the old `beads-watcher` workflow; deploying needs it once.
+  Removed with the loop: `WatcherRun`, `checks_per_run`, `stop_wait_sec`,
+  `query_timeout_sec`, the `last_check` query, `last_check.py`, `legacy.py`
+  and the `LastCheck` attribute (dropped from the registered keys too: a
+  server that has it keeps it unused, which breaks nothing). Rejected: keeping
+  the loop (no next-run in the UI) and a 10 s schedule without the cleaner
+  (the old flood).

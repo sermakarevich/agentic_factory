@@ -56,29 +56,43 @@ def _at(minutes: int) -> datetime:
 
 
 async def test_keeps_the_newest_runs_and_deletes_the_older_ones() -> None:
-    runs = [Run("beads-watcher", f"r{m}", "beads_watcher", _at(m)) for m in (3, 1, 5, 2, 4)]
+    runs = [Run(f"beads-poll-{m}", f"r{m}", "beads_poll", _at(m)) for m in (3, 1, 5, 2, 4)]
     client = FakeClient(runs)
     assert await trimmed(cast(Client, client), "default", keep=3) == 2
     assert sorted(client.workflow_service.deleted) == ["r1", "r2"]
 
 
-async def test_old_poll_runs_go_too_and_a_run_without_close_time_sorts_by_its_start() -> None:
+async def test_keep_one_leaves_the_newest_closed_run_and_the_running_one() -> None:
+    failed, completed = WorkflowExecutionStatus.FAILED, WorkflowExecutionStatus.COMPLETED
     runs = [
-        Run("beads-watcher", "new", "beads_watcher", _at(10)),
-        Run("beads-poll-1", "poll", "beads_poll", _at(1)),
-        Run("beads-watcher", "unclosed", "beads_watcher", None, start_time=_at(0)),
+        Run("beads-poll-1", "old", "beads_poll", _at(1)),
+        Run("beads-poll-3", "newest", "beads_poll", _at(3), status=failed),
+        Run("beads-poll-2", "older", "beads_poll", _at(2), status=completed),
+        Run("beads-poll-4", "live", "beads_poll", None, status=WorkflowExecutionStatus.RUNNING),
+        Run("job-1", "job", "job", _at(0)),
+    ]
+    client = FakeClient(runs)
+    assert await trimmed(cast(Client, client), "default", keep=1) == 2
+    assert sorted(client.workflow_service.deleted) == ["old", "older"]
+
+
+async def test_old_watcher_runs_go_too_and_a_run_without_close_time_sorts_by_its_start() -> None:
+    runs = [
+        Run("beads-poll-10", "new", "beads_poll", _at(10)),
+        Run("beads-watcher", "watcher", "beads_watcher", _at(1)),
+        Run("beads-poll-0", "unclosed", "beads_poll", None, start_time=_at(0)),
     ]
     client = FakeClient(runs)
     await trimmed(cast(Client, client), "default", keep=1)
-    assert sorted(client.workflow_service.deleted) == ["poll", "unclosed"]
+    assert sorted(client.workflow_service.deleted) == ["unclosed", "watcher"]
 
 
-async def test_never_touches_other_types_or_the_running_watcher() -> None:
+async def test_never_touches_other_types_or_the_running_poll() -> None:
     runs = [
         Run("job-1", "job", "job", _at(0)),
         Run("distill-1", "distill", "distill", _at(0)),
-        Run("beads-watcher", "live", "beads_watcher", None, status=WorkflowExecutionStatus.RUNNING),
-        Run("beads-watcher", "old", "beads_watcher", _at(1)),
+        Run("beads-poll-2", "live", "beads_poll", None, status=WorkflowExecutionStatus.RUNNING),
+        Run("beads-poll-1", "old", "beads_poll", _at(1)),
     ]
     client = FakeClient(runs)
     await trimmed(cast(Client, client), "default", keep=0)
@@ -90,13 +104,13 @@ async def test_never_touches_other_types_or_the_running_watcher() -> None:
 
 
 async def test_a_failed_delete_is_skipped_and_the_rest_still_go() -> None:
-    runs = [Run("beads-watcher", f"r{m}", "beads_watcher", _at(m)) for m in (1, 2, 3)]
+    runs = [Run(f"beads-poll-{m}", f"r{m}", "beads_poll", _at(m)) for m in (1, 2, 3)]
     client = FakeClient(runs, failing={"r2"})
     assert await trimmed(cast(Client, client), "default", keep=0) == 2
     assert sorted(client.workflow_service.deleted) == ["r1", "r3"]
 
 
 async def test_a_failed_listing_deletes_nothing_and_raises_nothing() -> None:
-    client = FakeClient([Run("beads-watcher", "r", "beads_watcher", _at(1))], broken=True)
+    client = FakeClient([Run("beads-poll-1", "r", "beads_poll", _at(1))], broken=True)
     assert await trimmed(cast(Client, client), "default", keep=0) == 0
     assert client.workflow_service.deleted == []

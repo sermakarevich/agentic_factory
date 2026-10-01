@@ -29,5 +29,4 @@ def test_every_key_is_a_keyword_the_register_step_knows() -> None:
         "Runner",
         "Outcome",
         "Verdict",
-        "LastCheck",
     }

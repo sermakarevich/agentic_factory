@@ -75,17 +75,14 @@ home = "~/.agentic_factory/beads"  # the beads database af owns; every `bd` call
 default_priority = 2               # `af beads add` priority without --priority: 0 is the highest, 4 the lowest
 command_timeout_sec = 30           # one `bd` subprocess call before it fails
 
-[beads_watcher]
-workflow_id = "beads-watcher"  # the one watcher workflow's fixed id; `af beads start` owns it
-interval_sec = 10         # the sleep between two ticks of the watcher loop
+[beads_poller]
+schedule_id = "beads-poll"  # the Temporal Schedule `af beads start` owns; its runs are `beads-poll-<time>`
+interval_sec = 30         # the schedule fires one tick this often; a tick still running skips the next
 tick_timeout_sec = 300    # start-to-close of the poll activity: reconcile plus one batch
 batch_limit = 10          # ready beads considered per tick
 orphan_timeout_sec = 600  # an in_progress bead with no af marker and no workflow this old is released
-checks_per_run = 500      # ticks in one watcher run before it continues as new, so its history stays small
-keep_runs = 3             # finished watcher (and old beads_poll) runs kept; older ones are deleted
+keep_runs = 1             # finished beads_poll (and old beads_watcher) runs kept; older ones are deleted
 trim_timeout_sec = 300    # start-to-close of the trim activity: one listing, then one delete per old run
-stop_wait_sec = 10        # how long `af beads stop` waits for the cancelled watcher to end
-query_timeout_sec = 5     # how long `af beads status` and `af health` wait for the watcher's last check
 
 [locate_activity]
 timeout_sec = 30    # validating the topic and making the target folder

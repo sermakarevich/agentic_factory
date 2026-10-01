@@ -1,3 +1,4 @@
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -7,50 +8,56 @@ from typer.testing import CliRunner
 from temporal_agentic_factory.cli.app import app
 from temporal_agentic_factory.cli.beads import watcher
 from temporal_agentic_factory.settings.load import settings
-from temporal_agentic_factory.watchers.beads.control import WatcherStatus
-from temporal_agentic_factory.watchers.beads.workflow import WatcherConfig
+from temporal_agentic_factory.watchers.beads.control import LastRun, ScheduleStatus
+from temporal_agentic_factory.watchers.beads.workflow import PollConfig
 
 
 class FakeServer:
-    """Stands in for the watcher's calls on Temporal; records what the cli asked."""
+    """Stands in for the schedule's calls on Temporal; records what the cli asked."""
 
-    def __init__(self, legacy: bool, running: bool) -> None:
-        self.legacy = legacy
-        self.running = running
-        self.started: list[tuple[str, WatcherConfig]] = []
-        self.stopped: list[str] = []
+    def __init__(self, old_watcher: bool) -> None:
+        self.old_watcher = old_watcher
+        self.exists = False
+        self.started: list[tuple[str, int, PollConfig]] = []
+        self.deleted = 0
 
-    async def connect(self) -> object:
+    async def connect(self) -> "FakeServer":
         return self
 
-    async def deleted_legacy_schedule(self, client: object) -> bool:
-        deleted, self.legacy = self.legacy, False
-        return deleted
+    def get_schedule_handle(self, schedule_id: str) -> "FakeServer":
+        return self
 
     async def register(self, client: object, namespace: str) -> list[str]:
         return []
 
-    async def start_watcher(
-        self, client: object, workflow_id: str, task_queue: str, config: WatcherConfig
+    async def start_schedule(
+        self, client: object, schedule_id: str, task_queue: str, interval: int, config: PollConfig
     ) -> bool:
-        if self.running:
-            return False
-        self.running = True
-        self.started.append((workflow_id, config))
-        return True
+        replaced, self.exists = self.exists, True
+        self.started.append((schedule_id, interval, config))
+        return replaced
 
-    async def stop_watcher(self, client: object, workflow_id: str, wait_sec: int) -> bool:
-        self.running = False
-        self.stopped.append(workflow_id)
-        return True
+    async def end_old_watcher(self, client: object) -> bool:
+        ended, self.old_watcher = self.old_watcher, False
+        return ended
 
-    async def watcher_status(
-        self, client: object, workflow_id: str, query_timeout_sec: int
-    ) -> WatcherStatus:
-        return WatcherStatus(
-            workflow_id=workflow_id,
-            running=self.running,
-            status="RUNNING" if self.running else "ABSENT",
+    async def delete_schedule(self, handle: object) -> bool:
+        deleted, self.exists = self.exists, False
+        self.deleted += deleted
+        return deleted
+
+    async def schedule_status(self, client: object, schedule_id: str) -> ScheduleStatus:
+        return ScheduleStatus(
+            schedule_id=schedule_id,
+            exists=True,
+            interval_sec=30,
+            next_run=datetime(2026, 10, 1, 12, 0, 30, tzinfo=UTC),
+            last_run=LastRun(
+                workflow_id="beads-poll-2026-10-01T12:00:00Z",
+                run_id="r1",
+                status="COMPLETED",
+                result="spawned 1 closed 0 blocked 0 released 0 skipped 0 errors 0",
+            ),
         )
 
 
@@ -58,61 +65,62 @@ class FakeServer:
 def server(monkeypatch: Any, tmp_path: Path) -> FakeServer:
     (tmp_path / ".beads").mkdir()
     monkeypatch.setattr(settings.beads, "home", str(tmp_path))
-    fake = FakeServer(legacy=True, running=False)
-    for name in ("connect", "deleted_legacy_schedule", "start_watcher", "stop_watcher"):
+    fake = FakeServer(old_watcher=True)
+    for name in ("start_schedule", "end_old_watcher", "delete_schedule", "schedule_status"):
         monkeypatch.setattr(watcher, name, getattr(fake, name))
-    monkeypatch.setattr(watcher, "watcher_status", fake.watcher_status)
+    monkeypatch.setattr(watcher, "connect", fake.connect)
     monkeypatch.setattr(watcher.search_attributes, "register", fake.register)
     return fake
 
 
-def test_start_deletes_the_legacy_schedule_and_prints_the_watcher_id(server: FakeServer) -> None:
+def test_start_creates_the_schedule_ends_the_old_watcher_and_prints_the_id(
+    server: FakeServer,
+) -> None:
     result = CliRunner().invoke(app, ["beads", "start"])
     assert result.exit_code == 0, result.output
-    assert "deleted the legacy schedule beads-poll" in result.output
-    assert f"started: {settings.beads_watcher.workflow_id}" in result.output
-    assert result.output.strip().endswith(settings.beads_watcher.workflow_id)
-    workflow_id, config = server.started[0]
-    assert workflow_id == settings.beads_watcher.workflow_id
-    assert config.checks_per_run == settings.beads_watcher.checks_per_run
+    cfg = settings.beads_poller
+    assert f"created: {cfg.schedule_id}" in result.output
+    assert "terminated the old watcher beads-watcher" in result.output
+    assert result.output.strip().endswith(cfg.schedule_id)
+    schedule_id, interval, config = server.started[0]
+    assert (schedule_id, interval) == (cfg.schedule_id, cfg.interval_sec)
+    assert config.tick_timeout_sec == cfg.tick_timeout_sec
 
 
-def test_start_twice_leaves_the_running_watcher_alone(server: FakeServer) -> None:
+def test_start_twice_replaces_the_schedule(server: FakeServer) -> None:
     CliRunner().invoke(app, ["beads", "start"])
     again = CliRunner().invoke(app, ["beads", "start"])
     assert again.exit_code == 0, again.output
-    assert "already running" in again.output
-    assert "legacy" not in again.output
-    assert len(server.started) == 1
+    assert f"replaced: {settings.beads_poller.schedule_id}" in again.output
+    assert "old watcher" not in again.output
 
 
-def test_restart_stops_then_starts(server: FakeServer) -> None:
+def test_restart_deletes_then_creates(server: FakeServer) -> None:
     CliRunner().invoke(app, ["beads", "start"])
     result = CliRunner().invoke(app, ["beads", "restart"])
     assert result.exit_code == 0, result.output
-    assert server.stopped == [settings.beads_watcher.workflow_id]
+    assert server.deleted == 1
     assert len(server.started) == 2
 
 
-def test_stop_that_does_not_end_in_time_fails(server: FakeServer, monkeypatch: Any) -> None:
-    async def still_running(client: object, workflow_id: str, wait_sec: int) -> bool:
-        return False
-
-    monkeypatch.setattr(watcher, "stop_watcher", still_running)
+def test_stop_without_a_schedule_is_fine(server: FakeServer) -> None:
     result = CliRunner().invoke(app, ["beads", "stop"])
-    assert result.exit_code == 1
-    assert "af terminate" in result.output
+    assert result.exit_code == 0, result.output
+    assert f"no schedule: {settings.beads_poller.schedule_id}" in result.output
 
 
-def test_status_prints_whether_it_runs(server: FakeServer) -> None:
+def test_status_prints_the_next_run_and_the_last_runs_summary(server: FakeServer) -> None:
     result = CliRunner().invoke(app, ["beads", "status"])
     assert result.exit_code == 0, result.output
-    assert '"running": false' in result.output
+    assert '"exists": true' in result.output
+    assert '"interval_sec": 30' in result.output
+    assert '"next_run": "2026-10-01T12:00:30Z"' in result.output
+    assert '"status": "COMPLETED"' in result.output
+    assert "spawned 1 closed 0" in result.output
 
 
-def test_the_group_offers_the_watcher_commands_and_no_schedule() -> None:
+def test_the_group_offers_the_schedule_commands() -> None:
     result = CliRunner().invoke(app, ["beads", "--help"])
     assert result.exit_code == 0
     for command in ("start", "stop", "restart", "status", "poll", "ready"):
         assert command in result.output
-    assert "schedule" not in result.output

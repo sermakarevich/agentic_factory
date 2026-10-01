@@ -1,69 +1,29 @@
-import asyncio
 import uuid
 
-from temporal_agentic_factory.watchers.beads.workflow import BeadsWatcherWorkflow, WatcherRun
-from temporal_agentic_factory.workflows.job.search_attributes import LAST_CHECK
-from tests.watchers.beads.fake_watcher import INTERVAL_SEC, Ticks, config, until, watching
+import pytest
+from temporalio.client import WorkflowFailureError
+
+from temporal_agentic_factory.watchers.beads.workflow import BeadsPollWorkflow
+from tests.watchers.beads.fake_poll import CONFIG, Calls, polling
 
 
-async def test_the_loop_ticks_then_sleeps_the_interval_before_the_next_tick() -> None:
-    ticks = Ticks()
-    async with watching(ticks) as watch:
-        handle = await watch.client.start_workflow(
-            BeadsWatcherWorkflow.run,
-            WatcherRun(config=config()),
-            id=f"w-{uuid.uuid4()}",
-            task_queue=watch.queue,
+async def test_a_run_ticks_then_trims_and_returns_the_ticks_summary() -> None:
+    calls = Calls()
+    async with polling(calls) as poll:
+        summary = await poll.client.execute_workflow(
+            BeadsPollWorkflow.run, CONFIG, id=f"p-{uuid.uuid4()}", task_queue=poll.queue
         )
-        await until(watch, lambda: ticks.ticks == 1)
-        await asyncio.sleep(0.3)
-        assert ticks.ticks == 1  # the timer holds the next tick back
-        await until(watch, lambda: ticks.ticks >= 2, step_sec=INTERVAL_SEC)
-        check = await handle.query(BeadsWatcherWorkflow.last_check)
-        assert check is not None
-        assert (check.spawned, check.skipped, check.error) == (1, 1, "")
-        attributes = (await handle.describe()).typed_search_attributes
-        assert attributes.get(LAST_CHECK) == check.line()
-        assert ticks.trims == 1  # once at the first start
-        await handle.terminate()
+    assert calls.order == ["tick", "trim"]
+    assert summary.spawned == ["af-1"]
+    assert summary.skipped == {"af-0": "no provider"}
 
 
-async def test_a_failing_tick_is_recorded_and_the_loop_goes_on() -> None:
-    ticks = Ticks(failing={1})
-    async with watching(ticks) as watch:
-        handle = await watch.client.start_workflow(
-            BeadsWatcherWorkflow.run,
-            WatcherRun(config=config()),
-            id=f"w-{uuid.uuid4()}",
-            task_queue=watch.queue,
-        )
-        await until(watch, lambda: ticks.ticks == 1)
-        await asyncio.sleep(0.3)
-        failed = await handle.query(BeadsWatcherWorkflow.last_check)
-        assert failed is not None and "bd is down" in failed.error
-        assert (await handle.describe()).typed_search_attributes.get(LAST_CHECK) == "tick failed"
-        await until(watch, lambda: ticks.ticks >= 2, step_sec=INTERVAL_SEC)
-        await asyncio.sleep(0.3)
-        recovered = await handle.query(BeadsWatcherWorkflow.last_check)
-        assert recovered is not None and recovered.error == "" and recovered.spawned == 1
-        await handle.terminate()
-
-
-async def test_the_run_continues_as_new_after_checks_per_run_ticks() -> None:
-    ticks = Ticks()
-    async with watching(ticks) as watch:
-        handle = await watch.client.start_workflow(
-            BeadsWatcherWorkflow.run,
-            WatcherRun(config=config(checks_per_run=2)),
-            id=f"w-{uuid.uuid4()}",
-            task_queue=watch.queue,
-        )
-        first_run = handle.result_run_id
-        await until(watch, lambda: ticks.ticks >= 3, step_sec=INTERVAL_SEC)
-        latest = watch.client.get_workflow_handle(handle.id)
-        described = await latest.describe()
-        assert described.run_id != first_run
-        assert ticks.trims == 2  # at the first start and before the new run, not at its start
-        carried = await latest.query(BeadsWatcherWorkflow.last_check)
-        assert carried is not None
-        await latest.terminate()
+async def test_a_failed_tick_still_trims_then_fails_the_run() -> None:
+    calls = Calls(failing=True)
+    async with polling(calls) as poll:
+        with pytest.raises(WorkflowFailureError) as failed:
+            await poll.client.execute_workflow(
+                BeadsPollWorkflow.run, CONFIG, id=f"p-{uuid.uuid4()}", task_queue=poll.queue
+            )
+    assert calls.order == ["tick", "trim"]
+    assert "bd is down" in str(failed.value.cause.cause)

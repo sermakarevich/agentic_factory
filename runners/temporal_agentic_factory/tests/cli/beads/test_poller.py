@@ -24,10 +24,10 @@ def test_ready_prints_the_beads_the_next_tick_would_pull(monkeypatch: Any, tmp_p
     result = CliRunner().invoke(app, ["beads", "ready"])
     assert result.exit_code == 0, result.output
     assert '"provider": "opencode"' in result.output
-    assert bd.calls[0][0][-2:] == [str(settings.beads_watcher.batch_limit), "--json"]
+    assert bd.calls[0][0][-2:] == [str(settings.beads_poller.batch_limit), "--json"]
 
 
-def test_poll_without_once_points_at_the_watcher(monkeypatch: Any, tmp_path: Path) -> None:
+def test_poll_without_once_points_at_the_schedule(monkeypatch: Any, tmp_path: Path) -> None:
     (tmp_path / ".beads").mkdir()
     bd = _bd(monkeypatch, tmp_path, FakeBd())
     result = CliRunner().invoke(app, ["beads", "poll"])

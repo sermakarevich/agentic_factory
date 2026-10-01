@@ -60,15 +60,14 @@ agentic_factory/
           distill/            # workflow, activities (fetch + verify), name (a source's url tail)
           research/           # activities (locate_target, read_candidates), workflow (the chain of jobs
                               # and child distill runs)
-        watchers/             # long-running things that watch a state and start workflows
+        watchers/             # things that watch a state and start workflows
           beads/              # client (bd calls on the database af owns), home ([beads].home),
                               # models, shell (`bd` subprocess, captured or forwarded), markers (the
                               # `[af] ...` comments), front_matter (the description's `---` block),
                               # parameters (the af_job fields), mapping (bead to job), ending (close
                               # or block a finished bead), poll, temporal, tick (the tick activity),
-                              # last_check (the query and LastCheck line), trim (old runs deleted),
-                              # workflow (the beads_watcher loop), control (start, stop, status),
-                              # legacy (the old beads-poll schedule)
+                              # trim (old poll runs deleted), workflow (beads_poll: one tick, then
+                              # the trim), control (the beads-poll schedule: start, stop, status)
         cli/                  # app (the `af` typer app), one module per subject (job: `run`, distill,
                               # research, coders), errors, ids (readable workflow ids), options,
                               # providers (refuses a provider with no settings table), workflows
@@ -76,7 +75,7 @@ agentic_factory/
           beads/              # app (the `af beads` group), opened (the configured database),
                               # job_options (the `af run` job options add and set share), submit
                               # (add, set, retry), database (init, list, show, close), poller
-                              # (ready, poll --once), watcher (start, stop, restart, status),
+                              # (ready, poll --once), watcher (start, stop, restart, status of the schedule),
                               # forward (`bd ...` and unknown commands passed to bd)
         settings/             # server address, activity limits, [providers.<name>] coder limits, one table per workflow
                               # and activity ([job_activity], [distill_workflow],
@@ -142,8 +141,8 @@ workflows that compose them (the job workflow, the job with structured
 output, distill, research) and exposes the CLI (`runner`, `coders`, `run`,
 `distill`, `research`, `beads`, `attributes`). It is grouped by role, then by subject
 inside each role: `workflows/` holds one folder per workflow with its
-activities, `watchers/` the long-running things that watch a state and start
-workflows (beads), `cli/` the `af` command with one module per subject, and
+activities, `watchers/` the things that watch a state and start
+workflows (the beads poll schedule), `cli/` the `af` command with one module per subject, and
 `settings/` the runner's settings. A module used by one subject sits in that
 subject's folder, one used by one role at that role's root
 (`workflows/failure.py`), one used by several roles at the package root

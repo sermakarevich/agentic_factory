@@ -223,7 +223,7 @@ called from an activity.
 `runners/temporal_agentic_factory`. Activities are one-line wrappers around
 the two engines; workflows compose them; retries never appear in workflow code.
 The package is grouped by role, then by subject: `workflows/` (one folder per
-workflow with its activities), `watchers/` (the beads watcher), `cli/` (the `af`
+workflow with its activities), `watchers/` (the beads poll), `cli/` (the `af`
 command, one module per subject) and `settings/`; the root holds what several
 roles share (`runner.py`, `coders.py`, `other_coders.py`, `client.py`, `identity.py`).
 
@@ -336,7 +336,7 @@ roles share (`runner.py`, `coders.py`, `other_coders.py`, `client.py`, `identity
   lets running coder jobs finish for up to `[coders] graceful_shutdown_sec`,
   then Temporal retries what was cut off after its heartbeat timeout.
   Workflows start freely: their execute step waits in the provider's queue
-  until a slot frees, and the beads watcher keeps `batch_limit` as its only
+  until a slot frees, and the beads tick keeps `batch_limit` as its only
   brake. `af health` lists the pollers of each coder queue, so a missing
   `af coders` shows.
 - To change a limit: edit `[providers.<name>] max_concurrent` in the runner
@@ -675,9 +675,10 @@ cwd, so the database never depends on where a command is started.
    [job options] [--priority 0-4] [--body TEXT | --body-file F]
    [--after ID]... [--parent ID] [--label L]... [--type T] [--id ID]` adds an
    open bead in one `bd create` call and prints its id only.
-3. The watcher (`af beads start`, see below; `af beads poll --once` runs one
-   tick in the cli while debugging) takes ready beads by priority
-   (`bd ready --sort priority`, up to `[beads_watcher] batch_limit`), claims
+3. The poll schedule (`af beads start`, see below; `af beads poll --once`
+   runs one tick in the cli while debugging) fires a tick every 30 s that
+   takes ready beads by priority
+   (`bd ready --sort priority`, up to `[beads_poller] batch_limit`), claims
    each one and starts its job workflow `bead-<id>-<attempt>`.
 4. Watch it with `af list` or the Temporal UI (the Name column is the job's
    name, the bead id unless set). The next tick after the workflow ends
@@ -733,7 +734,7 @@ unready. The status is changed before the comment, so a failed change is
 retried next tick without a second comment.
 
 **Retry.** `af beads retry ID [--reason R]` takes a blocked bead: it
-comments `[af] retry[: R]` first, then sets the bead open. The watcher then
+comments `[af] retry[: R]` first, then sets the bead open. The next tick then
 spawns it again as attempt n+1, `bead-<id>-<n+1>` (n counts the
 `[af] workflow` markers so far), so the old run is never reused. Reconcile
 reads the latest marker after the latest retry. The comment goes first so a
@@ -751,50 +752,50 @@ print what `bd` prints (`--json` passes through for list and show). Every
 command on the database, `ready`, `poll` and `start` stop with one line
 naming `af beads init` while the folder holds no database.
 
-## Beads watcher
+## Beads poll schedule
 
-One long-running workflow, `beads_watcher`, with the fixed id
-`[beads_watcher] workflow_id` (`beads-watcher`), pulls the beads. It replaced
-a Temporal Schedule that started a one-tick `beads_poll` workflow every 10 s:
-8,600 runs a day that made the Temporal UI unusable. Now there is one run at a
-time, and history keeps only the last few.
+A Temporal Schedule, `[beads_poller] schedule_id` (`beads-poll`), pulls the
+beads: every `interval_sec` (30 s, two checks a minute) it starts one
+`beads_poll` run, `beads-poll-<time>`. The UI shows one schedule row with its
+next run, and the Workflows list keeps only the newest poll runs. It replaced
+a long-running `beads_watcher` loop (see DECISIONS.md); the first schedule
+(every 10 s) had been dropped for flooding the UI with 8,600 runs a day, which
+the cleaner below now prevents.
 
-- **The loop** (`watchers/beads/workflow.py`): run the tick activity
-  (`BeadsPollActivity.poll`, which calls `poll_once`), then
-  `workflow.sleep(interval_sec)`, repeat. A tick that fails after its retries
-  is caught: the loop records the error text and goes on. After
-  `checks_per_run` ticks (500), or when Temporal suggests it, the run
-  continues as new, carrying the last check over. The workflow has no I/O.
-- **The loop is frozen.** A long-running workflow replays its history on the
-  new code after a runner restart, so the loop must not change under a
-  running watcher. What a tick does lives in the activities (`tick.py`,
-  `poll.py`, `mapping.py`): change it there and restart the runners. A change
-  to the loop itself, or to its knobs (`interval_sec`, `tick_timeout_sec`,
-  `trim_timeout_sec`, `checks_per_run`, which travel in the workflow's input),
-  needs `af beads restart`.
-- **What it shows.** The query `last_check` answers the last tick: its time,
-  the spawned, closed, blocked, released, skipped and error counts, or the
-  failure's text. The keyword attribute `LastCheck` holds one short line of it
-  (`spawned 1 closed 0 blocked 0 released 0 skipped 0 errors 0`, or
-  `tick failed`) and
-  is upserted only when that line changes, so a quiet watcher's history stays
-  small. `af beads start` registers the attribute when the server lacks it
-  (an upsert of an unknown attribute would block the workflow).
-- **Old runs are trimmed.** The `trim_watcher_runs` activity lists the closed
-  runs of `beads_watcher` and the old `beads_poll` type, keeps the newest
-  `keep_runs` (3) by close time and deletes the rest, each by its run id.
-  It runs once when the watcher starts and before each continue-as-new. It
-  is best effort: a failed listing or delete is logged and skipped. No other
+- **One run, one tick** (`watchers/beads/workflow.py`): run the tick activity
+  (`BeadsPollActivity.poll`, which calls `poll_once`), then the trim
+  activity, then return the tick's `PollSummary` as the run's result, so the
+  UI shows what the tick did. A tick that fails after its retries still runs
+  the trim, then fails the run: a red row in the UI. No loop, no sleep, no
+  query. Its timeouts (`tick_timeout_sec`, `trim_timeout_sec`) travel in the
+  schedule action's input (`PollConfig`), so a settings change takes
+  `af beads restart`.
+- **No stacking.** The overlap policy is SKIP: a tick still running when the
+  next one is due makes the schedule skip it.
+- **The cleaner keeps the last run.** The `trim_poll_runs` activity lists the
+  closed runs of `beads_poll` and the leftover `beads_watcher` type, keeps the
+  newest `keep_runs` (1) by close time and deletes the rest, each by its run
+  id. The run that trims is still running, so it is never touched; between
+  two ticks the list holds the run that just ended and the one it kept. It is
+  best effort: a failed listing or delete is logged and skipped. No other
   workflow type is ever touched: the query names the two types and the
   activity checks each listed run's type again.
-- **Commands.** `af beads start` (idempotent: a running watcher is left
-  alone and its id printed; it also deletes the legacy `beads-poll` schedule
-  if it is still there), `af beads stop` (cancel, then wait up to
-  `stop_wait_sec`), `af beads restart` (stop, then start) and
-  `af beads status` (running or not, and the last check). `af health` has a
-  `beads_watcher` field, with a warning when it does not run. `just runner`
-  and `just runners` run `af beads start` with the runners, a warning if it
-  fails, so a restart always brings the watcher back.
+- **Commands.** `af beads start` creates the schedule, or replaces the one
+  there, and terminates the old `beads-watcher` workflow if it still runs
+  (NOT_FOUND means nothing to do); it also registers missing search
+  attributes for the spawned jobs. `af beads stop` deletes the schedule (a
+  missing one is fine; spawned jobs keep running), `af beads restart` is stop
+  then start, and `af beads status` prints whether the schedule exists, is
+  paused, its interval, its next run time and its last run's id, status and
+  one-line result (`spawned 1 closed 0 blocked 0 released 0 skipped 0 errors 0`,
+  or `tick failed: ...`). `af health` has a `beads_schedule` field, with a
+  warning when the schedule is missing or paused. `just runner` and
+  `just runners` run `af beads start` with the runners, a warning if it
+  fails.
+- **Deploying it.** After the upgrade from the long-running watcher, run
+  `af beads restart` (or `af beads start`) once: it replaces the old watcher
+  with the schedule. Until then the old watcher is stuck and pulls nothing,
+  as the runner no longer registers `beads_watcher`.
 
 ## Materialization
 
@@ -1004,8 +1005,8 @@ per million lives in settings so the result carries `cost_usd`.
 - Beads is an input source (watcher) and an output target (a workflow
   updates status), not the internal state store. af owns its beads
   database at `~/.agentic_factory/beads` and calls `bd` directly.
-- One watcher at most (beads), one long-running workflow with
-  continue-as-new. X monitoring is a schedule whose first
+- One watcher at most (beads), a Temporal Schedule of one-tick runs that
+  trim their own old runs. X monitoring is a schedule whose first
   activity runs `x watch check`.
 - No YAML workflow language. Graphs are Python; a data-driven DAG
   interpreter can be added later if needed.
