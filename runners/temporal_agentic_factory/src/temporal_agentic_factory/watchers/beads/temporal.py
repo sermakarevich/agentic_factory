@@ -1,7 +1,7 @@
 """The Temporal side of a tick: spawns and status reads over real workflows."""
 
 from temporalio.exceptions import WorkflowAlreadyStartedError
-from temporalio.service import RPCError
+from temporalio.service import RPCError, RPCStatusCode
 
 from agentic_factory.job.contract import Job
 from agentic_factory.job.outcome import JobOutcome
@@ -39,7 +39,7 @@ class TemporalWorkflows:
         try:
             desc = await client.get_workflow_handle(workflow_id).describe()
         except RPCError as error:
-            if "not found" in (error.message or "").lower():
+            if error.status == RPCStatusCode.NOT_FOUND:
                 raise UnknownWorkflow(workflow_id) from error
             raise
         name = getattr(desc.status, "name", None)

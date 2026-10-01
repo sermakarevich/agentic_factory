@@ -10,10 +10,11 @@ import typer
 from temporalio.client import (
     Schedule,
     ScheduleActionStartWorkflow,
+    ScheduleHandle,
     ScheduleIntervalSpec,
     ScheduleSpec,
 )
-from temporalio.service import RPCError
+from temporalio.service import RPCError, RPCStatusCode
 
 from temporal_agentic_factory.cli.errors import run_coro
 from temporal_agentic_factory.client import connect
@@ -96,11 +97,7 @@ async def _scheduled(interval: int) -> None:
         static_summary="beads tick",
     )
     spec = ScheduleSpec(intervals=[ScheduleIntervalSpec(every=timedelta(seconds=interval))])
-    try:
-        await client.get_schedule_handle(cfg.schedule_id).delete()
-    except RPCError as error:
-        if "not found" not in (error.message or "").lower():
-            raise
+    await delete_schedule(client.get_schedule_handle(cfg.schedule_id))
     await client.create_schedule(cfg.schedule_id, Schedule(action=action, spec=spec))
 
 
@@ -113,8 +110,17 @@ def unschedule() -> None:
 
 async def _unscheduled() -> None:
     client = await connect()
+    await delete_schedule(client.get_schedule_handle(settings.beads_poller.schedule_id))
+
+
+async def delete_schedule(handle: ScheduleHandle) -> None:
+    """Delete the schedule; one that does not exist is nothing to delete.
+
+    The server's NOT_FOUND message varies ("workflow execution already
+    completed"), so the status code decides, not the text.
+    """
     try:
-        await client.get_schedule_handle(settings.beads_poller.schedule_id).delete()
+        await handle.delete()
     except RPCError as error:
-        if "not found" not in (error.message or "").lower():
+        if error.status != RPCStatusCode.NOT_FOUND:
             raise
