@@ -15,11 +15,13 @@ with workflow.unsafe.imports_passed_through():
 
 async def run_judgment(judgment: Judgment) -> JudgmentResult:
     """The judge activity, given as long as the judgment's own timeout plus
-    a margin, with the judge activity's retry policy."""
+    a margin, with the judge activity's retry policy; the UI shows the
+    names of the questions asked."""
     cfg = settings.judge_activity
     return await workflow.execute_activity(
         judge,
         judgment,
         start_to_close_timeout=timedelta(seconds=judgment.timeout_sec + cfg.close_margin_sec),
         retry_policy=RetryPolicy(maximum_attempts=cfg.max_attempts),
+        summary=", ".join(judgment.questions),
     )

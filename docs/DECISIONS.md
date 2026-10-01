@@ -500,6 +500,15 @@ harness is its job.
   `step/judge/` has its own contract, client base, catalog and engine,
   and shares the failure family, the event stream and the activity
   pattern with the llm step. First client: TypeSafe jev.
+- **Jobs have names, and the UI reads them** (Oct 1). A distill run showed
+  64 activities under 7 names, nine `execute_job` bars at once with
+  nothing saying which chunk each was. `Job.name` (`wiki/3`, `digest`) is
+  the label: the runner passes it as the summary of each of the job's
+  activities, puts it in front of a `JobFailed` message, and the distill
+  workflow keeps a status line with `set_current_details`. Summaries and
+  details are metadata, not history, so they change no replay. Child
+  workflows per job, the bigger restructuring of the timeline, wait for
+  the research workflow.
 - **No hardcoded knobs.** Every tunable (a size, limit, timeout, default)
   lives in `settings.toml` with a typed field and a one-line comment;
   facts of a protocol (an env var name, a header, a prompt) stay as named

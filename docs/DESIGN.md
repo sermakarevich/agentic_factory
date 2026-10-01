@@ -58,8 +58,9 @@ watcher, or by a schedule.
 
 Lives in `agentic_factory/tokens.py`, `event.py`, `failure.py` (shared with calls) and `job/` (contract, coders, and the loop that runs one). Engine-agnostic.
 
-- `Job` — what to run: provider (the harness: claude, opencode), model, prompt, workdir, tools, timeout_sec,
-  stall_sec, context_limit_tokens, `session_id` (session of an earlier try)
+- `Job` — what to run: provider (the harness: claude, opencode), model, `name` (what the job is
+  for, in a word or two; labels its activities in the UI and its failure), prompt, workdir, tools,
+  timeout_sec, stall_sec, context_limit_tokens, `session_id` (session of an earlier try)
   and `session_tokens` (its last known context size).
   Built by a job definition, sent to the activity.
 - `JobResult` — what the run produced: session_id, tokens, cost_usd, usage_known,
@@ -451,11 +452,35 @@ the entry under it and states the final path (`FiledEntry`). With a
 routing rules and writes the entry into that folder as is; the request
 refuses a target dir together with a topic, since the topic would move the
 entry away again. Every job
-is built by `distill_job(prompt)`: the coder, model and limits of the
-runner's `distill_workflow` table, in the vault. A job that failed for
+is built by `distill_job(name, prompt)`: the coder, model and limits of the
+runner's `distill_workflow` table, in the vault, named `plan`, `wiki/3`,
+`digest`, `index/2` and so on. A job that failed for
 good raises through `run_job_or_fail`, so the chain stops where fleet
 stopped. The run date the prompts carry is `workflow.now()`, so a replay
 sees the same one.
+
+### Reading a run in the UI
+
+A distill run is some 60 activities with 7 activity types, so the names
+alone say nothing about which job a bar is. Three things make a run
+readable, all Temporal features, none of them history-changing:
+
+- Every activity carries a **summary** (`execute_activity(summary=...)`),
+  shown on its bar and in the event list: the job's name for the four
+  activities of a job and for the extraction, the source URL for the
+  fetch, the entry slug for the verifier, the question names for a judge.
+- A job that failed for good fails the workflow as `JobFailed` with the
+  name in front: `wiki/3: Stalled: no output for 600 s`.
+- The workflow keeps a **status line** (`workflow.set_current_details`)
+  on the run page: `wiki pages: 3 of 9 written; running: wiki/4, wiki/5`,
+  `index: verifying, attempt 2 of 3`, `done: /path`. It is workflow
+  metadata, not history, so it costs nothing on replay.
+- The run itself has a **static summary** at start: the source URL of a
+  distill run, the job's name of a `factory run --name`.
+
+Child workflows per job (one named row per job in the parent's timeline,
+a history a fifth of the size) are the next step and wait for the
+research workflow, which needs child workflows anyway.
 
 ## Materialization
 

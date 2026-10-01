@@ -1,3 +1,4 @@
+import json
 import uuid
 from typing import Any
 
@@ -101,10 +102,14 @@ async def _environment() -> WorkflowEnvironment:
     return env
 
 
+labels: list[tuple[str, str]] = []  # (activity type, summary) of every activity scheduled
+
+
 async def _run(request: DistillRequest, verify: Any) -> DistilledEntry:
     fetches.clear()
     jobs.clear()
     verified.clear()
+    labels.clear()
     async with await _environment() as env:
         queue = f"test-{uuid.uuid4()}"
         async with Worker(
@@ -121,12 +126,26 @@ async def _run(request: DistillRequest, verify: Any) -> DistilledEntry:
                 verify,
             ],
         ):
-            return await env.client.execute_workflow(
+            handle = await env.client.start_workflow(
                 DistillWorkflow.run,
                 request,
                 id=f"distill-{uuid.uuid4()}",
                 task_queue=queue,
             )
+            result = await handle.result()
+            labels.extend(await _labels(handle))
+            return result
+
+
+async def _labels(handle: Any) -> list[tuple[str, str]]:
+    """(activity type, summary) of every activity the run scheduled, from its history."""
+    found = []
+    for event in (await handle.fetch_history()).events:
+        if event.HasField("activity_task_scheduled_event_attributes"):
+            kind = event.activity_task_scheduled_event_attributes.activity_type.name
+            summary = event.user_metadata.summary.data
+            found.append((kind, json.loads(summary) if summary else ""))
+    return found
 
 
 def _prompts_mentioning(*words: str) -> list[str]:
@@ -172,3 +191,30 @@ async def test_an_entry_that_never_passes_verification_fails_the_workflow() -> N
     assert isinstance(cause, ApplicationError) and cause.type == "EntryNotVerified"
     assert "missing digest.md" in cause.message
     assert len(verified) == settings.distill_workflow.index_attempts
+
+
+async def test_every_activity_is_labeled_with_its_job_in_the_ui() -> None:
+    await _run(DistillRequest(url="https://example.org/a"), verify_once_failing)
+    by_kind: dict[str, list[str]] = {}
+    for kind, summary in labels:
+        by_kind.setdefault(kind, []).append(summary)
+    assert by_kind["fetch_source"] == ["https://example.org/a"]
+    assert by_kind["verify_entry"] == ["AThing", "AThing"]
+    assert sorted(by_kind["extract_structured_output"]) == ["plan"]
+    assert sorted(by_kind["execute_job"]) == sorted(
+        [
+            "plan",
+            "wiki/1",
+            "wiki/2",
+            "digest",
+            "summary",
+            "explainer",
+            "questions",
+            "critical thinking",
+            "index/1",
+            "index/2",
+        ]
+    )
+    jobs_labels = sorted(by_kind["execute_job"])
+    assert sorted(by_kind["create_session"]) == sorted(by_kind["build_report"]) == jobs_labels
+    assert {job.name for job in jobs} == set(by_kind["execute_job"])

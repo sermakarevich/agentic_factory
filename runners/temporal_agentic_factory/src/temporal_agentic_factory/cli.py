@@ -56,6 +56,7 @@ def attributes() -> None:
 def run(
     prompt: str,
     workdir: str = ".",
+    name: Annotated[str, typer.Option(help="what the job is for, in a word or two")] = "",
     provider: str | None = None,
     model: str | None = None,
     timeout_sec: int | None = None,
@@ -78,7 +79,7 @@ def run(
         "context_limit_tokens": context_limit_tokens,
         "tools": _tool_list(tools),
     }
-    job = Job(prompt=prompt, workdir=_absolute(workdir), **_given(options))
+    job = Job(name=name, prompt=prompt, workdir=_absolute(workdir), **_given(options))
     job = with_default_model(job, harness_for(job.provider))  # so the UI shows the model
     if structured_output is None:
         typer.echo(asyncio.run(_job_outcome(job)).model_dump_json(indent=2))
@@ -154,6 +155,7 @@ async def _job_outcome(job: Job) -> JobOutcome:
         id=f"job-{uuid4().hex[: settings.cli.job_id_chars]}",
         task_queue=settings.temporal.task_queue,
         search_attributes=search_attributes.at_start(job),
+        static_summary=job.name,
     )
     return await _awaited(handle)
 
@@ -167,20 +169,23 @@ async def _job_with_structured_output(job: Job, schema: Schema) -> JobWithStruct
         id=f"job-{uuid4().hex[: settings.cli.job_id_chars]}",
         task_queue=settings.temporal.task_queue,
         search_attributes=search_attributes.at_start(job),
+        static_summary=job.name,
     )
     return await _awaited(handle)
 
 
 async def _distilled_entry(request: DistillRequest) -> DistilledEntry:
     """The distill workflow started and waited for. The UI columns show
-    the coder every distill job runs on, from the job the prompts go into."""
+    the coder every distill job runs on, from the job the prompts go into;
+    the run's summary is the source."""
     client = await connect()
     handle = await client.start_workflow(
         DistillWorkflow.run,
         request,
         id=f"distill-{uuid4().hex[: settings.cli.job_id_chars]}",
         task_queue=settings.temporal.task_queue,
-        search_attributes=search_attributes.at_start(distill_job(prompt="")),
+        search_attributes=search_attributes.at_start(distill_job("", "")),
+        static_summary=request.url,
     )
     return await _awaited(handle)
 

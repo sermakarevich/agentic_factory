@@ -62,6 +62,7 @@ async def _created_session_id(job: Job) -> str:
         job,
         start_to_close_timeout=timedelta(seconds=cfg.session_timeout_sec),
         retry_policy=_job_retry(),
+        summary=job.name,
     )
 
 
@@ -75,6 +76,7 @@ async def _execute_job_activity(job: Job) -> TryResult:
         start_to_close_timeout=timedelta(seconds=job.timeout_sec + cfg.close_margin_sec),
         heartbeat_timeout=timedelta(seconds=job.stall_sec + cfg.heartbeat_margin_sec),
         retry_policy=_job_retry(),
+        summary=job.name,
     )
 
 
@@ -106,7 +108,7 @@ async def run_job_with_report(job: Job) -> JobOutcome:
     is still returned."""
     job = await _with_session(job)
     request = await _job_as_report_request(job)
-    report = await _report_or_none(request)
+    report = await _report_or_none(request, job.name)
     outcome = JobOutcome(
         session_id=job.session_id,
         result=request.result,
@@ -114,7 +116,7 @@ async def run_job_with_report(job: Job) -> JobOutcome:
         report=report,
     )
     workflow.upsert_search_attributes(search_attributes.at_end(outcome))
-    await _recorded(outcome)
+    await _recorded(outcome, job.name)
     return outcome
 
 
@@ -124,8 +126,13 @@ async def run_job_or_fail(job: Job) -> JobOutcome:
     there instead of building on nothing."""
     outcome = await run_job_with_report(job)
     if outcome.result is None:
-        raise ApplicationError(outcome.failure, type="JobFailed", non_retryable=True)
+        raise ApplicationError(_named(job, outcome.failure), type="JobFailed", non_retryable=True)
     return outcome
+
+
+def _named(job: Job, failure: str) -> str:
+    """The failure with the job's name in front, when it has one: `wiki/3: Stalled: ...`."""
+    return f"{job.name}: {failure}" if job.name else failure
 
 
 async def _job_as_report_request(job: Job) -> ReportRequest:
@@ -141,9 +148,10 @@ async def _job_as_report_request(job: Job) -> ReportRequest:
     return ReportRequest(session_id=job.session_id, result=done.result)
 
 
-async def _report_or_none(request: ReportRequest) -> JobReport | None:
+async def _report_or_none(request: ReportRequest, name: str) -> JobReport | None:
     """The report activity, given as long as the app gives its step plus a
-    margin, with the report policy; None when it failed for good."""
+    margin, with the report policy; None when it failed for good. Labeled
+    with the job's name in the UI."""
     timeout_sec = app_settings.step.timeout_sec + settings.report_activity.close_margin_sec
     try:
         return await workflow.execute_activity_method(
@@ -151,14 +159,16 @@ async def _report_or_none(request: ReportRequest) -> JobReport | None:
             request,
             start_to_close_timeout=timedelta(seconds=timeout_sec),
             retry_policy=_report_retry(),
+            summary=name,
         )
     except ActivityError:
         return None
 
 
-async def _recorded(outcome: JobOutcome) -> None:
-    """The record_job activity with the record policy; a write that failed
-    for good is logged, not raised: the outcome is worth more than its row."""
+async def _recorded(outcome: JobOutcome, name: str) -> None:
+    """The record_job activity with the record policy, labeled with the job's
+    name in the UI; a write that failed for good is logged, not raised: the
+    outcome is worth more than its row."""
     cfg = settings.record_activity
     try:
         await workflow.execute_activity_method(
@@ -166,6 +176,7 @@ async def _recorded(outcome: JobOutcome) -> None:
             outcome,
             start_to_close_timeout=timedelta(seconds=cfg.timeout_sec),
             retry_policy=RetryPolicy(maximum_attempts=cfg.max_attempts),
+            summary=name,
         )
     except ActivityError:
         workflow.logger.warning("job %s ended but its row was not written", outcome.session_id)

@@ -84,7 +84,8 @@ async def _run(activities: list[Any]) -> Any:
             return await env.client.execute_workflow(
                 JobWithStructuredOutputWorkflow.run,
                 StructuredOutputJob(
-                    job=Job(prompt="fetch", workdir=".", model="m"), output_schema=SCHEMA
+                    job=Job(name="urls", prompt="fetch", workdir=".", model="m"),
+                    output_schema=SCHEMA,
                 ),
                 id=f"j-{uuid.uuid4()}",
                 task_queue=queue,
@@ -106,7 +107,7 @@ async def test_a_job_that_failed_for_good_fails_the_workflow() -> None:
     with pytest.raises(WorkflowFailureError) as err:
         await _run([failing_job, fake_extract])
     assert isinstance(err.value.cause, ApplicationError) and err.value.cause.type == "JobFailed"
-    assert "Stalled" in err.value.cause.message
+    assert err.value.cause.message.startswith("urls: Stalled")
 
 
 async def test_structured_output_not_stated_fails_the_workflow() -> None:

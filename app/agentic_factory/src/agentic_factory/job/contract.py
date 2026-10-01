@@ -14,6 +14,11 @@ class Job(BaseModel):
         description="Which harness runs it: claude | opencode.",
     )
     model: str = Field(default="", description="Empty = the harness's default model.")
+    name: str = Field(
+        default="",
+        description="What the job is for, in a word or two (`wiki/3`, `digest`): the label of "
+        "its activities in the UI and of its failure. Empty = unnamed.",
+    )
     prompt: str
     workdir: str
     tools: list[str] = Field(
