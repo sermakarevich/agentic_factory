@@ -1,3 +1,5 @@
+import re
+
 import pytest
 import typer
 from typer.testing import CliRunner
@@ -9,12 +11,13 @@ from temporal_agentic_factory.cli.errors import (
     run_coro,
 )
 from temporal_agentic_factory.cli.ids import new_id
+from temporal_agentic_factory.settings.load import settings
 
 
 def test_cli_lists_commands() -> None:
     result = CliRunner().invoke(app, ["--help"])
     assert result.exit_code == 0
-    assert "runner" in result.output
+    assert "runner" in result.output and "coders" in result.output
 
 
 def test_cli_offers_distill() -> None:
@@ -35,7 +38,7 @@ def test_cli_run_offers_detach_and_workflow_id() -> None:
     assert result.exit_code == 0
     assert "--detach" in result.output
     assert "--workflow-id" in result.output
-    assert "--force" in result.output
+    assert "--force" not in result.output
 
 
 def test_cli_distill_offers_detach_and_workflow_id() -> None:
@@ -67,12 +70,29 @@ def test_cli_beads_group() -> None:
 
 
 def test_new_id_uses_given_id() -> None:
-    assert new_id("job", "job-fixed") == "job-fixed"
+    assert new_id("job", "fix login", "job-fixed") == "job-fixed"
 
 
-def test_new_id_generates_prefixed_id() -> None:
-    generated = new_id("job")
-    assert generated.startswith("job-") and len(generated) > len("job-")
+def test_new_id_is_read_from_the_name() -> None:
+    assert re.fullmatch(r"job-fix-the-login-page-[0-9a-f]{4}", new_id("job", "Fix the login page!"))
+    assert re.fullmatch(r"research-agents-t1-[0-9a-f]{4}", new_id("research", "agents/t1"))
+
+
+def test_new_id_without_a_name_is_two_hex_groups() -> None:
+    assert re.fullmatch(r"job-[0-9a-f]{4}-[0-9a-f]{4}", new_id("job", ""))
+
+
+def test_new_id_cuts_a_long_name_to_the_slug_length() -> None:
+    generated = new_id("job", "word " * 40)
+    slug = generated.removeprefix("job-").rsplit("-", 1)[0]
+    assert len(slug) <= settings.cli.slug_chars and not slug.endswith("-")
+
+
+def test_run_refuses_a_provider_with_no_settings_table() -> None:
+    result = CliRunner().invoke(app, ["run", "hi", "--provider", "codex", "--detach"])
+    assert result.exit_code == 1
+    assert "provider 'codex' has no [providers.codex] table" in result.output
+    assert "configured: claude, opencode" in result.output
 
 
 def test_normalize_status_is_case_insensitive() -> None:

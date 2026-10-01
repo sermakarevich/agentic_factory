@@ -7,6 +7,7 @@ import typer
 from agentic_factory.logging_setup import configure_logging
 from temporal_agentic_factory.cli import workflows
 from temporal_agentic_factory.cli.beads import beads_app
+from temporal_agentic_factory.cli.coders import coders
 from temporal_agentic_factory.cli.distill import distill
 from temporal_agentic_factory.cli.errors import run_coro
 from temporal_agentic_factory.cli.job import run
@@ -22,7 +23,8 @@ app = typer.Typer(no_args_is_help=True, help="af: agentic_factory on Temporal.")
 
 @app.command()
 def runner(debug: bool = False) -> None:
-    """Start the process that polls Temporal task queues."""
+    """Start a process that polls the main task queue: every workflow and the
+    quick activities. Coder jobs run in `af coders`."""
     configure_logging(logging.DEBUG if debug else logging.INFO)
     identity = runner_identity()
     typer.echo(f"runner {identity}", err=True)
@@ -31,13 +33,13 @@ def runner(debug: bool = False) -> None:
 
 @app.command(name="worker")
 def worker(debug: bool = False) -> None:
-    """Alias of `runner`: start the process that polls Temporal task queues."""
+    """Alias of `runner`: start a process that polls the main task queue."""
     runner(debug=debug)
 
 
 @app.command()
 def attributes() -> None:
-    """Register the job's search attributes on the server, once per server.
+    """Register the search attributes (Name, Provider, ...) on the server, once per server.
     The UI then offers them as columns and filters."""
     added = run_coro(_registered_attributes())
     typer.echo(f"added {', '.join(added)}" if added else "all attributes were registered already")
@@ -47,6 +49,7 @@ async def _registered_attributes() -> list[str]:
     return await search_attributes.register(await connect(), settings.temporal.namespace)
 
 
+app.command()(coders)
 app.command()(run)
 app.command()(distill)
 app.command()(research)

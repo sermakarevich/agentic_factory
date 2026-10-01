@@ -411,7 +411,7 @@ queues.
   writing jobs (topic digests, aggregates, lenses, index) ride the
   subscription coder the distill jobs use.
 - **The global job cap counts coder workflows only and is a soft gate**
-  (Oct 1). `[limits] max_concurrent_jobs` bounds the running `job` and
+  (Oct 1; superseded the same day by per-provider coder queues, below). `[limits] max_concurrent_jobs` bounds the running `job` and
   `job_with_structured_output` workflows on the queue, the types that run
   a coder themselves; the names come from the classes' `@workflow.defn`.
   The first cut also counted `distill` and `research`, but they only
@@ -424,6 +424,31 @@ queues.
   visibility counts lag by a second or so and two submits at once can
   both pass. The hard per-machine limit stays `[runner]
   max_concurrent_activities`.
+- **Jobs are child workflows** (Oct 1). `run_job_with_report`,
+  `run_job_or_fail` and `run_job_with_structured_output` start the job
+  workflow as a child with id `<parent id>/<job name>`, the name as summary,
+  its search attributes at start and REQUEST_CANCEL, instead of running the
+  job's activities inline. Inline, a job had no row of its own in the UI and
+  its `after_job` upserts overwrote the parent's attributes job after job.
+  A `ChildWorkflowError` is mapped as the inline failure was: `JobFailed`
+  on the fatal path, a failed `JobOutcome` on the soft one. The workflows'
+  bodies stay usable inline (`run_job_here`) for the child itself.
+- **Workflow ids come from names, plus a `Name` search attribute** (Oct 1).
+  `job-<slug>-<4 hex>`, `distill-<url tail>-<4 hex>`,
+  `research-<topic>-<target>-<4 hex>` from one function in `cli/ids.py`,
+  so a list of runs reads without opening them; `Name` is set at start on
+  every workflow, children included, and `af list` shows it.
+- **Coder limits are per-provider queues served by one coders process**
+  (Oct 1). `execute_job` goes to `<task_queue>-coder-<provider>`; `af coders`
+  runs one worker per `[providers.<name>]` table with
+  `max_concurrent_activities = max_concurrent` (claude 1, opencode 5), and
+  refuses to start twice. This replaces the soft global cap
+  (`capacity.py`, `cli/admission.py`, `--force`, `[limits]`, the beads
+  free-slot check): a Temporal limit holds per worker, so one process per
+  machine makes the limits exact, where visibility counts lagged and let
+  two submits through. Workflows start freely and wait in the queue; the
+  execute activity has no schedule-to-start timeout. `af runner` keeps the
+  workflows and the quick activities.
 
 ## 4. Cross-cutting
 
@@ -558,8 +583,8 @@ harness is its job.
   Shared code goes to the nearest common ancestor: `failure` to
   `workflows/` (only activities use it), `heartbeat` to `workflows/job/`
   (only the job activity), `options` to `cli/`; `capacity`, used by the
-  cli and the beads watcher, stays at the root with `runner`, `client`
-  and `identity`. Imports point from cli to watchers to workflows, never
+  cli and the beads watcher, stayed at the root with `runner`, `client`
+  and `identity` (removed later that day with the global cap). Imports point from cli to watchers to workflows, never
   back. A pure move: every workflow, activity and search attribute name,
   the settings tables and the beads schedule id are unchanged, so running
   workflows and the schedule survive a runner restart.

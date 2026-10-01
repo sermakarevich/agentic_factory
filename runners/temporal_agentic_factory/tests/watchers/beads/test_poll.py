@@ -53,21 +53,16 @@ class FakeBeads(BeadsClient):
 
 
 class FakeFlows:
-    """Scripted workflows: statuses, running count, spawned ledger."""
+    """Scripted workflows: statuses, spawned ledger."""
 
     def __init__(
         self,
         statuses: dict[str, str] | None = None,
-        running: int = 0,
         known: set[str] | None = None,
     ) -> None:
         self.statuses = statuses or {}
-        self.running = running
         self.known = set(known or [])
         self.spawned: list[str] = []
-
-    async def free_slots(self, cap: int) -> int | None:
-        return None if cap == 0 else max(cap - self.running, 0)
 
     async def spawn(self, bead_id: str, job: Job) -> str:
         if bead_id in self.known:
@@ -97,40 +92,23 @@ def _bead(bead_id: str, coder: str = "opencode") -> Bead:
 async def test_spawn_claims_starts_and_marks() -> None:
     beads = FakeBeads(ready=[_bead("bd-1")])
     flows = FakeFlows()
-    summary = await poll_once(beads, flows, 10, 4, 600, NOW)
+    summary = await poll_once(beads, flows, 10, 600, NOW)
     assert summary.spawned == ["bd-1"]
     assert "bd-1" in beads.taken
     assert ("bd-1", marker("bead-bd-1")) in beads.comments_made
 
 
-async def test_cap_stops_spawns() -> None:
-    beads = FakeBeads(ready=[_bead("bd-1")])
-    flows = FakeFlows(running=4)
-    summary = await poll_once(beads, flows, 10, 4, 600, NOW)
-    assert summary.spawned == []
-    assert beads.taken == set()
-
-
-async def test_spawns_stop_at_the_free_slots() -> None:
+async def test_spawns_stop_at_the_batch_limit() -> None:
     beads = FakeBeads(ready=[_bead(f"bd-{n}") for n in range(10)])
-    flows = FakeFlows(running=1)
-    summary = await poll_once(beads, flows, 10, 4, 600, NOW)
-    assert summary.spawned == ["bd-0", "bd-1", "bd-2"]
-    assert flows.spawned == ["bd-0", "bd-1", "bd-2"]
-    assert beads.taken == {"bd-0", "bd-1", "bd-2"}
-
-
-async def test_no_cap_spawns_the_whole_batch() -> None:
-    beads = FakeBeads(ready=[_bead(f"bd-{n}") for n in range(10)])
-    flows = FakeFlows(running=50)
-    summary = await poll_once(beads, flows, 6, 0, 600, NOW)
-    assert len(summary.spawned) == 6
+    flows = FakeFlows()
+    summary = await poll_once(beads, flows, 6, 600, NOW)
+    assert summary.spawned == [f"bd-{n}" for n in range(6)]
 
 
 async def test_unmapped_coder_never_claimed() -> None:
     beads = FakeBeads(ready=[_bead("bd-1", coder="codex")])
     flows = FakeFlows()
-    summary = await poll_once(beads, flows, 10, 4, 600, NOW)
+    summary = await poll_once(beads, flows, 10, 600, NOW)
     assert summary.spawned == []
     assert beads.taken == set()
     assert "codex" in summary.skipped["bd-1"]
@@ -139,7 +117,7 @@ async def test_unmapped_coder_never_claimed() -> None:
 async def test_lost_claim_race_is_skipped() -> None:
     beads = FakeBeads(ready=[_bead("bd-1")], claimed={"bd-1"})
     flows = FakeFlows()
-    summary = await poll_once(beads, flows, 10, 4, 600, NOW)
+    summary = await poll_once(beads, flows, 10, 600, NOW)
     assert summary.spawned == []
     assert flows.spawned == []
 
@@ -147,7 +125,7 @@ async def test_lost_claim_race_is_skipped() -> None:
 async def test_completed_bead_commented_and_closed() -> None:
     beads = FakeBeads(states=[BeadState(id="bd-1", comments=["[af] workflow bead-bd-1"])])
     flows = FakeFlows(statuses={"bead-bd-1": "COMPLETED"})
-    summary = await poll_once(beads, flows, 10, 4, 600, NOW)
+    summary = await poll_once(beads, flows, 10, 600, NOW)
     assert summary.closed == ["bd-1"]
     assert beads.closed == ["bd-1"]
 
@@ -155,7 +133,7 @@ async def test_completed_bead_commented_and_closed() -> None:
 async def test_failed_bead_left_open_with_a_note() -> None:
     beads = FakeBeads(states=[BeadState(id="bd-1", comments=["[af] workflow bead-bd-1"])])
     flows = FakeFlows(statuses={"bead-bd-1": "FAILED"})
-    summary = await poll_once(beads, flows, 10, 4, 600, NOW)
+    summary = await poll_once(beads, flows, 10, 600, NOW)
     assert summary.closed == []
     assert beads.closed == []
     assert "FAILED" in summary.skipped["bd-1"]
@@ -166,7 +144,7 @@ async def test_old_markerless_bead_reopened() -> None:
         states=[BeadState(id="bd-1", updated_at="2026-10-01T10:00:00+00:00", comments=[])]
     )
     flows = FakeFlows()
-    summary = await poll_once(beads, flows, 10, 4, 600, NOW)
+    summary = await poll_once(beads, flows, 10, 600, NOW)
     assert summary.reopened == ["bd-1"]
     assert beads.reopened == ["bd-1"]
 
@@ -176,13 +154,13 @@ async def test_young_markerless_bead_untouched() -> None:
         states=[BeadState(id="bd-1", updated_at="2026-10-02T11:59:00+00:00", comments=[])]
     )
     flows = FakeFlows()
-    summary = await poll_once(beads, flows, 10, 4, 600, NOW)
+    summary = await poll_once(beads, flows, 10, 600, NOW)
     assert summary.reopened == []
 
 
 async def test_marker_without_workflow_is_skipped() -> None:
     beads = FakeBeads(states=[BeadState(id="bd-1", comments=["[af] workflow bead-gone"])])
     flows = FakeFlows()
-    summary = await poll_once(beads, flows, 10, 4, 600, NOW)
+    summary = await poll_once(beads, flows, 10, 600, NOW)
     assert summary.closed == []
     assert "no such workflow" in summary.skipped["bd-1"]

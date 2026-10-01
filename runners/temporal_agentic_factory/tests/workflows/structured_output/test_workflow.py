@@ -2,12 +2,11 @@ import uuid
 from typing import Any
 
 import pytest
-from temporalio import activity
+from temporalio import activity, workflow
 from temporalio.client import WorkflowFailureError
 from temporalio.contrib.pydantic import pydantic_data_converter
 from temporalio.exceptions import ApplicationError
 from temporalio.testing import WorkflowEnvironment
-from temporalio.worker import Worker
 
 from agentic_factory.job.contract import Job, JobResult
 from agentic_factory.job.outcome import JobOutcome
@@ -16,11 +15,16 @@ from agentic_factory.job.structured_output.prompt import INSTRUCTION
 from temporal_agentic_factory.workflows.job import search_attributes
 from temporal_agentic_factory.workflows.job.execute import TryResult
 from temporal_agentic_factory.workflows.job.report import ReportRequest
+from temporal_agentic_factory.workflows.job.workflow import JobWorkflow
+from temporal_agentic_factory.workflows.structured_output.child import (
+    run_job_with_structured_output,
+)
 from temporal_agentic_factory.workflows.structured_output.extract import StructuredOutputRequest
 from temporal_agentic_factory.workflows.structured_output.workflow import (
     JobWithStructuredOutputWorkflow,
     StructuredOutputJob,
 )
+from tests.workers import running
 
 SCHEMA = {"type": "object", "properties": {"urls": {"type": "array", "items": {"type": "string"}}}}
 prompts: list[str] = []
@@ -72,14 +76,15 @@ async def _environment() -> WorkflowEnvironment:
     return env
 
 
-async def _run(activities: list[Any]) -> Any:
+async def _run(execute: Any, extract: Any) -> Any:
     async with await _environment() as env:
         queue = f"test-{uuid.uuid4()}"
-        async with Worker(
+        async with running(
             env.client,
-            task_queue=queue,
-            workflows=[JobWithStructuredOutputWorkflow],
-            activities=[fake_session, fake_report, fake_record, *activities],
+            queue,
+            [JobWithStructuredOutputWorkflow],
+            [fake_session, fake_report, fake_record, extract],
+            execute,
         ):
             return await env.client.execute_workflow(
                 JobWithStructuredOutputWorkflow.run,
@@ -95,7 +100,7 @@ async def _run(activities: list[Any]) -> Any:
 async def test_the_job_is_asked_for_the_structured_output_and_the_result_carries_it() -> None:
     prompts.clear()
     extractions.clear()
-    result = await _run([fake_job, fake_extract])
+    result = await _run(fake_job, fake_extract)
     assert result.structured_output == {"urls": ["u"]}
     assert result.outcome.session_id == "s1" and result.outcome.report is not None
     (prompt,) = prompts
@@ -105,16 +110,68 @@ async def test_the_job_is_asked_for_the_structured_output_and_the_result_carries
 
 async def test_a_job_that_failed_for_good_fails_the_workflow() -> None:
     with pytest.raises(WorkflowFailureError) as err:
-        await _run([failing_job, fake_extract])
+        await _run(failing_job, fake_extract)
     assert isinstance(err.value.cause, ApplicationError) and err.value.cause.type == "JobFailed"
     assert err.value.cause.message.startswith("urls: Stalled")
 
 
 async def test_structured_output_not_stated_fails_the_workflow() -> None:
     with pytest.raises(WorkflowFailureError) as err:
-        await _run([fake_job, nothing_stated])
+        await _run(fake_job, nothing_stated)
     step_failure = err.value.cause.cause if err.value.cause else None
     assert (
         isinstance(step_failure, ApplicationError)
         and step_failure.type == "StructuredOutputNotStated"
     )
+
+
+@workflow.defn(name="parent", sandboxed=False)
+class ParentWorkflow:
+    """Needs one job's structured output, the way distill and research do."""
+
+    @workflow.run
+    async def run(self, job: Job) -> dict[str, Any]:
+        return (await run_job_with_structured_output(job, SCHEMA)).structured_output
+
+
+async def _parent_run(execute: Any, extract: Any) -> Any:
+    async with await _environment() as env:
+        queue = f"test-{uuid.uuid4()}"
+        async with running(
+            env.client,
+            queue,
+            [ParentWorkflow, JobWithStructuredOutputWorkflow, JobWorkflow],
+            [fake_session, fake_report, fake_record, extract],
+            execute,
+        ):
+            parent_id = f"p-{uuid.uuid4()}"
+            stated = await env.client.execute_workflow(
+                ParentWorkflow.run,
+                Job(name="urls", prompt="fetch", workdir=".", model="m"),
+                id=parent_id,
+                task_queue=queue,
+            )
+            child = await env.client.get_workflow_handle(f"{parent_id}/urls").describe()
+            return stated, child
+
+
+async def test_a_child_states_the_output_for_its_parent() -> None:
+    stated, child = await _parent_run(fake_job, fake_extract)
+    assert stated == {"urls": ["u"]}
+    assert child.workflow_type == "job_with_structured_output"
+    assert child.typed_search_attributes.get(search_attributes.NAME) == "urls"
+
+
+@pytest.mark.parametrize(
+    ("execute", "extract", "error_type"),
+    [
+        (failing_job, fake_extract, "JobFailed"),
+        (fake_job, nothing_stated, "StructuredOutputNotStated"),
+    ],
+)
+async def test_a_failed_child_raises_its_own_error_type_in_the_parent(
+    execute: Any, extract: Any, error_type: str
+) -> None:
+    with pytest.raises(WorkflowFailureError) as err:
+        await _parent_run(execute, extract)
+    assert isinstance(err.value.cause, ApplicationError) and err.value.cause.type == error_type

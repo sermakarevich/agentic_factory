@@ -41,6 +41,16 @@ runners N="2":
 runners-stop:
     for pid in $(pgrep -f "[f]actory runner"); do kill "$pid" && echo "runner $pid stopped"; done
 
+# start the one coders process in the background (one Temporal worker per provider, its
+# [providers.<name>] max_concurrent coder runs at once), with its own log file
+coders:
+    mkdir -p "{{runner_logs}}"
+    nohup uv run factory coders > "{{runner_logs}}/coders-$(date +%Y%m%d-%H%M%S).log" 2>&1 & echo "coders $! started"
+
+# stop the coders process by its exact pid; it lets running coder jobs finish for up to [coders] graceful_shutdown_sec
+coders-stop:
+    for pid in $(pgrep -f '^(\S*python\S* |uv run )?(\S*/)?(factory|af) coders( |$)'); do kill "$pid" && echo "coders $pid stopped"; done
+
 # start one job on Temporal and wait for it: just run "prompt" [--provider claude] [--model ...]
 run *ARGS:
     uv run factory run "$@"
@@ -76,7 +86,7 @@ temporal ui_ip=temporal_ip:
 temporal-tailscale:
     just temporal 0.0.0.0
 
-# register the job's search attributes (Provider, Model, Workdir, Runner, Outcome, Verdict) on the server: once per server
+# register the job's search attributes (Name, Provider, Model, Workdir, Runner, Outcome, Verdict) on the server: once per server
 temporal-attributes:
     uv run factory attributes
 

@@ -11,6 +11,7 @@ from typing import Any
 from pydantic import BaseModel
 from temporalio import workflow
 from temporalio.common import RetryPolicy
+from temporalio.workflow import ParentClosePolicy
 
 with workflow.unsafe.imports_passed_through():
     from factory_settings.vault import workdir
@@ -29,21 +30,23 @@ with workflow.unsafe.imports_passed_through():
     from research.rank import judge_questions, ranked, scored
     from research.run import Research
     from research.settings.load import settings as research_settings
-    from temporalio.exceptions import ApplicationError, ChildWorkflowError
+    from temporalio.exceptions import ApplicationError, ChildWorkflowError, is_cancelled_exception
 
     from agentic_factory.job.contract import Job
     from agentic_factory.step.judge.answer import Answer, CheckAnswer, ChoiceAnswer
     from agentic_factory.step.judge.contract import Judgment
     from distill.contract import DistillRequest
     from temporal_agentic_factory.settings.load import settings
-    from temporal_agentic_factory.workflows.distill.workflow import DistillWorkflow
-    from temporal_agentic_factory.workflows.job.workflow import run_job_or_fail
+    from temporal_agentic_factory.workflows.distill.name import source_name
+    from temporal_agentic_factory.workflows.distill.workflow import DistillWorkflow, distill_job
+    from temporal_agentic_factory.workflows.job import search_attributes
+    from temporal_agentic_factory.workflows.job.child import child_id, run_job_or_fail
     from temporal_agentic_factory.workflows.judge.workflow import run_judgment
     from temporal_agentic_factory.workflows.research.activities import (
         locate_target,
         read_candidates,
     )
-    from temporal_agentic_factory.workflows.structured_output.workflow import (
+    from temporal_agentic_factory.workflows.structured_output.child import (
         run_job_with_structured_output,
     )
 
@@ -178,8 +181,9 @@ async def distilled(research: Research) -> Research:
 
 
 async def distill_one(research: Research, source: PlannedSource) -> SourceOutcome:
-    """One child distill run. A run that failed is a skipped ledger row with
-    its reason, never a failed workflow."""
+    """One child distill run, named by its url tail in the UI. A run that
+    failed is a skipped ledger row with its reason, never a failed workflow;
+    a cancelled one is raised."""
     status(f"distilling {source.key}: {source.title}")
     row = {"key": source.key, "url": source.url, "title": source.title}
     try:
@@ -188,10 +192,16 @@ async def distill_one(research: Research, source: PlannedSource) -> SourceOutcom
             DistillRequest(
                 url=source.url, topic=research.request.topic, research_target=research.target_dir
             ),
-            id=f"{workflow.info().workflow_id}/{source.key}",
+            id=child_id(source.key),
             static_summary=f"{source.key}: {source.title}",
+            search_attributes=search_attributes.at_start(
+                distill_job("", ""), source_name(source.url)
+            ),
+            parent_close_policy=ParentClosePolicy.REQUEST_CANCEL,
         )
     except ChildWorkflowError as error:
+        if is_cancelled_exception(error):
+            raise
         reason = error.cause.message if isinstance(error.cause, ApplicationError) else str(error)
         return SourceOutcome(**row, status=SourceStatus.skipped, reason=reason)
     return SourceOutcome(**row, status=SourceStatus.succeeded, path=filed.path)

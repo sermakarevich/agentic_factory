@@ -17,6 +17,7 @@ with workflow.unsafe.imports_passed_through():
     from agentic_factory.settings.load import settings as app_settings
     from temporal_agentic_factory.settings.load import settings
     from temporal_agentic_factory.workflows.job import search_attributes
+    from temporal_agentic_factory.workflows.job.coder_queue import coder_queue
     from temporal_agentic_factory.workflows.job.execute import JobActivity, TryResult
     from temporal_agentic_factory.workflows.job.record import RecordActivity
     from temporal_agentic_factory.workflows.job.report import ReportActivity, ReportRequest
@@ -30,7 +31,7 @@ class JobWorkflow:
 
     @workflow.run
     async def run(self, job: Job) -> JobOutcome:
-        return await run_job_with_report(job)
+        return await run_job_here(job)
 
 
 def _job_retry() -> RetryPolicy:
@@ -67,12 +68,15 @@ async def _created_session_id(job: Job) -> str:
 
 
 async def _execute_job_activity(job: Job) -> TryResult:
-    """One job run: the execute_job activity with a timeout past the job's own,
-    a heartbeat timeout past its stall limit, and the retries from settings."""
+    """One job run: the execute_job activity on its provider's coder queue,
+    with a timeout past the job's own, a heartbeat timeout past its stall
+    limit, and the retries from settings. No schedule-to-start timeout: a try
+    waits in the queue as long as the provider's slots are taken."""
     cfg = settings.job_activity
     return await workflow.execute_activity_method(
         JobActivity.execute_job,
         job,
+        task_queue=coder_queue(job.provider),
         start_to_close_timeout=timedelta(seconds=job.timeout_sec + cfg.close_margin_sec),
         heartbeat_timeout=timedelta(seconds=job.stall_sec + cfg.heartbeat_margin_sec),
         retry_policy=_job_retry(),
@@ -99,13 +103,13 @@ def _failure_text(error: ActivityError) -> str:
     return f"{type(cause).__name__}: {cause}" if cause else str(error)
 
 
-async def run_job_with_report(job: Job) -> JobOutcome:
-    """The job, then the report over everything it stored, then the job's row
-    in the store. A job without a session gets one first, so that every try
-    runs in it. A permanently failed job still gets its report, then the
-    outcome carries the failure instead of a result. A failed report step is
-    not fatal: the outcome has none. Neither is a failed record: the outcome
-    is still returned."""
+async def run_job_here(job: Job) -> JobOutcome:
+    """In this workflow's own history: the job, then the report over
+    everything it stored, then the job's row in the store. A job without a
+    session gets one first, so that every try runs in it. A permanently
+    failed job still gets its report, then the outcome carries the failure
+    instead of a result. A failed report step is not fatal: the outcome has
+    none. Neither is a failed record: the outcome is still returned."""
     job = await _with_session(job)
     request = await _job_as_report_request(job)
     report = await _report_or_none(request, job.name)
@@ -120,14 +124,23 @@ async def run_job_with_report(job: Job) -> JobOutcome:
     return outcome
 
 
-async def run_job_or_fail(job: Job) -> JobOutcome:
-    """`run_job_with_report` for a workflow whose next step needs what this
-    job made: a job that failed for good raises, so the workflow stops
-    there instead of building on nothing."""
-    outcome = await run_job_with_report(job)
+async def run_job_here_or_fail(job: Job) -> JobOutcome:
+    """`run_job_here` for a workflow whose next step needs what this job
+    made: a job that failed for good raises, so the workflow stops there
+    instead of building on nothing."""
+    return done_or_raised(job, await run_job_here(job))
+
+
+def done_or_raised(job: Job, outcome: JobOutcome) -> JobOutcome:
+    """The outcome when the job has a result; else the named JobFailed raised."""
     if outcome.result is None:
-        raise ApplicationError(_named(job, outcome.failure), type="JobFailed", non_retryable=True)
+        raise job_failed(job, outcome.failure)
     return outcome
+
+
+def job_failed(job: Job, failure: str) -> ApplicationError:
+    """The JobFailed error a workflow stops on, with the job's name in front."""
+    return ApplicationError(_named(job, failure), type="JobFailed", non_retryable=True)
 
 
 def _named(job: Job, failure: str) -> str:

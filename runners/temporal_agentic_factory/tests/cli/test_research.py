@@ -9,6 +9,7 @@ from typer.testing import CliRunner
 
 from temporal_agentic_factory.cli import research as cli
 from temporal_agentic_factory.cli.app import app
+from temporal_agentic_factory.workflows.job import search_attributes
 
 
 class FakeHandle:
@@ -66,8 +67,10 @@ def test_detach_prints_the_workflow_id(monkeypatch: Any) -> None:
     )
 
     assert result.exit_code == 0
-    assert client.kwargs["id"].startswith("research-")
+    assert client.kwargs["id"].startswith("research-agents-t1-")
     assert client.kwargs["id"] in result.output
+    shown = client.kwargs["search_attributes"]
+    assert shown.get(search_attributes.NAME) == "agents/t1"
 
 
 def test_the_request_splits_comma_lists_and_keeps_defaults(monkeypatch: Any) -> None:

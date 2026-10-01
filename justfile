@@ -53,7 +53,15 @@ runners N="2":
 runners-stop:
     just --justfile runners/temporal_agentic_factory/justfile --working-directory runners/temporal_agentic_factory runners-stop
 
-# Start one job on Temporal and wait for it (needs `just temporal` and `just runner`): just run "prompt" --model ...
+# start the one coders process in the background (per-provider coder limits), log under ~/.local/share/agentic_factory/runner-logs
+coders:
+    just --justfile runners/temporal_agentic_factory/justfile --working-directory runners/temporal_agentic_factory coders
+
+# stop the coders process by its exact pid, letting running coder jobs finish first
+coders-stop:
+    just --justfile runners/temporal_agentic_factory/justfile --working-directory runners/temporal_agentic_factory coders-stop
+
+# Start one job on Temporal and wait for it (needs `just temporal`, `just runner` and `just coders`): just run "prompt" --model ...
 run *ARGS:
     just --justfile runners/temporal_agentic_factory/justfile --working-directory runners/temporal_agentic_factory run "$@"
 

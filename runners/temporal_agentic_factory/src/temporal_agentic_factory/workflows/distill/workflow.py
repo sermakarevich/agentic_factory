@@ -19,8 +19,8 @@ with workflow.unsafe.imports_passed_through():
         fetch_source,
         verify_entry,
     )
-    from temporal_agentic_factory.workflows.job.workflow import run_job_or_fail
-    from temporal_agentic_factory.workflows.structured_output.workflow import (
+    from temporal_agentic_factory.workflows.job.child import run_job_or_fail
+    from temporal_agentic_factory.workflows.structured_output.child import (
         run_job_with_structured_output,
     )
 
@@ -62,7 +62,7 @@ class DistillWorkflow:
         return DistilledEntry(path=path, plan=plan, fetched=fetched)
 
 
-def _job(name: str, prompt: str) -> Job:
+def distill_job(name: str, prompt: str) -> Job:
     """Distill job with the workflow coder, model and limits, in the vault."""
     cfg = settings.distill_workflow
     return Job(
@@ -93,7 +93,7 @@ async def _planned(request: DistillRequest, fetched: FetchedSource, run_date: st
     """Plan job stating where the entry lives."""
     _status(f"planning the entry for *{fetched.title}* ({len(fetched.chunks)} chunks)")
     done = await run_job_with_structured_output(
-        _job("plan", plan_prompt(request, fetched, run_date)), EntryPlan.model_json_schema()
+        distill_job("plan", plan_prompt(request, fetched, run_date)), EntryPlan.model_json_schema()
     )
     return EntryPlan.model_validate(done.structured_output)
 
@@ -121,7 +121,7 @@ async def _filed_path(entry: Entry) -> str:
         return entry.plan.research_dir
     _status(f"filing the entry under {entry.request.topic}")
     done = await run_job_with_structured_output(
-        _job("file", page_prompt("file", entry)), FiledEntry.model_json_schema()
+        distill_job("file", page_prompt("file", entry)), FiledEntry.model_json_schema()
     )
     return FiledEntry.model_validate(done.structured_output).path
 
@@ -142,7 +142,7 @@ async def _written_and_counted(
     stage: str, name: str, prompt: str, written: list[str], pages: dict[str, str]
 ) -> None:
     """One job of a stage, then the status line with it counted in."""
-    await run_job_or_fail(_job(name, prompt))
+    await run_job_or_fail(distill_job(name, prompt))
     written.append(name)
     _status(_progress(stage, written, pages))
 

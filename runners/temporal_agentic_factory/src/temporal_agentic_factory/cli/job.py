@@ -9,10 +9,10 @@ from agentic_factory.job.contract import Job
 from agentic_factory.job.defaults import with_default_model
 from agentic_factory.job.outcome import JobOutcome
 from agentic_factory.job.structured_output.contract import Schema
-from temporal_agentic_factory.cli.admission import refuse_when_full
 from temporal_agentic_factory.cli.errors import run_coro
 from temporal_agentic_factory.cli.ids import new_id
 from temporal_agentic_factory.cli.options import absolute, given, schema, tool_list
+from temporal_agentic_factory.cli.providers import refuse_unconfigured
 from temporal_agentic_factory.client import awaited, connect
 from temporal_agentic_factory.settings.load import settings
 from temporal_agentic_factory.workflows.job import search_attributes
@@ -47,18 +47,12 @@ def run(
             help="workflow id to start with; reusing one is idempotent. Empty = generated"
         ),
     ] = None,
-    force: Annotated[
-        bool,
-        typer.Option("--force", help="start even past [limits] max_concurrent_jobs"),
-    ] = False,
 ) -> None:
     """Submit one job to Temporal. Waits and prints the result as JSON,
     or with --detach prints the workflow id and returns.
     Options left out keep the settings defaults. With --structured-output the
-    job must state it and the result carries it. Refused at the global
-    concurrency cap unless --force."""
-    if not force:
-        refuse_when_full()
+    job must state it and the result carries it. Refused for a provider with
+    no `[providers.<name>]` table."""
     options = {
         "provider": provider,
         "model": model,
@@ -68,9 +62,10 @@ def run(
         "tools": tool_list(tools),
     }
     job = Job(name=name, prompt=prompt, workdir=absolute(workdir), **given(options))
+    refuse_unconfigured(job.provider)
     job = with_default_model(job, harness_for(job.provider))  # so the UI shows the model
     output_schema = schema(structured_output) if structured_output is not None else None
-    wid = new_id("job", workflow_id)
+    wid = new_id("job", job.name, workflow_id)
     if detach:
         typer.echo(run_coro(_submitted_id(job, output_schema, wid)))
     elif output_schema is None:
@@ -95,7 +90,7 @@ async def _submitted_job_id(job: Job, wid: str) -> str:
         job,
         id=wid,
         task_queue=settings.temporal.task_queue,
-        search_attributes=search_attributes.at_start(job),
+        search_attributes=search_attributes.at_start(job, job.name),
         static_summary=job.name,
     )
     typer.echo(f"started {handle.id}", err=True)
@@ -109,7 +104,7 @@ async def _submitted_structured_id(job: Job, output_schema: Schema, wid: str) ->
         StructuredOutputJob(job=job, output_schema=output_schema),
         id=wid,
         task_queue=settings.temporal.task_queue,
-        search_attributes=search_attributes.at_start(job),
+        search_attributes=search_attributes.at_start(job, job.name),
         static_summary=job.name,
     )
     typer.echo(f"started {handle.id}", err=True)
@@ -124,7 +119,7 @@ async def _job_outcome(job: Job, wid: str) -> JobOutcome:
         job,
         id=wid,
         task_queue=settings.temporal.task_queue,
-        search_attributes=search_attributes.at_start(job),
+        search_attributes=search_attributes.at_start(job, job.name),
         static_summary=job.name,
     )
     return await awaited(handle)
@@ -140,7 +135,7 @@ async def _job_with_structured_output(
         StructuredOutputJob(job=job, output_schema=output_schema),
         id=wid,
         task_queue=settings.temporal.task_queue,
-        search_attributes=search_attributes.at_start(job),
+        search_attributes=search_attributes.at_start(job, job.name),
         static_summary=job.name,
     )
     return await awaited(handle)

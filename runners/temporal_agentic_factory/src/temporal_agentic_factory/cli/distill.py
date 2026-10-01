@@ -4,16 +4,17 @@ import typer
 from temporalio.client import WorkflowHandle
 
 from distill.contract import DistillRequest
-from temporal_agentic_factory.cli.admission import refuse_when_full
 from temporal_agentic_factory.cli.errors import run_coro
 from temporal_agentic_factory.cli.ids import new_id
 from temporal_agentic_factory.cli.options import absolute, given, source_url
+from temporal_agentic_factory.cli.providers import refuse_unconfigured
 from temporal_agentic_factory.client import awaited, connect
 from temporal_agentic_factory.settings.load import settings
+from temporal_agentic_factory.workflows.distill.name import source_name
 from temporal_agentic_factory.workflows.distill.workflow import (
     DistilledEntry,
     DistillWorkflow,
-    _job,
+    distill_job,
 )
 from temporal_agentic_factory.workflows.job import search_attributes
 
@@ -26,15 +27,10 @@ def distill(
     target_dir: Annotated[str, typer.Option(help="folder the entry is written into as is")] = "",
     detach: Annotated[bool, typer.Option("--detach", help="submit without waiting")] = False,
     workflow_id: Annotated[str | None, typer.Option(help="workflow id to start with")] = None,
-    force: Annotated[
-        bool,
-        typer.Option("--force", help="start even past [limits] max_concurrent_jobs"),
-    ] = False,
 ) -> None:
     """Submit one source; wait and print the entry folder, or just its id.
-    Refused at the global concurrency cap unless --force."""
-    if not force:
-        refuse_when_full()
+    Refused when `[distill_workflow] provider` has no `[providers.<name>]` table."""
+    refuse_unconfigured(settings.distill_workflow.provider)
     request = DistillRequest(
         url=source_url(url),
         topic=topic,
@@ -42,7 +38,7 @@ def distill(
         target_dir=absolute(target_dir) if target_dir else "",
         **given({"chunk_chars": chunk_chars}),
     )
-    wid = new_id("distill", workflow_id)
+    wid = new_id("distill", source_name(request.url), workflow_id)
     if detach:
         typer.echo(run_coro(_submitted_id(request, wid)))
     else:
@@ -68,6 +64,6 @@ async def _started(request: DistillRequest, wid: str) -> WorkflowHandle[Any, Dis
         request,
         id=wid,
         task_queue=settings.temporal.task_queue,
-        search_attributes=search_attributes.at_start(_job("", "")),
+        search_attributes=search_attributes.at_start(distill_job("", ""), source_name(request.url)),
         static_summary=request.url,
     )

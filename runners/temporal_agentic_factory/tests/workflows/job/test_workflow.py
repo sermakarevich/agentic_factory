@@ -1,6 +1,8 @@
 import uuid
 
-from temporalio import activity
+import pytest
+from temporalio import activity, workflow
+from temporalio.client import WorkflowFailureError
 from temporalio.contrib.pydantic import pydantic_data_converter
 from temporalio.exceptions import (
     ActivityError,
@@ -10,17 +12,20 @@ from temporalio.exceptions import (
     TimeoutType,
 )
 from temporalio.testing import WorkflowEnvironment
-from temporalio.worker import Worker
 
 from agentic_factory.job.contract import Job, JobResult
 from agentic_factory.job.outcome import JobOutcome
 from agentic_factory.job.report.contract import JobReport, Verdict
 from temporal_agentic_factory.workflows.job import search_attributes
+from temporal_agentic_factory.workflows.job.child import run_job_or_fail, run_job_with_report
+from temporal_agentic_factory.workflows.job.coder_queue import coder_queue
 from temporal_agentic_factory.workflows.job.execute import TryResult
 from temporal_agentic_factory.workflows.job.report import ReportRequest
 from temporal_agentic_factory.workflows.job.workflow import JobWorkflow, _failure_text
+from tests.workers import running
 
 tries: list[int] = []
+queues: list[str] = []
 sessions: list[str] = []
 report_requests: list[ReportRequest] = []
 recorded: list[JobOutcome] = []
@@ -35,6 +40,7 @@ async def fake_session(job: Job) -> str:
 async def fake_job(job: Job) -> TryResult:
     """Fails once, then answers. Stands in for the real activity."""
     tries.append(activity.info().attempt)
+    queues.append(activity.info().task_queue)
     sessions.append(job.session_id)
     if activity.info().attempt == 1:
         raise ApplicationError("no output", type="Stalled")
@@ -67,11 +73,8 @@ async def test_job_workflow_retries_the_activity_and_returns_its_result() -> Non
     recorded.clear()
     async with await _environment() as env:
         queue = f"test-{uuid.uuid4()}"
-        async with Worker(
-            env.client,
-            task_queue=queue,
-            workflows=[JobWorkflow],
-            activities=[fake_session, fake_job, fake_report, fake_record],
+        async with running(
+            env.client, queue, [JobWorkflow], [fake_session, fake_report, fake_record], fake_job
         ):
             handle = await env.client.start_workflow(
                 JobWorkflow.run,
@@ -125,11 +128,8 @@ async def test_a_permanently_failed_job_still_gets_a_report() -> None:
     report_requests.clear()
     async with await _environment() as env:
         queue = f"test-{uuid.uuid4()}"
-        async with Worker(
-            env.client,
-            task_queue=queue,
-            workflows=[JobWorkflow],
-            activities=[fake_session, always_fails, fake_report, fake_record],
+        async with running(
+            env.client, queue, [JobWorkflow], [fake_session, fake_report, fake_record], always_fails
         ):
             result = await env.client.execute_workflow(
                 JobWorkflow.run,
@@ -152,11 +152,8 @@ async def test_a_failed_report_is_not_fatal() -> None:
     sessions.clear()
     async with await _environment() as env:
         queue = f"test-{uuid.uuid4()}"
-        async with Worker(
-            env.client,
-            task_queue=queue,
-            workflows=[JobWorkflow],
-            activities=[fake_session, fake_job, broken_report, fake_record],
+        async with running(
+            env.client, queue, [JobWorkflow], [fake_session, broken_report, fake_record], fake_job
         ):
             result = await env.client.execute_workflow(
                 JobWorkflow.run,
@@ -177,11 +174,8 @@ async def test_a_failed_record_is_not_fatal() -> None:
     sessions.clear()
     async with await _environment() as env:
         queue = f"test-{uuid.uuid4()}"
-        async with Worker(
-            env.client,
-            task_queue=queue,
-            workflows=[JobWorkflow],
-            activities=[fake_session, fake_job, fake_report, broken_record],
+        async with running(
+            env.client, queue, [JobWorkflow], [fake_session, fake_report, broken_record], fake_job
         ):
             result = await env.client.execute_workflow(
                 JobWorkflow.run,
@@ -190,3 +184,94 @@ async def test_a_failed_record_is_not_fatal() -> None:
                 task_queue=queue,
             )
     assert result.result is not None and result.report is not None
+
+
+def test_the_coder_queue_is_the_main_queue_with_the_provider() -> None:
+    assert coder_queue("claude") == "agentic-factory-coder-claude"
+
+
+async def test_the_execute_step_waits_in_the_providers_coder_queue() -> None:
+    queues.clear()
+    async with await _environment() as env:
+        queue = f"test-{uuid.uuid4()}"
+        async with running(
+            env.client, queue, [JobWorkflow], [fake_session, fake_report, fake_record], fake_job
+        ):
+            await env.client.execute_workflow(
+                JobWorkflow.run,
+                Job(prompt="hi", workdir=".", provider="claude", model="m"),
+                id=f"j-{uuid.uuid4()}",
+                task_queue=queue,
+            )
+    assert queues and set(queues) == {coder_queue("claude")}
+
+
+@workflow.defn(name="parent", sandboxed=False)
+class ParentWorkflow:
+    """Runs one job as a child, the way distill and research do."""
+
+    @workflow.run
+    async def run(self, job: Job) -> JobOutcome:
+        return await run_job_or_fail(job)
+
+
+@workflow.defn(name="soft_parent", sandboxed=False)
+class SoftParentWorkflow:
+    """Runs one job as a child and keeps going whatever it ended with."""
+
+    @workflow.run
+    async def run(self, job: Job) -> JobOutcome:
+        return await run_job_with_report(job)
+
+
+async def test_a_job_runs_as_a_named_child_with_its_attributes() -> None:
+    async with await _environment() as env:
+        queue = f"test-{uuid.uuid4()}"
+        parent_id = f"p-{uuid.uuid4()}"
+        async with running(
+            env.client,
+            queue,
+            [ParentWorkflow, JobWorkflow],
+            [fake_session, fake_report, fake_record],
+            fake_job,
+        ):
+            outcome = await env.client.execute_workflow(
+                ParentWorkflow.run,
+                Job(name="wiki/3", prompt="hi", workdir=".", model="m"),
+                id=parent_id,
+                task_queue=queue,
+            )
+            child = await env.client.get_workflow_handle(f"{parent_id}/wiki/3").describe()
+    assert outcome.result is not None
+    assert child.parent_id == parent_id and child.workflow_type == "job"
+    shown = child.typed_search_attributes
+    assert shown.get(search_attributes.NAME) == "wiki/3"
+    assert shown.get(search_attributes.MODEL) == "m"
+    assert shown.get(search_attributes.OUTCOME) == "done"
+
+
+async def test_a_child_job_that_failed_for_good_raises_the_named_job_failed() -> None:
+    @activity.defn(name="execute_job")
+    async def always_fails(job: Job) -> TryResult:
+        raise ApplicationError("no output", type="Stalled", non_retryable=True)
+
+    async with await _environment() as env:
+        queue = f"test-{uuid.uuid4()}"
+        async with running(
+            env.client,
+            queue,
+            [ParentWorkflow, SoftParentWorkflow, JobWorkflow],
+            [fake_session, fake_report, fake_record],
+            always_fails,
+        ):
+            job = Job(name="wiki/3", prompt="hi", workdir=".", model="m")
+            soft = await env.client.execute_workflow(
+                SoftParentWorkflow.run, job, id=f"s-{uuid.uuid4()}", task_queue=queue
+            )
+            with pytest.raises(WorkflowFailureError) as err:
+                await env.client.execute_workflow(
+                    ParentWorkflow.run, job, id=f"p-{uuid.uuid4()}", task_queue=queue
+                )
+    assert soft.result is None and soft.failure.startswith("Stalled")
+    assert isinstance(err.value.cause, ApplicationError) and err.value.cause.type == "JobFailed"
+    assert err.value.cause.message.startswith("wiki/3: Stalled")

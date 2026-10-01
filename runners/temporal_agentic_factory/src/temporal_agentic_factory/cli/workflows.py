@@ -9,6 +9,9 @@ from datetime import datetime
 from typing import Annotated, Any
 
 import typer
+from temporalio.api.enums.v1 import TaskQueueType
+from temporalio.api.taskqueue.v1 import TaskQueue
+from temporalio.api.workflowservice.v1 import DescribeTaskQueueRequest
 from temporalio.client import Client, WorkflowExecution, WorkflowHandle
 
 from agentic_factory.job.outcome import JobOutcome
@@ -22,6 +25,8 @@ from temporal_agentic_factory.cli.errors import (
 from temporal_agentic_factory.client import connect
 from temporal_agentic_factory.settings.load import settings
 from temporal_agentic_factory.workflows.distill.workflow import DistilledEntry
+from temporal_agentic_factory.workflows.job.coder_queue import coder_queue
+from temporal_agentic_factory.workflows.job.search_attributes import NAME
 from temporal_agentic_factory.workflows.structured_output.workflow import JobWithStructuredOutput
 
 RESULT_TYPES: dict[str, Any] = {
@@ -186,6 +191,7 @@ def _execution_line(execution: WorkflowExecution, as_json: bool) -> str:
                 "workflow_id": execution.id,
                 "run_id": execution.run_id,
                 "workflow_type": execution.workflow_type,
+                "name": execution.typed_search_attributes.get(NAME),
                 "status": _status_name(execution.status),
                 "start_time": _iso(execution.start_time),
                 "execution_time": _iso(execution.execution_time),
@@ -197,7 +203,8 @@ def _execution_line(execution: WorkflowExecution, as_json: bool) -> str:
     status = _status_name(execution.status)
     started = _iso(execution.start_time)
     workflow_type = execution.workflow_type or "?"
-    return f"{execution.id} {workflow_type} {status} started={started}"
+    name = execution.typed_search_attributes.get(NAME) or "-"
+    return f"{execution.id} {workflow_type} {status} name={name} started={started}"
 
 
 def cancel(
@@ -235,7 +242,9 @@ async def _terminated(workflow_id: str, run_id: str | None, reason: str) -> None
 
 
 def health() -> None:
-    """Check the Temporal server answers: prints address, namespace and task queue."""
+    """Check the Temporal server answers: prints address, namespace, task
+    queue, and which processes poll each provider's coder queue (none: start
+    `af coders`)."""
     info = run_coro(_health_info())
     typer.echo(json.dumps(info, indent=2))
 
@@ -248,4 +257,20 @@ async def _health_info() -> dict[str, Any]:
         "namespace": settings.temporal.namespace,
         "task_queue": settings.temporal.task_queue,
         "workflows_on_task_queue": counted.count,
+        "coder_queue_pollers": {
+            coder_queue(name): await _pollers(client, coder_queue(name))
+            for name in settings.providers
+        },
     }
+
+
+async def _pollers(client: Client, task_queue: str) -> list[str]:
+    """The identities of the processes that polled `task_queue` for activities lately."""
+    described = await client.workflow_service.describe_task_queue(
+        DescribeTaskQueueRequest(
+            namespace=settings.temporal.namespace,
+            task_queue=TaskQueue(name=task_queue),
+            task_queue_type=TaskQueueType.TASK_QUEUE_TYPE_ACTIVITY,
+        )
+    )
+    return [poller.identity for poller in described.pollers]

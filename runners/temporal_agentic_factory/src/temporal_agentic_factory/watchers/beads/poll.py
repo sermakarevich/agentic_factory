@@ -20,10 +20,6 @@ TERMINAL = ("COMPLETED", "FAILED", "TIMED_OUT", "TERMINATED", "CANCELED")
 class Workflows(Protocol):
     """The Temporal side of a tick; the activity implements it for real."""
 
-    async def free_slots(self, cap: int) -> int | None:
-        """Coder jobs that may still start under the cap; None when cap is 0 (no cap)."""
-        ...
-
     async def spawn(self, bead_id: str, job: Job) -> str:
         """Start the bead's job workflow; its id. Raises AlreadySpawned on conflict."""
         ...
@@ -51,14 +47,13 @@ async def poll_once(
     beads: BeadsClient,
     flows: Workflows,
     batch_limit: int,
-    max_concurrent_jobs: int,
     orphan_timeout_sec: int,
     now: datetime,
 ) -> PollSummary:
     """Reconcile, then spawn: the summary of what this tick did."""
     summary = PollSummary()
     await _reconcile(beads, flows, summary, orphan_timeout_sec, now)
-    await _spawn(beads, flows, summary, batch_limit, max_concurrent_jobs)
+    await _spawn(beads, flows, summary, batch_limit)
     return summary
 
 
@@ -160,25 +155,15 @@ async def _spawn(
     flows: Workflows,
     summary: PollSummary,
     batch_limit: int,
-    max_concurrent_jobs: int,
 ) -> None:
-    """Ready beads claimed and spawned, up to the batch and the free slots of the global cap."""
-    try:
-        slots = await flows.free_slots(max_concurrent_jobs)
-    except Exception as error:
-        summary.errors.append(f"free slots failed: {error}")
-        return
-    if slots == 0:
-        summary.skipped["*"] = f"at cap ({max_concurrent_jobs} running)"
-        return
+    """Ready beads claimed and spawned, up to the batch; their coder runs wait
+    in their provider's queue for a free slot."""
     try:
         candidates = beads.ready()
     except BeadsError as error:
         summary.errors.append(f"ready list failed: {error}")
         return
     for bead in candidates[:batch_limit]:
-        if slots is not None and len(summary.spawned) >= slots:
-            return
         await _spawned_one(beads, flows, summary, bead)
 
 

@@ -1,11 +1,10 @@
-"""The Temporal side of a tick: counts, spawns, and status reads over real workflows."""
+"""The Temporal side of a tick: spawns and status reads over real workflows."""
 
 from temporalio.exceptions import WorkflowAlreadyStartedError
 from temporalio.service import RPCError
 
 from agentic_factory.job.contract import Job
 from agentic_factory.job.outcome import JobOutcome
-from temporal_agentic_factory.capacity import free_slots
 from temporal_agentic_factory.client import connect
 from temporal_agentic_factory.settings.load import settings
 from temporal_agentic_factory.watchers.beads.mapping import workflow_id
@@ -17,10 +16,6 @@ from temporal_agentic_factory.workflows.job.workflow import JobWorkflow
 class TemporalWorkflows:
     """`Workflows` over the configured server. One tick, one client."""
 
-    async def free_slots(self, cap: int) -> int | None:
-        """Coder jobs that may still start under the global cap; None = no cap."""
-        return await free_slots(await connect(), cap, settings.temporal.task_queue)
-
     async def spawn(self, bead_id: str, job: Job) -> str:
         """Start the bead's job workflow; its id. Raises AlreadySpawned on conflict."""
         client = await connect()
@@ -31,7 +26,7 @@ class TemporalWorkflows:
                 job,
                 id=wid,
                 task_queue=settings.temporal.task_queue,
-                search_attributes=search_attributes.at_start(job),
+                search_attributes=search_attributes.at_start(job, job.name),
                 static_summary=job.name,
             )
         except WorkflowAlreadyStartedError as error:

@@ -1,4 +1,4 @@
-"""The search attributes the job workflow carries: indexed by the server, so
+"""The search attributes every workflow carries: indexed by the server, so
 the UI shows them as columns and filters (`Provider = 'claude' AND Outcome =
 'failed'`). Registered once per server with `factory attributes`."""
 
@@ -18,19 +18,22 @@ from temporalio.common import (
 from agentic_factory.job.contract import Job
 from agentic_factory.job.outcome import JobOutcome
 
+NAME = SearchAttributeKey.for_keyword("Name")
 PROVIDER = SearchAttributeKey.for_keyword("Provider")
 MODEL = SearchAttributeKey.for_keyword("Model")
 WORKDIR = SearchAttributeKey.for_keyword("Workdir")
 RUNNER = SearchAttributeKey.for_keyword("Runner")
 OUTCOME = SearchAttributeKey.for_keyword("Outcome")
 VERDICT = SearchAttributeKey.for_keyword("Verdict")
-KEYS = [PROVIDER, MODEL, WORKDIR, RUNNER, OUTCOME, VERDICT]
+KEYS = [NAME, PROVIDER, MODEL, WORKDIR, RUNNER, OUTCOME, VERDICT]
 
 
-def at_start(job: Job) -> TypedSearchAttributes:
-    """What is known when the workflow starts: who runs the job and where."""
+def at_start(job: Job, name: str) -> TypedSearchAttributes:
+    """What is known when the workflow starts: its name (a job's name, a
+    distill's url tail, a research's `topic/target`), who runs the job and where."""
     return TypedSearchAttributes(
         [
+            SearchAttributePair(NAME, name),
             SearchAttributePair(PROVIDER, job.provider),
             SearchAttributePair(MODEL, job.model),
             SearchAttributePair(WORKDIR, job.workdir),

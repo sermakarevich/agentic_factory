@@ -4,10 +4,10 @@ from agentic_factory.job.report.contract import JobReport, Verdict
 from temporal_agentic_factory.workflows.job import search_attributes as sa
 
 
-def test_start_carries_who_runs_the_job_and_where() -> None:
+def test_start_carries_the_name_who_runs_the_job_and_where() -> None:
     job = Job(prompt="p", workdir="/w", provider="claude", model="m")
-    given = {pair.key.name: pair.value for pair in sa.at_start(job)}
-    assert given == {"Provider": "claude", "Model": "m", "Workdir": "/w"}
+    given = {pair.key.name: pair.value for pair in sa.at_start(job, "wiki/3")}
+    assert given == {"Name": "wiki/3", "Provider": "claude", "Model": "m", "Workdir": "/w"}
 
 
 def test_end_says_how_it_ended_and_what_the_report_judged() -> None:
@@ -21,4 +21,4 @@ def test_end_says_how_it_ended_and_what_the_report_judged() -> None:
 
 def test_every_key_is_a_keyword_the_register_step_knows() -> None:
     names = {key.name for key in sa.KEYS}
-    assert names == {"Provider", "Model", "Workdir", "Runner", "Outcome", "Verdict"}
+    assert names == {"Name", "Provider", "Model", "Workdir", "Runner", "Outcome", "Verdict"}

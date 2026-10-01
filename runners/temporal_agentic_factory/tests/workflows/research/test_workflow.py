@@ -19,7 +19,6 @@ from temporalio import activity, workflow
 from temporalio.contrib.pydantic import pydantic_data_converter
 from temporalio.exceptions import ApplicationError
 from temporalio.testing import WorkflowEnvironment
-from temporalio.worker import Worker
 
 from agentic_factory.job.contract import Job, JobResult
 from agentic_factory.job.outcome import JobOutcome
@@ -27,12 +26,18 @@ from agentic_factory.job.report.contract import JobReport, Verdict
 from agentic_factory.step.judge.answer import ChoiceAnswer, ScoreAnswer
 from agentic_factory.step.judge.contract import Judgment, JudgmentResult
 from distill.contract import DistillRequest, EntryPlan, EntryType, FetchedSource
+from temporal_agentic_factory.workflows.distill.name import source_name
 from temporal_agentic_factory.workflows.distill.workflow import DistilledEntry
 from temporal_agentic_factory.workflows.job import search_attributes
 from temporal_agentic_factory.workflows.job.execute import TryResult
 from temporal_agentic_factory.workflows.job.report import ReportRequest
+from temporal_agentic_factory.workflows.job.workflow import JobWorkflow
 from temporal_agentic_factory.workflows.research.workflow import ResearchWorkflow
 from temporal_agentic_factory.workflows.structured_output.extract import StructuredOutputRequest
+from temporal_agentic_factory.workflows.structured_output.workflow import (
+    JobWithStructuredOutputWorkflow,
+)
+from tests.workers import running
 
 TARGET_DIR = "/tmp/research/t1"
 INDEX_PATH = "/tmp/research/t1/index.md"
@@ -193,36 +198,46 @@ class FakeDistillWorkflow:
         )
 
 
+RESEARCH_ID = "research-agents-t1-1f2e"
+distill_names: dict[str, str | None] = {}  # child distill id -> its Name attribute
+
+
 async def _run(request: ResearchRequest):  # type: ignore[no-untyped-def]
     jobs.clear()
+    distill_names.clear()
     env = await WorkflowEnvironment.start_time_skipping(data_converter=pydantic_data_converter)
     async with env:
         await search_attributes.add(
             env.client, "default", [key.name for key in search_attributes.KEYS]
         )
         queue = f"test-{uuid.uuid4()}"
-        async with Worker(
+        async with running(
             env.client,
-            task_queue=queue,
-            workflows=[ResearchWorkflow, FakeDistillWorkflow],
-            activities=[
+            queue,
+            [ResearchWorkflow, FakeDistillWorkflow, JobWorkflow, JobWithStructuredOutputWorkflow],
+            [
                 fake_locate,
                 fake_candidates,
                 fake_judge,
                 fake_session,
-                fake_job,
                 fake_report,
                 fake_record,
                 fake_extract,
             ],
+            fake_job,
         ):
             handle = await env.client.start_workflow(
                 ResearchWorkflow.run,
                 request,
-                id=f"research-{uuid.uuid4()}",
+                id=RESEARCH_ID,
                 task_queue=queue,
             )
-            return await handle.result()
+            result = await handle.result()
+            for source in result.plan.fresh:
+                child = env.client.get_workflow_handle(f"{RESEARCH_ID}/{source.key}")
+                shown = (await child.describe()).typed_search_attributes
+                distill_names[source.url] = shown.get(search_attributes.NAME)
+            return result
 
 
 def _request() -> ResearchRequest:
@@ -268,3 +283,10 @@ async def test_every_job_runs_in_the_story_order() -> None:
         "overview",
     ]
     assert names[8:] == ["lens/tech", "index"]
+
+
+async def test_every_child_distill_is_named_by_its_url_tail() -> None:
+    await _run(_request())
+
+    assert distill_names
+    assert all(name == source_name(url) for url, name in distill_names.items())

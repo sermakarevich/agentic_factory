@@ -48,26 +48,29 @@ agentic_factory/
     temporal_agentic_factory/ # Temporal binding: installs `agentic_factory`
       pyproject.toml        # package `temporal_agentic_factory`
       justfile
-      src/temporal_agentic_factory/  # runner (the process), client, identity, capacity (free slots
-                              # under the global job cap): what several roles share
+      src/temporal_agentic_factory/  # runner (the main-queue process), coders (the one process with a
+                              # worker per provider's coder queue), other_coders (its single-instance
+                              # check), client, identity: what several roles share
         workflows/            # every Temporal workflow with its activities; failure (JobFailed to
                               # ApplicationError, what their activities share)
-          job/                # workflow, session, execute, heartbeat, report, record,
-                              # search_attributes (the ui's columns)
-          structured_output/  # workflow, extract: the output asked for in the prompt, picked out by a step
+          job/                # workflow, child (a job as a child workflow), coder_queue, session,
+                              # execute, heartbeat, report, record, search_attributes (the ui's columns)
+          structured_output/  # workflow, child, extract: the output asked for in the prompt, picked out by a step
           judge/              # workflow (run_judgment), activity: the judge step for workflows that branch on an answer
-          distill/            # workflow, activities (fetch + verify)
+          distill/            # workflow, activities (fetch + verify), name (a source's url tail)
           research/           # activities (locate_target, read_candidates), workflow (the chain of jobs
                               # and child distill runs)
         watchers/             # long-running things that watch a state and start workflows
           beads/              # client, mapping, models, poll, shell, temporal, workflow (the beads poller)
         cli/                  # app (the `af` typer app), one module per subject (job: `run`, distill,
-                              # research, beads), errors, ids, options, admission (the cap check of
-                              # every submit command), workflows (status, result, list, cancel, terminate)
-        settings/             # server address, activity limits, one table per workflow
+                              # research, beads, coders), errors, ids (readable workflow ids), options,
+                              # providers (refuses a provider with no settings table), workflows
+                              # (status, result, list, cancel, terminate, health)
+        settings/             # server address, activity limits, [providers.<name>] coder limits, one table per workflow
                               # and activity ([job_activity], [distill_workflow],
                               # [research_workflow], [locate_activity], [candidates_activity], ...)
-      tests/                  # mirrors src: workflows/<subject>/, watchers/beads/, cli/; fakes.py at the top
+      tests/                  # mirrors src: workflows/<subject>/, watchers/beads/, cli/; fakes.py and
+                              # workers.py (a main worker plus one per coder queue) at the top
     argo_agentic_factory/     # NOT built. README only, see "Why runners/"
   common/
     factory_settings/       # the settings loader (dynaconf + pydantic) and the values every package shares
@@ -123,15 +126,15 @@ layer: the vault's folders in `common/factory_settings`.
 **runners/temporal_agentic_factory** owns the engine binding and the
 workflows. It wraps app functions as Temporal activities, implements the
 workflows that compose them (the job workflow, the job with structured
-output, distill, research) and exposes the CLI (`runner`, `run`, `distill`,
-`research`, `beads`, `attributes`). It is grouped by role, then by subject
+output, distill, research) and exposes the CLI (`runner`, `coders`, `run`,
+`distill`, `research`, `beads`, `attributes`). It is grouped by role, then by subject
 inside each role: `workflows/` holds one folder per workflow with its
 activities, `watchers/` the long-running things that watch a state and start
 workflows (beads), `cli/` the `af` command with one module per subject, and
 `settings/` the runner's settings. A module used by one subject sits in that
 subject's folder, one used by one role at that role's root
 (`workflows/failure.py`), one used by several roles at the package root
-(`capacity.py`, `client.py`). The cli imports workflows and watchers, the
+(`client.py`, `coders.py`). The cli imports workflows and watchers, the
 watchers import workflows, workflows import neither. Workflows are implemented
 here because their code is written against the engine API, and every artifact
 a workflow needs (its activities, its settings table, its cli command) lives

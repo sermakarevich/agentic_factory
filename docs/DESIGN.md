@@ -225,7 +225,7 @@ the two engines; workflows compose them; retries never appear in workflow code.
 The package is grouped by role, then by subject: `workflows/` (one folder per
 workflow with its activities), `watchers/` (the beads poller), `cli/` (the `af`
 command, one module per subject) and `settings/`; the root holds what several
-roles share (`runner.py`, `client.py`, `identity.py`, `capacity.py`).
+roles share (`runner.py`, `coders.py`, `other_coders.py`, `client.py`, `identity.py`).
 
 - `create_session(job)` — the app's `create_session`, once per job before
   the first try; Temporal keeps the id in history, so a retry of the job
@@ -234,6 +234,10 @@ roles share (`runner.py`, `client.py`, `identity.py`, `capacity.py`).
   heartbeat (context size) from `activity.info()`, applies `continue_job`,
   runs the job engine with the heartbeat, log and journal callbacks, and
   maps each `JobFailed` to an `ApplicationError` typed by the class name.
+  It is the one activity on its provider's coder queue,
+  `<[temporal] task_queue>-coder-<provider>` (`workflows/job/coder_queue.py`),
+  with no schedule-to-start timeout: waiting there for a free coder slot
+  never fails a job. Every other activity stays on the main queue.
   The try's row is the journal callback's: opened on `on_start`, closed
   on `on_end` with the outcome, failure, totals and result.
   `RateLimited` sets `next_retry_delay` to the reset time. Heartbeat details
@@ -267,7 +271,7 @@ roles share (`runner.py`, `client.py`, `identity.py`, `capacity.py`).
   write behind the `record_activity` timeout and retries; a write that
   failed for good is logged, the workflow still returns the outcome.
 - `JobWorkflow` (`workflows/job/workflow.py`, type name `job`) — one job, then its
-  report; returns a `JobOutcome`. Its `run_job_with_report(job)` helper makes the
+  report; returns a `JobOutcome`. Its body, `run_job_here(job)`, makes the
   session first when the job has none,
   then carries the activity policy for any workflow
   with a job in it: heartbeat timeout `stall_sec` plus a margin,
@@ -275,14 +279,23 @@ roles share (`runner.py`, `client.py`, `identity.py`, `capacity.py`).
   Temporal is the backstop, and the retry policy from settings. App code is
   imported inside `imports_passed_through()`, because settings load on
   import and the sandbox would rerun that.
+- Jobs inside a workflow are child workflows (`workflows/job/child.py`):
+  `run_job_with_report(job)` starts `JobWorkflow` as a child with id
+  `<parent id>/<job name>`, the job name as its summary, its search attributes
+  at start, and waits; `run_job_or_fail(job)` turns a job that failed for good
+  into the named `JobFailed` error. So each job has its own row in the UI and
+  its own attributes, instead of overwriting the parent's job after job. See
+  "Nesting workflows".
 - `JobWithStructuredOutputWorkflow` (`workflows/structured_output/workflow.py`,
   type name `job_with_structured_output`) — a job plus the JSON schema of
   the structured output it must state; returns a `JobWithStructuredOutput`:
-  the outcome and the output as a dict. Its
-  `run_job_with_structured_output(job, schema)` helper is for any workflow
-  that needs typed data out of a job: it appends the request to the prompt
-  (`job/structured_output/prompt.py`), runs `run_job_with_report`, then the
-  extraction activity. A job that failed for good, or an output the coder
+  the outcome and the output as a dict. The
+  `run_job_with_structured_output(job, schema)` helper
+  (`workflows/structured_output/child.py`) is for any workflow that needs
+  typed data out of a job: it starts this workflow as a child, which appends
+  the request to the prompt (`job/structured_output/prompt.py`), runs the job
+  here, then the extraction activity. A child's failure is raised again with
+  its own type (`JobFailed`, `StructuredOutputNotStated`). A job that failed for good, or an output the coder
   never stated, fail the workflow: nothing downstream can run on made-up
   values. The caller owns the model and validates the dict with it.
 - `DistillWorkflow` (`workflows/distill/workflow.py`, type name `distill`) —
@@ -296,30 +309,73 @@ roles share (`runner.py`, `client.py`, `identity.py`, `capacity.py`).
   override, then app settings.
 - `factory run PROMPT [--workdir] [--provider] [--model] [--timeout-sec]
   [--stall-sec] [--context-limit-tokens] [--tools]` starts one job and
-  waits; `just run` at the root. The workdir is made absolute by the CLI and
+  waits; `just run` at the root. A provider with no `[providers.<name>]`
+  table is refused at start (`cli/providers.py`): nothing would poll its
+  coder queue, so the job would wait forever. The workdir is made absolute by the CLI and
   created by the job engine. `factory distill URL [--topic]
   [--chunk-chars] [--research-target] [--target-dir]` starts the distill
   workflow and waits. `factory runner` polls.
+- Workflow ids are readable (`cli/ids.py`, one function):
+  `job-<slug of --name>-<4 hex>` (`job-<4 hex>-<4 hex>` with no name),
+  `distill-<slug of the url's host/last segment>-<4 hex>`,
+  `research-<topic>-<target>-<4 hex>`; the slug is cut at `[cli] slug_chars`
+  and `--workflow-id` still wins. Every workflow, children included, carries
+  the keyword search attribute `Name` from its start: the job name, the url
+  tail for distill, `<topic>/<target>` for research. `af attributes` registers
+  it with the others; `af list` shows it.
+- Two process roles. `af runner` (`factory runner`; many may run) polls only
+  the main queue: every workflow and the quick activities, up to
+  `[runner] max_concurrent_activities` (20) at once. `af coders`
+  (`factory coders`; one per machine) runs one Temporal worker per
+  `[providers.<name>]` table on that provider's coder queue, registering only
+  `execute_job`, with `max_concurrent_activities = max_concurrent`
+  (claude 1, opencode 5). A Temporal limit holds per worker, so one coders
+  process makes the per-provider limits exact for the machine. It refuses to
+  start when another `factory coders` process is alive
+  (`other_coders.py`, a pgrep of the command); on SIGTERM it stops polling and
+  lets running coder jobs finish for up to `[coders] graceful_shutdown_sec`,
+  then Temporal retries what was cut off after its heartbeat timeout.
+  Workflows start freely: their execute step waits in the provider's queue
+  until a slot frees, and the beads poller keeps `batch_limit` as its only
+  brake. `af health` lists the pollers of each coder queue, so a missing
+  `af coders` shows.
+- To change a limit: edit `[providers.<name>] max_concurrent` in the runner
+  settings or `settings.local.toml`, then `just coders-stop && just coders`.
+  A new provider needs its table too, or the cli refuses its jobs.
 - Several runners share one machine: `just runners 2` starts two runner
   processes in the background (one log file each under
   `~/.local/share/agentic_factory/runner-logs/`), `just runners-stop`
-  stops them by exact pid. Every runner polls the same task queue under
+  stops them by exact pid; `just coders` / `just coders-stop` do the same
+  for the coders process. Every runner polls the same task queue under
   its own identity (`host:pid:sha`), so the UI shows which one ran a
-  task, and each runs up to `[runner] max_concurrent_activities` coder
-  jobs: the machine's total is that number times the runner count. A
-  code change is rolled out one runner at a time: stop one, start one,
-  then the other, and jobs in flight stay on the runner that holds them.
-- A global job cap, `[limits] max_concurrent_jobs` (0 = no cap), bounds
-  the coder jobs across every spawner: `capacity.py` (at the root, since
-  the cli and the beads watcher both use it) counts the running
-  `job` and `job_with_structured_output` workflows on the queue (distill
-  and research are not counted: their coder work runs as those child
-  workflows) and gives the free slots. `af run`, `af distill` and
-  `af research` refuse when none is free unless `--force`; the beads
-  poller spawns at most the free slots per tick, within `batch_limit`.
-  It is a soft admission check: Temporal's visibility counts lag by a
-  second or so, and two submits at once can both pass. The hard limit
-  per machine stays `[runner] max_concurrent_activities`.
+  task. A code change is rolled out one runner at a time: stop one, start
+  one, then the other, and work in flight stays on the runner that holds it.
+
+### Nesting workflows
+
+- A child workflow is for a unit with several steps that runs long and should
+  be visible on its own: a job (session, execute, report, record), a job with
+  structured output, a distill inside research. An activity is for one short
+  call to the outside: fetch, verify, judge, a store write.
+- Child ids are `<parent id>/<name>` (`child_id` in `workflows/job/child.py`),
+  so they are readable and deterministic: a replay starts the same child, and
+  `research-agents-t1-4f2a/distill/03-paper/wiki/2` says where it sits.
+- Every child gets `parent_close_policy` REQUEST_CANCEL: cancelling or
+  terminating the parent cancels its children cleanly.
+- A failed child surfaces as `ChildWorkflowError`. Each caller maps it as it
+  did the inline failure: fatal paths raise a named `ApplicationError`
+  (`JobFailed`, or the child's own typed cause), soft paths turn it into a
+  `JobOutcome` with the failure text and go on. A cancellation is raised as
+  it is.
+- Search attributes (`at_start`, with `Name`) and the static summary go on the
+  child at start; the child upserts its own outcome, never the parent's.
+- Retries live on activities, not on children: a child has no retry policy,
+  its activities have theirs.
+- Fan-out is `asyncio.gather` over child starts, bounded by an
+  `asyncio.Semaphore` where the parent has a width setting (research's
+  distills).
+- Never start a workflow from an activity. The only exception is a watcher:
+  the beads poll activity starts top-level job workflows, never children.
 
 Learned from the restart test (runner killed mid-job, restarted): Temporal
 failed the try with a heartbeat timeout, try 2 started with attempt 2 in
@@ -482,7 +538,7 @@ the entry under it and states the final path (`FiledEntry`). With a
 routing rules and writes the entry into that folder as is; the request
 refuses a target dir together with a topic, since the topic would move the
 entry away again. Every job
-is built by `_job(name, prompt)`: the coder, model and limits of the
+is built by `distill_job(name, prompt)`: the coder, model and limits of the
 runner's `distill_workflow` table, in the vault, named `plan`, `wiki/3`,
 `digest`, `index/2` and so on. A job that failed for
 good raises through `run_job_or_fail`, so the chain stops where fleet
@@ -491,8 +547,10 @@ sees the same one.
 
 ### Reading a run in the UI
 
-A distill run is some 60 activities with 7 activity types, so the names
-alone say nothing about which job a bar is. Three things make a run
+A distill run is some 15 child jobs plus the fetch and verify activities.
+Each job is a child workflow with its own row, id `<distill id>/<job name>`
+and `Name` column, so the parent's timeline shows one named bar per job and
+its history stays small. Inside a job, three things make it
 readable, all Temporal features, none of them history-changing:
 
 - Every activity carries a **summary** (`execute_activity(summary=...)`),
@@ -508,9 +566,9 @@ readable, all Temporal features, none of them history-changing:
 - The run itself has a **static summary** at start: the source URL of a
   distill run, the job's name of a `factory run --name`.
 
-Child workflows per job (one named row per job in the parent's timeline,
-a history a fifth of the size) are the next step and wait for the
-research workflow, which needs child workflows anyway.
+- Each workflow has a readable id (`distill-arxiv-org-2401-01234-4f2a`) and
+  the `Name` search attribute, so `af list` and the UI's list show what a
+  run is without opening it.
 
 ## The research workflow
 
@@ -586,6 +644,8 @@ planning jobs (discover, assign) pass `planning=True` for the table's
 searching the web and assigning from scores wants the stronger model, while
 the writing jobs ride the subscription coder. One helper, `written(stage,
 prompts)`, runs a named set of jobs at once and keeps the status line.
+Each distill child run has id `<research id>/<source key>` and the url
+tail as its `Name`; its own jobs nest one level further down.
 A child distill run that failed becomes a `skipped` ledger row with its
 reason; the workflow never fails because one source did. Status lines and
 job names label the run in the UI the way distill's do. The table also

@@ -11,8 +11,17 @@ class RunnerSettings(Table):
     max_concurrent_activities: int
 
 
+class ProviderSettings(Table):
+    max_concurrent: int
+
+
+class CodersSettings(Table):
+    graceful_shutdown_sec: int
+
+
 class CliSettings(Table):
-    job_id_chars: int
+    slug_chars: int
+    id_suffix_chars: int
 
 
 class JobActivitySettings(Table):
@@ -84,10 +93,6 @@ class BeadsPollerSettings(Table):
     tick_timeout_sec: int
 
 
-class LimitsSettings(Table):
-    max_concurrent_jobs: int
-
-
 class LocateActivitySettings(Table):
     timeout_sec: int
     max_attempts: int
@@ -101,6 +106,8 @@ class CandidatesActivitySettings(Table):
 class Settings(Table):
     temporal: TemporalSettings
     runner: RunnerSettings
+    providers: dict[str, ProviderSettings]
+    coders: CodersSettings
     cli: CliSettings
     job_activity: JobActivitySettings
     report_activity: ReportActivitySettings
@@ -111,7 +118,6 @@ class Settings(Table):
     fetch_activity: FetchActivitySettings
     verify_activity: VerifyActivitySettings
     beads_poller: BeadsPollerSettings
-    limits: LimitsSettings
     research_workflow: ResearchWorkflowSettings
     locate_activity: LocateActivitySettings
     candidates_activity: CandidatesActivitySettings

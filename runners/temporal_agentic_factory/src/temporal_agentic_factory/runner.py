@@ -10,7 +10,6 @@ from temporal_agentic_factory.settings.load import settings
 from temporal_agentic_factory.watchers.beads.workflow import BeadsPollActivity, BeadsPollWorkflow
 from temporal_agentic_factory.workflows.distill.activities import fetch_source, verify_entry
 from temporal_agentic_factory.workflows.distill.workflow import DistillWorkflow
-from temporal_agentic_factory.workflows.job.execute import JobActivity
 from temporal_agentic_factory.workflows.job.record import RecordActivity
 from temporal_agentic_factory.workflows.job.report import ReportActivity
 from temporal_agentic_factory.workflows.job.session import SessionActivity
@@ -25,9 +24,10 @@ from temporal_agentic_factory.workflows.structured_output.workflow import (
 
 
 async def serve(identity: str) -> None:
-    """Poll the task queue until stopped, as `identity` to the server. The
-    process's one store is made here, given to every activity, and closed
-    when the polling ends."""
+    """Poll the main task queue until stopped, as `identity` to the server:
+    every workflow and the quick activities. Coder runs wait on their
+    provider's queue for `af coders`. The process's one store is made here,
+    given to every activity, and closed when the polling ends."""
     client = await connect()
     store = Store.from_url(shared.store.url)
     try:
@@ -42,7 +42,7 @@ async def serve(identity: str) -> None:
                 ResearchWorkflow,
                 BeadsPollWorkflow,
             ],
-            activities=_activities(store, identity),
+            activities=_activities(store),
             max_concurrent_activities=settings.runner.max_concurrent_activities,
         )
         await worker.run()
@@ -50,10 +50,9 @@ async def serve(identity: str) -> None:
         await store.dispose()
 
 
-def _activities(store: Store, identity: str) -> list[Callable[..., Any]]:
+def _activities(store: Store) -> list[Callable[..., Any]]:
     return [
         SessionActivity(store).create_session,
-        JobActivity(store, identity).execute_job,
         ReportActivity(store).build_report,
         StructuredOutputActivity(store).extract_structured_output,
         RecordActivity(store).record_job,

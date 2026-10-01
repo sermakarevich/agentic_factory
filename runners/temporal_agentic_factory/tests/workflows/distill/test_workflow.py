@@ -8,7 +8,6 @@ from temporalio.client import WorkflowFailureError
 from temporalio.contrib.pydantic import pydantic_data_converter
 from temporalio.exceptions import ApplicationError
 from temporalio.testing import WorkflowEnvironment
-from temporalio.worker import Worker
 
 from agentic_factory.job.contract import Job, JobResult
 from agentic_factory.job.outcome import JobOutcome
@@ -20,7 +19,12 @@ from temporal_agentic_factory.workflows.distill.workflow import DistilledEntry, 
 from temporal_agentic_factory.workflows.job import search_attributes
 from temporal_agentic_factory.workflows.job.execute import TryResult
 from temporal_agentic_factory.workflows.job.report import ReportRequest
+from temporal_agentic_factory.workflows.job.workflow import JobWorkflow
 from temporal_agentic_factory.workflows.structured_output.extract import StructuredOutputRequest
+from temporal_agentic_factory.workflows.structured_output.workflow import (
+    JobWithStructuredOutputWorkflow,
+)
+from tests.workers import running
 
 RESEARCH_DIR = "/kb/knowledge/research/AThing"
 PLAN = {"research_dir": RESEARCH_DIR, "slug": "AThing", "title": "A thing", "type": "Article"}
@@ -103,6 +107,8 @@ async def _environment() -> WorkflowEnvironment:
 
 
 labels: list[tuple[str, str]] = []  # (activity type, summary) of every activity scheduled
+DISTILL_ID = "distill-a-1f2e"
+children: list[str] = []  # the id of every child workflow started, at any depth
 
 
 async def _run(request: DistillRequest, verify: Any) -> DistilledEntry:
@@ -110,42 +116,39 @@ async def _run(request: DistillRequest, verify: Any) -> DistilledEntry:
     jobs.clear()
     verified.clear()
     labels.clear()
+    children.clear()
     async with await _environment() as env:
         queue = f"test-{uuid.uuid4()}"
-        async with Worker(
+        async with running(
             env.client,
-            task_queue=queue,
-            workflows=[DistillWorkflow],
-            activities=[
-                fake_fetch,
-                fake_session,
-                fake_job,
-                fake_report,
-                fake_record,
-                fake_extract,
-                verify,
-            ],
+            queue,
+            [DistillWorkflow, JobWorkflow, JobWithStructuredOutputWorkflow],
+            [fake_fetch, fake_session, fake_report, fake_record, fake_extract, verify],
+            fake_job,
         ):
             handle = await env.client.start_workflow(
                 DistillWorkflow.run,
                 request,
-                id=f"distill-{uuid.uuid4()}",
+                id=DISTILL_ID,
                 task_queue=queue,
             )
             result = await handle.result()
-            labels.extend(await _labels(handle))
+            await _read_labels(env, handle)
             return result
 
 
-async def _labels(handle: Any) -> list[tuple[str, str]]:
-    """(activity type, summary) of every activity the run scheduled, from its history."""
-    found = []
+async def _read_labels(env: WorkflowEnvironment, handle: Any) -> None:
+    """(activity type, summary) of every activity the run and its child job
+    workflows scheduled, and the children's ids, from their histories."""
     for event in (await handle.fetch_history()).events:
         if event.HasField("activity_task_scheduled_event_attributes"):
             kind = event.activity_task_scheduled_event_attributes.activity_type.name
             summary = event.user_metadata.summary.data
-            found.append((kind, json.loads(summary) if summary else ""))
-    return found
+            labels.append((kind, json.loads(summary) if summary else ""))
+        if event.HasField("start_child_workflow_execution_initiated_event_attributes"):
+            child_id = event.start_child_workflow_execution_initiated_event_attributes.workflow_id
+            children.append(child_id)
+            await _read_labels(env, env.client.get_workflow_handle(child_id))
 
 
 def _prompts_mentioning(*words: str) -> list[str]:
@@ -218,3 +221,8 @@ async def test_every_activity_is_labeled_with_its_job_in_the_ui() -> None:
     jobs_labels = sorted(by_kind["execute_job"])
     assert sorted(by_kind["create_session"]) == sorted(by_kind["build_report"]) == jobs_labels
     assert {job.name for job in jobs} == set(by_kind["execute_job"])
+
+
+async def test_every_job_is_a_child_named_after_it() -> None:
+    await _run(DistillRequest(url="https://example.org/a"), verify_once_failing)
+    assert sorted(children) == sorted(f"{DISTILL_ID}/{job.name}" for job in jobs)

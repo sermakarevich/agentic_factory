@@ -13,7 +13,7 @@ with workflow.unsafe.imports_passed_through():
     from agentic_factory.job.structured_output.prompt import wrap_prompt
     from agentic_factory.settings.load import settings as app_settings
     from temporal_agentic_factory.settings.load import settings
-    from temporal_agentic_factory.workflows.job.workflow import run_job_or_fail
+    from temporal_agentic_factory.workflows.job.workflow import run_job_here_or_fail
     from temporal_agentic_factory.workflows.structured_output.extract import (
         StructuredOutputActivity,
         StructuredOutputRequest,
@@ -44,18 +44,18 @@ class JobWithStructuredOutputWorkflow:
 
     @workflow.run
     async def run(self, request: StructuredOutputJob) -> JobWithStructuredOutput:
-        return await run_job_with_structured_output(request.job, request.output_schema)
+        return await run_job_here_with_structured_output(request.job, request.output_schema)
 
 
-async def run_job_with_structured_output(job: Job, schema: Schema) -> JobWithStructuredOutput:
-    """For any workflow with a job whose structured output it needs: the
-    output asked for in the prompt, the job run with its report, then the
+async def run_job_here_with_structured_output(job: Job, schema: Schema) -> JobWithStructuredOutput:
+    """In this workflow's own history: the output asked for in the prompt,
+    the job run with its report, then the
     extraction activity over what it wrote. A job that failed for good has
     nothing to extract, and an output the coder never stated cannot be made
     up: either raises, so the workflow stops where fleet stopped on a
     missing outputs file."""
     asked = job.model_copy(update={"prompt": wrap_prompt(job.prompt, schema)})
-    outcome = await run_job_or_fail(asked)
+    outcome = await run_job_here_or_fail(asked)
     request = StructuredOutputRequest(session_id=outcome.session_id, output_schema=schema)
     extracted = await _extracted(request, job.name)
     return JobWithStructuredOutput(outcome=outcome, structured_output=extracted)
