@@ -741,7 +741,9 @@ sources one module per kind** (Oct 1).
   Rejected: wrapping each bd command (always behind bd), and telling users to
   `cd ~/.agentic_factory/beads && bd ...` (easy to run in the wrong folder).
 - **Back to a Schedule for beads, every 30 s, with a cleaner that keeps the
-  last run** (2026-10-01). Supersedes the long-running watcher above. The
+  last run** (2026-10-01). **The trim inside `beads_poll` (`trim_poll_runs`,
+  `keep_runs`, `trim_timeout_sec`) is superseded by "the cleaner is its own
+  scheduled workflow" below; the rest stands.** Supersedes the long-running watcher above. The
   user prefers one schedule row with a visible next run over a workflow that
   never ends. Schedule `beads-poll` starts a one-tick `beads_poll` run every
   `interval_sec` (30 s), overlap SKIP so a slow tick never stacks; the run
@@ -758,3 +760,26 @@ sources one module per kind** (Oct 1).
   server that has it keeps it unused, which breaks nothing). Rejected: keeping
   the loop (no next-run in the UI) and a 10 s schedule without the cleaner
   (the old flood).
+- **The cleaner is its own scheduled workflow with per-type rules**
+  (2026-10-01). Supersedes the trim inside `beads_poll` from the entry above.
+  A Schedule `cleaner` starts a `cleaner` run every 60 s (overlap SKIP); its
+  one activity applies `[[cleaner.rules]]`, one rule per workflow type with
+  `keep_completed` and `keep_failed`, and returns per type how many completed
+  and failed runs it deleted and how many calls failed. Completed is
+  Completed or ContinuedAsNew, failed every other closed status, so a few red
+  rows stay to read; running runs are never touched. The `cleaner` type has a
+  rule of its own, so it cleans itself. Only the rule's type is touched: the
+  type name is validated as a plain name before it enters the query, and
+  each listed row's type is checked again. The rules travel in the
+  schedule's input (a settings change takes `af cleaner restart`), and
+  `af cleaner run` does one clean in the calling process. The schedule code
+  both schedules need (build, create-or-replace, delete tolerating
+  NOT_FOUND, describe with the last run's line) moved to one `schedules.py`.
+  `beads_poll` is just the tick now: `trim.py`, `trim_poll_runs`, `keep_runs`
+  and `trim_timeout_sec` are gone (an old schedule's input with
+  `trim_timeout_sec` still decodes, the extra field is ignored). Rejected:
+  keeping the trim in each watched workflow (every new scheduled type would
+  repeat it, and the poll's run would fail for a cleanup reason), one keep
+  count for all closed runs (a failed tick would be deleted by the next good
+  one before anyone reads it), and cleaning every type (jobs' history is
+  worth its 24 h retention).

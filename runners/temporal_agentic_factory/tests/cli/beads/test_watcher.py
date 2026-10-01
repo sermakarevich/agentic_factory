@@ -7,8 +7,8 @@ from typer.testing import CliRunner
 
 from temporal_agentic_factory.cli.app import app
 from temporal_agentic_factory.cli.beads import watcher
+from temporal_agentic_factory.schedules import LastRun, ScheduleStatus
 from temporal_agentic_factory.settings.load import settings
-from temporal_agentic_factory.watchers.beads.control import LastRun, ScheduleStatus
 from temporal_agentic_factory.watchers.beads.workflow import PollConfig
 
 
@@ -30,7 +30,7 @@ class FakeServer:
     async def register(self, client: object, namespace: str) -> list[str]:
         return []
 
-    async def start_schedule(
+    async def start_poll_schedule(
         self, client: object, schedule_id: str, task_queue: str, interval: int, config: PollConfig
     ) -> bool:
         replaced, self.exists = self.exists, True
@@ -46,7 +46,7 @@ class FakeServer:
         self.deleted += deleted
         return deleted
 
-    async def schedule_status(self, client: object, schedule_id: str) -> ScheduleStatus:
+    async def poll_schedule_status(self, client: object, schedule_id: str) -> ScheduleStatus:
         return ScheduleStatus(
             schedule_id=schedule_id,
             exists=True,
@@ -66,7 +66,12 @@ def server(monkeypatch: Any, tmp_path: Path) -> FakeServer:
     (tmp_path / ".beads").mkdir()
     monkeypatch.setattr(settings.beads, "home", str(tmp_path))
     fake = FakeServer(old_watcher=True)
-    for name in ("start_schedule", "end_old_watcher", "delete_schedule", "schedule_status"):
+    for name in (
+        "start_poll_schedule",
+        "end_old_watcher",
+        "delete_schedule",
+        "poll_schedule_status",
+    ):
         monkeypatch.setattr(watcher, name, getattr(fake, name))
     monkeypatch.setattr(watcher, "connect", fake.connect)
     monkeypatch.setattr(watcher.search_attributes, "register", fake.register)

@@ -50,7 +50,8 @@ agentic_factory/
       justfile
       src/temporal_agentic_factory/  # runner (the main-queue process), coders (the one process with a
                               # worker per provider's coder queue), other_coders (its single-instance
-                              # check), client, identity: what several roles share
+                              # check), client, identity, schedules (a Schedule's lifecycle: build,
+                              # create or replace, delete, status): what several roles share
         workflows/            # every Temporal workflow with its activities; failure (JobFailed to
                               # ApplicationError, what their activities share)
           job/                # workflow, child (a job as a child workflow), coder_queue, session,
@@ -66,8 +67,11 @@ agentic_factory/
                               # `[af] ...` comments), front_matter (the description's `---` block),
                               # parameters (the af_job fields), mapping (bead to job), ending (close
                               # or block a finished bead), poll, temporal, tick (the tick activity),
-                              # trim (old poll runs deleted), workflow (beads_poll: one tick, then
-                              # the trim), control (the beads-poll schedule: start, stop, status)
+                              # workflow (beads_poll: one tick), control (the beads-poll schedule:
+                              # start, status, the old watcher ended)
+        cleaner/              # rules (the summary models and which runs one rule deletes, pure),
+                              # clean (the clean_history activity: list, select, delete), workflow
+                              # (cleaner: one clean), schedule (the cleaner schedule: start, status)
         cli/                  # app (the `af` typer app), one module per subject (job: `run`, distill,
                               # research, coders), errors, ids (readable workflow ids), options,
                               # providers (refuses a provider with no settings table), workflows
@@ -77,12 +81,14 @@ agentic_factory/
                               # (add, set, retry), database (init, list, show, close), poller
                               # (ready, poll --once), watcher (start, stop, restart, status of the schedule),
                               # forward (`bd ...` and unknown commands passed to bd)
+          cleaner.py          # the `af cleaner` group: start, stop, restart, status, run
         settings/             # server address, activity limits, [providers.<name>] coder limits, one table per workflow
                               # and activity ([job_activity], [distill_workflow],
                               # [research_workflow], [locate_activity], [candidates_activity], ...)
-      tests/                  # mirrors src: workflows/<subject>/, watchers/beads/, cli/; fakes.py and
-                              # workers.py (a main worker plus one per coder queue) and fake_bd.py
-                              # (a scripted `bd`) at the top
+      tests/                  # mirrors src: workflows/<subject>/, watchers/beads/, cleaner/, cli/;
+                              # fakes.py and workers.py (a main worker plus one per coder queue),
+                              # fake_bd.py (a scripted `bd`) and fake_schedules.py (schedules and
+                              # runs in memory) at the top
     argo_agentic_factory/     # NOT built. README only, see "Why runners/"
   common/
     factory_settings/       # the settings loader (dynaconf + pydantic) and the values every package shares
@@ -142,11 +148,12 @@ output, distill, research) and exposes the CLI (`runner`, `coders`, `run`,
 `distill`, `research`, `beads`, `attributes`). It is grouped by role, then by subject
 inside each role: `workflows/` holds one folder per workflow with its
 activities, `watchers/` the things that watch a state and start
-workflows (the beads poll schedule), `cli/` the `af` command with one module per subject, and
+workflows (the beads poll schedule), `cleaner/` the schedule that deletes old
+runs, `cli/` the `af` command with one module per subject, and
 `settings/` the runner's settings. A module used by one subject sits in that
 subject's folder, one used by one role at that role's root
 (`workflows/failure.py`), one used by several roles at the package root
-(`client.py`, `coders.py`). The cli imports workflows and watchers, the
+(`client.py`, `coders.py`, `schedules.py`). The cli imports workflows and watchers, the
 watchers import workflows, workflows import neither. Workflows are implemented
 here because their code is written against the engine API, and every artifact
 a workflow needs (its activities, its settings table, its cli command) lives

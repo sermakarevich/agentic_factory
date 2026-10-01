@@ -5,13 +5,13 @@ import typer
 from temporal_agentic_factory.cli.beads.opened import opened
 from temporal_agentic_factory.cli.errors import run_coro
 from temporal_agentic_factory.client import connect
+from temporal_agentic_factory.schedules import delete_schedule
 from temporal_agentic_factory.settings.load import settings
 from temporal_agentic_factory.watchers.beads.control import (
     OLD_WATCHER_ID,
-    delete_schedule,
     end_old_watcher,
-    schedule_status,
-    start_schedule,
+    poll_schedule_status,
+    start_poll_schedule,
 )
 from temporal_agentic_factory.watchers.beads.workflow import PollConfig
 from temporal_agentic_factory.workflows.job import search_attributes
@@ -36,7 +36,7 @@ async def _started() -> list[str]:
     added = await search_attributes.register(client, settings.temporal.namespace)
     if added:
         lines.append(f"registered attributes {', '.join(added)}")
-    replaced = await start_schedule(
+    replaced = await start_poll_schedule(
         client, cfg.schedule_id, settings.temporal.task_queue, cfg.interval_sec, configured_poll()
     )
     lines.append(f"{'replaced' if replaced else 'created'}: {cfg.schedule_id}")
@@ -46,9 +46,8 @@ async def _started() -> list[str]:
 
 
 def configured_poll() -> PollConfig:
-    """One run's timeouts from `[beads_poller]`."""
-    cfg = settings.beads_poller
-    return PollConfig(tick_timeout_sec=cfg.tick_timeout_sec, trim_timeout_sec=cfg.trim_timeout_sec)
+    """One run's timeout from `[beads_poller]`."""
+    return PollConfig(tick_timeout_sec=settings.beads_poller.tick_timeout_sec)
 
 
 def stop() -> None:
@@ -75,5 +74,5 @@ def status() -> None:
 
 
 async def _status_json() -> str:
-    found = await schedule_status(await connect(), settings.beads_poller.schedule_id)
+    found = await poll_schedule_status(await connect(), settings.beads_poller.schedule_id)
     return found.model_dump_json(indent=2)

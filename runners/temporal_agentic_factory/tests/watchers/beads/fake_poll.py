@@ -1,6 +1,6 @@
-"""A test server running `beads_poll` on fake tick and trim activities.
+"""A test server running `beads_poll` on a fake tick activity.
 
-`Calls` scripts whether the tick fails and records the order the activities ran in.
+`Calls` scripts whether the tick fails and records the activities that ran.
 """
 
 import uuid
@@ -18,7 +18,7 @@ from temporalio.worker import Worker
 from temporal_agentic_factory.watchers.beads.models import PollSummary
 from temporal_agentic_factory.watchers.beads.workflow import BeadsPollWorkflow, PollConfig
 
-CONFIG = PollConfig(tick_timeout_sec=30, trim_timeout_sec=30)
+CONFIG = PollConfig(tick_timeout_sec=30)
 
 
 @dataclass
@@ -36,12 +36,7 @@ class Calls:
                 raise ApplicationError("bd is down", non_retryable=True)
             return PollSummary(spawned=["af-1"], skipped={"af-0": "no provider"})
 
-        @activity.defn(name="trim_poll_runs")
-        async def trim() -> int:
-            self.order.append("trim")
-            return 0
-
-        return [poll, trim]
+        return [poll]
 
 
 @dataclass
@@ -52,7 +47,7 @@ class Polling:
 
 @asynccontextmanager
 async def polling(calls: Calls) -> AsyncIterator[Polling]:
-    """A time-skipping server with a worker for `beads_poll` on the fake activities."""
+    """A time-skipping server with a worker for `beads_poll` on the fake tick."""
     async with await WorkflowEnvironment.start_time_skipping(
         data_converter=pydantic_data_converter
     ) as env:

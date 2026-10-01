@@ -1,5 +1,5 @@
 """A Temporal client that holds schedules and workflow runs in memory: what the
-control module calls, recorded for the tests."""
+schedule modules call, recorded for the tests."""
 
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -30,7 +30,7 @@ class Run:
 
 @dataclass
 class Described:
-    """The fields of a schedule description the control module reads."""
+    """The fields of a schedule description the schedule modules read."""
 
     schedule: Schedule
     info: Any
@@ -110,10 +110,7 @@ class FakeClient:
         self.schedules[schedule_id] = schedule
         self.created.append(schedule_id)
 
-    def get_workflow_handle(self, workflow_id: str, run_id: str | None = None) -> WorkflowHandle:
-        return WorkflowHandle(self, workflow_id, run_id)
-
-    def get_workflow_handle_for(
-        self, workflow: Any, workflow_id: str, run_id: str | None = None
+    def get_workflow_handle(
+        self, workflow_id: str, run_id: str | None = None, result_type: Any = None
     ) -> WorkflowHandle:
         return WorkflowHandle(self, workflow_id, run_id)

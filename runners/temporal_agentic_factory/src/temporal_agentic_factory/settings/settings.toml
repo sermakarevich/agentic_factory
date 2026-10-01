@@ -81,8 +81,21 @@ interval_sec = 30         # the schedule fires one tick this often; a tick still
 tick_timeout_sec = 300    # start-to-close of the poll activity: reconcile plus one batch
 batch_limit = 10          # ready beads considered per tick
 orphan_timeout_sec = 600  # an in_progress bead with no af marker and no workflow this old is released
-keep_runs = 1             # finished beads_poll (and old beads_watcher) runs kept; older ones are deleted
-trim_timeout_sec = 300    # start-to-close of the trim activity: one listing, then one delete per old run
+
+[cleaner]
+schedule_id = "cleaner"  # the Temporal Schedule `af cleaner start` owns; its runs are `cleaner-<time>`
+interval_sec = 60        # the schedule fires one clean this often; a clean still running skips the next
+timeout_sec = 300        # start-to-close of the clean activity: one listing per rule, then one delete per old run
+
+[[cleaner.rules]]
+workflow_type = "beads_poll"  # the only workflow type this rule touches
+keep_completed = 1            # newest completed (or continued-as-new) runs kept; older ones are deleted
+keep_failed = 3               # newest failed, timed-out, terminated or canceled runs kept
+
+[[cleaner.rules]]
+workflow_type = "cleaner"     # it cleans itself; the running clean is never touched
+keep_completed = 1            # newest completed runs kept
+keep_failed = 3               # newest failed runs kept
 
 [locate_activity]
 timeout_sec = 30    # validating the topic and making the target folder

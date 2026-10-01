@@ -28,18 +28,20 @@ test *ARGS:
 # one command that says "green"
 check: lint fmt-check typecheck test
 
-# start the runner process that polls Temporal task queues; the beads poll schedule is
-# (re)created first (its runs wait on the queue for this runner), so a restart always brings it back
+# start the runner process that polls Temporal task queues; the beads poll and cleaner schedules are
+# (re)created first (their runs wait on the queue for this runner), so a restart always brings them back
 runner *ARGS:
     {{schedule_start}}
+    {{cleaner_start}}
     uv run factory runner "$@"
 
 # start N runner processes in the background on this machine, each with its own log file: just runners 2;
-# then (re)create the beads poll schedule
+# then (re)create the beads poll and cleaner schedules
 runners N="2":
     mkdir -p "{{runner_logs}}"
     for i in $(seq {{N}}); do nohup uv run factory runner > "{{runner_logs}}/runner-$(date +%Y%m%d-%H%M%S)-$i.log" 2>&1 & echo "runner $! started"; done
     {{schedule_start}}
+    {{cleaner_start}}
 
 # stop every runner process on this machine, each by its exact pid; Temporal retries the activities they were running
 runners-stop:
@@ -65,6 +67,8 @@ temporal_data := env("XDG_DATA_HOME", env("HOME") + "/.local/share") + "/agentic
 runner_logs := temporal_data + "/runner-logs"
 # `af beads start`, a warning instead of a failure (Temporal down, no beads database yet)
 schedule_start := "uv run factory beads start || echo 'warning: beads poll schedule not started; run `af beads start` once Temporal is up' >&2"
+# `af cleaner start`, a warning instead of a failure (Temporal down)
+cleaner_start := "uv run factory cleaner start || echo 'warning: cleaner schedule not started; run `af cleaner start` once Temporal is up' >&2"
 temporal_ip := "127.0.0.1"
 temporal_port := "7233"
 temporal_ui_port := "8233"

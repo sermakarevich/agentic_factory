@@ -1,4 +1,7 @@
 from factory_settings.table import Table
+from pydantic import Field
+
+WORKFLOW_TYPE_NAME = r"^[A-Za-z0-9_.-]+$"  # no quote or space can reach the cleaner's query
 
 
 class TemporalSettings(Table):
@@ -96,8 +99,22 @@ class BeadsPollerSettings(Table):
     tick_timeout_sec: int
     batch_limit: int
     orphan_timeout_sec: int
-    keep_runs: int
-    trim_timeout_sec: int
+
+
+class CleanRule(Table):
+    """How many closed runs of one workflow type the cleaner keeps; the
+    type's name is plain, so it can go into a visibility query as it is."""
+
+    workflow_type: str = Field(pattern=WORKFLOW_TYPE_NAME)
+    keep_completed: int = Field(ge=0)
+    keep_failed: int = Field(ge=0)
+
+
+class CleanerSettings(Table):
+    schedule_id: str
+    interval_sec: int
+    timeout_sec: int
+    rules: list[CleanRule]
 
 
 class LocateActivitySettings(Table):
@@ -126,6 +143,7 @@ class Settings(Table):
     verify_activity: VerifyActivitySettings
     beads: BeadsSettings
     beads_poller: BeadsPollerSettings
+    cleaner: CleanerSettings
     research_workflow: ResearchWorkflowSettings
     locate_activity: LocateActivitySettings
     candidates_activity: CandidatesActivitySettings

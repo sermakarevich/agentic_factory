@@ -15,6 +15,7 @@ from temporalio.api.workflowservice.v1 import DescribeTaskQueueRequest
 from temporalio.client import Client, WorkflowExecution, WorkflowHandle
 
 from agentic_factory.job.outcome import JobOutcome
+from temporal_agentic_factory.cleaner.schedule import cleaner_schedule_status
 from temporal_agentic_factory.cli.errors import (
     STATUSES,
     WORKFLOW_TYPES,
@@ -23,8 +24,9 @@ from temporal_agentic_factory.cli.errors import (
     run_coro,
 )
 from temporal_agentic_factory.client import connect
+from temporal_agentic_factory.schedules import ScheduleStatus
 from temporal_agentic_factory.settings.load import settings
-from temporal_agentic_factory.watchers.beads.control import ScheduleStatus, schedule_status
+from temporal_agentic_factory.watchers.beads.control import poll_schedule_status
 from temporal_agentic_factory.workflows.distill.workflow import DistilledEntry
 from temporal_agentic_factory.workflows.job.coder_queue import coder_queue
 from temporal_agentic_factory.workflows.job.search_attributes import NAME
@@ -39,6 +41,10 @@ RESULT_TYPES: dict[str, Any] = {
 SCHEDULE_DOWN = (
     "beads poll schedule missing or paused: no beads are pulled; start it with `af beads start`"
 )
+CLEANER_DOWN = (
+    "cleaner schedule missing or paused: old runs pile up; start it with `af cleaner start`"
+)
+SCHEDULE_FIELDS = ("beads_schedule", "cleaner_schedule")
 
 
 def _result_type_for(workflow_type: str) -> Any | None:
@@ -249,11 +255,12 @@ async def _terminated(workflow_id: str, run_id: str | None, reason: str) -> None
 def health() -> None:
     """Check the Temporal server answers: prints address, namespace, task
     queue, which processes poll each provider's coder queue (none: start
-    `af coders`) and whether the beads poll schedule fires (not: a warning)."""
+    `af coders`) and whether the beads poll and cleaner schedules fire (not: a warning)."""
     info = run_coro(_health_info())
     typer.echo(json.dumps(info, indent=2))
-    if "warning" in info["beads_schedule"]:
-        typer.echo(f"af: warning: {SCHEDULE_DOWN}", err=True)
+    for name in SCHEDULE_FIELDS:
+        if "warning" in info.get(name, {}):
+            typer.echo(f"af: warning: {info[name]['warning']}", err=True)
 
 
 async def _health_info() -> dict[str, Any]:
@@ -269,16 +276,19 @@ async def _health_info() -> dict[str, Any]:
             for name in settings.providers
         },
         "beads_schedule": schedule_field(
-            await schedule_status(client, settings.beads_poller.schedule_id)
+            await poll_schedule_status(client, settings.beads_poller.schedule_id), SCHEDULE_DOWN
+        ),
+        "cleaner_schedule": schedule_field(
+            await cleaner_schedule_status(client, settings.cleaner.schedule_id), CLEANER_DOWN
         ),
     }
 
 
-def schedule_field(found: ScheduleStatus) -> dict[str, Any]:
-    """The schedule's state for `af health`; a warning in it when it is missing or paused."""
+def schedule_field(found: ScheduleStatus, warning: str) -> dict[str, Any]:
+    """A schedule's state for `af health`; `warning` in it when it is missing or paused."""
     field = found.model_dump(mode="json")
     if not found.exists or found.paused:
-        field["warning"] = SCHEDULE_DOWN
+        field["warning"] = warning
     return field
 
 

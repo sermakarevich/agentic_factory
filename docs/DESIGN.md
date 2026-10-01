@@ -757,29 +757,20 @@ naming `af beads init` while the folder holds no database.
 A Temporal Schedule, `[beads_poller] schedule_id` (`beads-poll`), pulls the
 beads: every `interval_sec` (30 s, two checks a minute) it starts one
 `beads_poll` run, `beads-poll-<time>`. The UI shows one schedule row with its
-next run, and the Workflows list keeps only the newest poll runs. It replaced
-a long-running `beads_watcher` loop (see DECISIONS.md); the first schedule
-(every 10 s) had been dropped for flooding the UI with 8,600 runs a day, which
-the cleaner below now prevents.
+next run, and the Workflows list keeps only the newest poll runs because the
+cleaner (below) deletes the rest. It replaced a long-running `beads_watcher`
+loop (see DECISIONS.md); the first schedule (every 10 s) had been dropped for
+flooding the UI with 8,600 runs a day, which the cleaner now prevents.
 
 - **One run, one tick** (`watchers/beads/workflow.py`): run the tick activity
-  (`BeadsPollActivity.poll`, which calls `poll_once`), then the trim
-  activity, then return the tick's `PollSummary` as the run's result, so the
-  UI shows what the tick did. A tick that fails after its retries still runs
-  the trim, then fails the run: a red row in the UI. No loop, no sleep, no
-  query. Its timeouts (`tick_timeout_sec`, `trim_timeout_sec`) travel in the
-  schedule action's input (`PollConfig`), so a settings change takes
+  (`BeadsPollActivity.poll`, which calls `poll_once`) and return its
+  `PollSummary` as the run's result, so the UI shows what the tick did. A
+  tick that fails after its retries fails the run: a red row in the UI. No
+  loop, no sleep, no query, no trim. Its timeout (`tick_timeout_sec`) travels
+  in the schedule action's input (`PollConfig`), so a settings change takes
   `af beads restart`.
 - **No stacking.** The overlap policy is SKIP: a tick still running when the
   next one is due makes the schedule skip it.
-- **The cleaner keeps the last run.** The `trim_poll_runs` activity lists the
-  closed runs of `beads_poll` and the leftover `beads_watcher` type, keeps the
-  newest `keep_runs` (1) by close time and deletes the rest, each by its run
-  id. The run that trims is still running, so it is never touched; between
-  two ticks the list holds the run that just ended and the one it kept. It is
-  best effort: a failed listing or delete is logged and skipped. No other
-  workflow type is ever touched: the query names the two types and the
-  activity checks each listed run's type again.
 - **Commands.** `af beads start` creates the schedule, or replaces the one
   there, and terminates the old `beads-watcher` workflow if it still runs
   (NOT_FOUND means nothing to do); it also registers missing search
@@ -796,6 +787,52 @@ the cleaner below now prevents.
   `af beads restart` (or `af beads start`) once: it replaces the old watcher
   with the schedule. Until then the old watcher is stuck and pulls nothing,
   as the runner no longer registers `beads_watcher`.
+- **One lifecycle for every schedule.** Building an every-N-seconds schedule
+  with SKIP, create-or-replace, delete (NOT_FOUND by status code means
+  nothing to delete) and describe with the last run's one-line result live
+  once in `schedules.py`; the beads poll and the cleaner each add only their
+  workflow, input and result line.
+
+## Cleaner
+
+A second Temporal Schedule, `[cleaner] schedule_id` (`cleaner`), keeps the
+Workflows list short: every `interval_sec` (60 s) it starts one `cleaner` run,
+`cleaner-<time>`, overlap SKIP. The run is one activity (`clean_history`)
+that applies every rule and returns a `CleanSummary` as the run's result: per
+workflow type, how many completed and failed runs it deleted and how many
+calls failed. `af cleaner status` shows it in one line
+(`beads_poll: completed 1 failed 0 errors 0; cleaner: ...`).
+
+- **Rules, one per workflow type**, in `[[cleaner.rules]]`
+  (`workflow_type`, `keep_completed`, `keep_failed`). Today: `beads_poll`
+  keeps its newest 1 completed and 3 failed runs, and `cleaner` the same for
+  itself, so it cleans its own runs too. Completed means status Completed or
+  ContinuedAsNew; failed is any other closed status (Failed, TimedOut,
+  Terminated, Canceled), so a broken tick stays visible for a while. Newest
+  is by close time (start time when a run has none). A running run is never
+  touched, so the clean that is running never deletes itself.
+- **What it deletes.** For each rule it lists the closed runs of that type
+  (`WorkflowType = '<type>' AND ExecutionStatus != 'Running'`), picks the
+  ones beyond the keep counts with a pure function (`cleaner/rules.py`,
+  tested without Temporal) that drops any row of another type or still
+  running, and deletes each by its run id. A typo in a rule can never delete
+  jobs: the type name must be plain (letters, digits, `_.-`) so it cannot
+  change the query, and every row's type is checked again. Workflow types
+  with no rule (`job`, `distill`, `research`, ...) are left to Temporal's
+  namespace retention (24 h on the dev server), which still removes
+  everything else.
+- **Best effort.** A failed listing or delete is logged and counted in the
+  summary's `errors`, never raised; the next run a minute later catches up.
+- **Rules travel in the input.** The schedule's action carries the rules and
+  the activity timeout (`CleanConfig`), so a run's behaviour is fixed when it
+  starts and a settings change takes `af cleaner restart`.
+- **Commands.** `af cleaner start` creates or replaces the schedule,
+  `stop` deletes it (a missing one is fine), `restart` is stop then start,
+  `status` prints the schedule and its last run's line, and `run` does one
+  clean now in the calling process with the configured rules and prints the
+  summary. `af health` has a `cleaner_schedule` field, with a warning when it
+  is missing or paused. `just runner` and `just runners` run
+  `af cleaner start` with the runners, a warning if it fails.
 
 ## Materialization
 
@@ -1005,8 +1042,8 @@ per million lives in settings so the result carries `cost_usd`.
 - Beads is an input source (watcher) and an output target (a workflow
   updates status), not the internal state store. af owns its beads
   database at `~/.agentic_factory/beads` and calls `bd` directly.
-- One watcher at most (beads), a Temporal Schedule of one-tick runs that
-  trim their own old runs. X monitoring is a schedule whose first
+- One watcher at most (beads), a Temporal Schedule of one-tick runs; a
+  second schedule, the cleaner, deletes old runs by per-type rules. X monitoring is a schedule whose first
   activity runs `x watch check`.
 - No YAML workflow language. Graphs are Python; a data-driven DAG
   interpreter can be added later if needed.

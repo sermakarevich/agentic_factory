@@ -7,6 +7,7 @@ import typer
 from agentic_factory.logging_setup import configure_logging
 from temporal_agentic_factory.cli import workflows
 from temporal_agentic_factory.cli.beads.app import beads_app
+from temporal_agentic_factory.cli.cleaner import cleaner_app
 from temporal_agentic_factory.cli.coders import coders
 from temporal_agentic_factory.cli.distill import distill
 from temporal_agentic_factory.cli.errors import run_coro
@@ -61,3 +62,4 @@ app.command(name="cancel")(workflows.cancel)
 app.command(name="terminate")(workflows.terminate)
 app.command(name="health")(workflows.health)
 app.add_typer(beads_app, name="beads")
+app.add_typer(cleaner_app, name="cleaner")
