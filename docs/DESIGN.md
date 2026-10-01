@@ -671,26 +671,85 @@ cwd, so the database never depends on where a command is started.
 
 1. `af beads init` once: makes the folder and runs `bd init` there with the
    prefix `af`. A second run changes nothing; it prints the path.
-2. `af beads add "Fix the flaky test" --cwd ~/git/repo --provider opencode
-   [--model M] [--priority 0-4] [--body TEXT | --body-file F]` adds an open
-   bead and prints its id. Its routing lives on the bead as bd metadata:
-   `af_provider`, `af_cwd` (an absolute, existing folder) and `af_model`
-   (left out for the provider's default). A provider with no
-   `[providers.<name>]` table is refused.
+2. `af beads add "Fix the flaky test" --workdir ~/git/repo --provider opencode
+   [job options] [--priority 0-4] [--body TEXT | --body-file F]
+   [--after ID]... [--parent ID] [--label L]... [--type T] [--id ID]` adds an
+   open bead in one `bd create` call and prints its id only.
 3. The watcher (`af beads start`, see below; `af beads poll --once` runs one
    tick in the cli while debugging) takes ready beads by priority
-   (`bd ready --sort priority`, up to `[beads_watcher] batch_limit`), claims each one and starts its job
-   workflow `bead-<id>`. A ready bead with no provider or workdir in its
-   metadata, an unconfigured provider or a missing folder stays open; the
-   tick summary says why.
-4. Watch it with `af list` or the Temporal UI (the Name column is the bead
-   id). When the job completes, the next tick comments `[af] done: ...` on
-   the bead and closes it; a failed job leaves it in_progress with a note.
+   (`bd ready --sort priority`, up to `[beads_watcher] batch_limit`), claims
+   each one and starts its job workflow `bead-<id>-<attempt>`.
+4. Watch it with `af list` or the Temporal UI (the Name column is the job's
+   name, the bead id unless set). The next tick after the workflow ends
+   closes the bead or blocks it (below).
 
+**Job parameters.** A bead carries the same job options as `af run`:
+`provider`, `model`, `name`, `workdir`, `tools`, `timeout_sec`, `stall_sec`,
+`context_limit_tokens`, and `structured_output` (a JSON schema; when it is
+there the bead runs the job-with-structured-output workflow). They live in
+one bd metadata key, `af_job`, a JSON object. The prompt is never one of
+them: it is the bead's title and description. They can also be written as a
+front matter block at the very top of the description, cut from the prompt:
+
+```
+---
+provider: claude
+timeout_sec: 1800
+tools: Read,Edit,Bash
+structured_output: {"type": "object", "properties": {"ok": {"type": "boolean"}}}
+---
+The rest of the description is the prompt.
+```
+
+A value that starts with `{`, `[` or `"` is JSON; any other value is the
+text. Precedence, lowest first: Job's defaults (the settings) < front matter
+< `af_job`. `name` defaults to the bead id; `workdir` is required (absolute,
+`~` expanded, an existing folder); the provider must have a
+`[providers.<name>]` table. A bead whose parameters have an unknown key or a
+wrong value, or that misses one of these, stays open: the tick summary says
+why every tick, and the bead gets one `[af] skipped: ...` comment per
+distinct reason.
+
+`af beads add` writes only the job options given (`--workdir` also reads as
+`--cwd`; `--tools` is comma-separated; `--structured-output` is inline JSON
+or `@file`), and checks them, the provider included, before the bead is
+created. `af beads set ID [job options]` merges the options given into the
+bead's `af_job`; it is refused once the bead is in_progress or closed, as
+its job then runs or ran.
+
+**Chains.** `--after ID` (repeatable) makes the new bead depend on another,
+set in the same `bd create` call (`--deps`); `bd ready` leaves a bead out
+until everything it depends on is closed, so a chain runs one step after
+the other with nothing in af to track it. `--parent` puts the bead under an
+epic, `--label` (repeatable) and `--type` pass to bd, `--id` picks its id.
+
+**A failed step stops its chain.** When the workflow ends COMPLETED, the
+bead is closed (one `[af] done: ...` comment) only when the job outcome has
+a result, a report, and the report's verdict is `done`. Anything else, and a
+workflow that ended FAILED, TIMED_OUT, TERMINATED or CANCELED, marks the
+bead blocked with one `[af] blocked: <why>` comment. A blocked bead leaves
+in_progress, so no later tick comments on it again, and its dependents stay
+unready. The status is changed before the comment, so a failed change is
+retried next tick without a second comment.
+
+**Retry.** `af beads retry ID [--reason R]` takes a blocked bead: it
+comments `[af] retry[: R]` first, then sets the bead open. The watcher then
+spawns it again as attempt n+1, `bead-<id>-<n+1>` (n counts the
+`[af] workflow` markers so far), so the old run is never reused. Reconcile
+reads the latest marker after the latest retry. The comment goes first so a
+tick that spawns between the two steps still writes its marker after it.
+A bead can be fixed with `af beads set` while it is blocked, then retried.
+
+**The rest of bd.** `af beads bd <args...>` runs `bd <args...>` in the
+beads home with the arguments untouched (`--help` and `--` included) and
+passes stdout, stderr and the exit code through. Any `af beads <cmd>` that af
+does not define is forwarded the same way (`af beads dep tree af-1`). af's
+own names win (`init add set retry list show close ready poll start stop
+restart status bd`); `af beads bd status` reaches bd's own status.
 `af beads list`, `af beads show ID` and `af beads close ID [--reason R]`
 print what `bd` prints (`--json` passes through for list and show). Every
-command on the database, `ready`, `poll` and `start` stop with one line naming
-`af beads init` while the folder holds no database.
+command on the database, `ready`, `poll` and `start` stop with one line
+naming `af beads init` while the folder holds no database.
 
 ## Beads watcher
 
@@ -714,9 +773,10 @@ time, and history keeps only the last few.
   `trim_timeout_sec`, `checks_per_run`, which travel in the workflow's input),
   needs `af beads restart`.
 - **What it shows.** The query `last_check` answers the last tick: its time,
-  the spawned, closed, released, skipped and error counts, or the failure's
-  text. The keyword attribute `LastCheck` holds one short line of it
-  (`spawned 1 closed 0 released 0 skipped 0 errors 0`, or `tick failed`) and
+  the spawned, closed, blocked, released, skipped and error counts, or the
+  failure's text. The keyword attribute `LastCheck` holds one short line of it
+  (`spawned 1 closed 0 blocked 0 released 0 skipped 0 errors 0`, or
+  `tick failed`) and
   is upserted only when that line changes, so a quiet watcher's history stays
   small. `af beads start` registers the attribute when the server lacks it
   (an upsert of an unknown attribute would block the workflow).

@@ -8,17 +8,17 @@ AT = datetime(2026, 10, 1, tzinfo=UTC)
 
 def test_a_check_counts_what_the_tick_did() -> None:
     summary = PollSummary(
-        spawned=["a", "b"], closed=["c"], reopened=["d"], skipped={"e": "why"}, errors=["x"]
+        spawned=["a", "b"],
+        closed=["c"],
+        blocked=["f"],
+        reopened=["d"],
+        skipped={"e": "why"},
+        errors=["x"],
     )
     check = check_of(AT, summary)
-    assert (check.spawned, check.closed, check.released, check.skipped, check.errors) == (
-        2,
-        1,
-        1,
-        1,
-        1,
-    )
-    assert check.line() == "spawned 2 closed 1 released 1 skipped 1 errors 1"
+    counts = (check.spawned, check.closed, check.blocked, check.released, check.skipped)
+    assert (*counts, check.errors) == (2, 1, 1, 1, 1, 1)
+    assert check.line() == "spawned 2 closed 1 blocked 1 released 1 skipped 1 errors 1"
 
 
 def test_the_line_leaves_the_time_out_so_quiet_ticks_do_not_change_it() -> None:

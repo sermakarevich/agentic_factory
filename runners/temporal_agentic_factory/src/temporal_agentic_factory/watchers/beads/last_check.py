@@ -15,6 +15,7 @@ class LastCheck(BaseModel):
     at: datetime
     spawned: int = 0
     closed: int = 0
+    blocked: int = 0
     released: int = 0
     skipped: int = 0
     errors: int = 0
@@ -26,7 +27,8 @@ class LastCheck(BaseModel):
         if self.error:
             return FAILED_LINE
         return (
-            f"spawned {self.spawned} closed {self.closed} released {self.released}"
+            f"spawned {self.spawned} closed {self.closed} blocked {self.blocked}"
+            f" released {self.released}"
             f" skipped {self.skipped} errors {self.errors}"
         )
 
@@ -37,6 +39,7 @@ def check_of(at: datetime, summary: PollSummary) -> LastCheck:
         at=at,
         spawned=len(summary.spawned),
         closed=len(summary.closed),
+        blocked=len(summary.blocked),
         released=len(summary.reopened),
         skipped=len(summary.skipped),
         errors=len(summary.errors),

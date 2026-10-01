@@ -61,8 +61,11 @@ agentic_factory/
           research/           # activities (locate_target, read_candidates), workflow (the chain of jobs
                               # and child distill runs)
         watchers/             # long-running things that watch a state and start workflows
-          beads/              # client (bd calls on the database af owns), home ([beads].home), mapping,
-                              # models, poll, shell (`bd` subprocess), temporal, tick (the tick activity),
+          beads/              # client (bd calls on the database af owns), home ([beads].home),
+                              # models, shell (`bd` subprocess, captured or forwarded), markers (the
+                              # `[af] ...` comments), front_matter (the description's `---` block),
+                              # parameters (the af_job fields), mapping (bead to job), ending (close
+                              # or block a finished bead), poll, temporal, tick (the tick activity),
                               # last_check (the query and LastCheck line), trim (old runs deleted),
                               # workflow (the beads_watcher loop), control (start, stop, status),
                               # legacy (the old beads-poll schedule)
@@ -71,8 +74,10 @@ agentic_factory/
                               # providers (refuses a provider with no settings table), workflows
                               # (status, result, list, cancel, terminate, health)
           beads/              # app (the `af beads` group), opened (the configured database),
-                              # database (init, add, list, show, close), poller (ready,
-                              # poll --once), watcher (start, stop, restart, status)
+                              # job_options (the `af run` job options add and set share), submit
+                              # (add, set, retry), database (init, list, show, close), poller
+                              # (ready, poll --once), watcher (start, stop, restart, status),
+                              # forward (`bd ...` and unknown commands passed to bd)
         settings/             # server address, activity limits, [providers.<name>] coder limits, one table per workflow
                               # and activity ([job_activity], [distill_workflow],
                               # [research_workflow], [locate_activity], [candidates_activity], ...)

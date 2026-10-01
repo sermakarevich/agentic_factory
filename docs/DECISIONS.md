@@ -707,3 +707,35 @@ sources one module per kind** (Oct 1).
   `af beads start` removes the legacy schedule. Rejected: keeping the
   Schedule with a shorter namespace retention (still thousands of rows and a
   server-wide setting), and an in-process daemon (dies with its terminal).
+- **A bead's job parameters are one `af_job` metadata object, with front
+  matter under it** (2026-10-01). The flat `af_provider`/`af_cwd`/`af_model`
+  keys covered three of Job's fields; now a bead sets any of `provider`,
+  `model`, `name`, `workdir`, `tools`, `timeout_sec`, `stall_sec`,
+  `context_limit_tokens` and `structured_output` (which picks the
+  structured-output workflow), in one JSON object so `bd update --metadata`
+  replaces it whole and other metadata keys stay. A `---` front matter block
+  at the top of the description gives the same fields for hand-written
+  beads; precedence is Job's defaults < front matter < `af_job`. Unknown keys
+  and bad values skip the bead with one comment per reason, not one per
+  tick. `af beads add` takes `af run`'s job options and `af beads set`
+  merges them into a waiting bead. No compatibility for the flat keys: the
+  database is a day old. Rejected: one metadata key per field (no way to
+  validate unknown keys, and a structured-output schema in a flat value).
+- **Chains are bd dependencies; a failed step blocks its bead** (2026-10-01).
+  `af beads add --after ID` sets the dependency in the same `bd create`, and
+  `bd ready` already holds back dependents of beads that are not closed, so
+  af tracks nothing. A bead is closed only when its workflow completed with a
+  result and a `done` verdict; anything else blocks it with one
+  `[af] blocked: ...` comment, which stops its chain and ends the repeated
+  "left in_progress" notes. `af beads retry` comments `[af] retry` and then
+  reopens it; the next spawn is `bead-<id>-<n>` with n counted from the
+  markers, so a retry never collides with the old run. Rejected: closing on
+  COMPLETED alone (a coder that gave up would release its dependents), and
+  one workflow per chain (a second copy of what bd already knows).
+- **The rest of bd is forwarded, not wrapped** (2026-10-01). `af beads bd
+  <args...>` runs bd in the beads home with the arguments untouched and its
+  output and exit code passed through; any `af beads <cmd>` af does not
+  define falls through to it (a group whose `resolve_command` falls back to
+  `bd`). af's own names win, so `af beads bd status` is the way to bd's.
+  Rejected: wrapping each bd command (always behind bd), and telling users to
+  `cd ~/.agentic_factory/beads && bd ...` (easy to run in the wrong folder).

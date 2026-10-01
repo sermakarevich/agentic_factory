@@ -1,4 +1,4 @@
-"""The beads side of af: ready beads, claims, markers, closes, new beads.
+"""The beads side of af: ready beads, claims, comments, closes, blocks, new beads.
 
 Every call is `bd ...` run in the database's home (`[beads].home`), and every
 call but `init` first checks that the home holds a database: `bd` would
@@ -8,25 +8,16 @@ with missing keys: `bd --json` shapes drift.
 
 import contextlib
 import json
-from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
-from temporal_agentic_factory.watchers.beads.models import Bead, BeadState
+from temporal_agentic_factory.watchers.beads.models import Bead, BeadOptions, BeadState, Status
 from temporal_agentic_factory.watchers.beads.shell import BeadsError, Run
 
-MARKER_PREFIX = "[af] workflow "
+JOB_KEY = "af_job"  # the bead metadata key holding the job's parameters
 DATABASE_FOLDER = ".beads"
 PREFIX = "af"
 INIT = ["init", "--prefix", PREFIX, "--non-interactive", "--quiet", "--skip-agents", "--skip-hooks"]
-
-
-class MetadataKey(StrEnum):
-    """The bead metadata keys that route a bead to a job."""
-
-    PROVIDER = "af_provider"
-    CWD = "af_cwd"
-    MODEL = "af_model"
 
 
 class NotInitialised(BeadsError):
@@ -59,13 +50,13 @@ class BeadsClient:
         return True
 
     def ready(self, limit: int) -> list[Bead]:
-        """Startable beads with their routing metadata, highest priority first."""
+        """Startable beads with their job parameters, highest priority first."""
         rows = self._json(["ready", "--sort", "priority", "-n", str(limit)])
         return [_bead_of(row) for row in _rows_with_id(rows)]
 
     def in_progress(self, limit: int) -> list[BeadState]:
         """Beads currently worked on, each with its comments for marker scans."""
-        rows = self._json(["list", "--status", "in_progress", "--limit", str(limit)])
+        rows = self._json(["list", "--status", Status.IN_PROGRESS, "--limit", str(limit)])
         return [
             BeadState(
                 id=str(row["id"]),
@@ -92,16 +83,30 @@ class BeadsClient:
                         break
         return bodies
 
+    def bead(self, bead_id: str) -> Bead:
+        """One bead as `bd show` reads it; raises BeadsError when there is none."""
+        rows = _rows_with_id(_listed(self._json(["show", bead_id])))
+        if not rows:
+            raise BeadsError(f"no bead {bead_id}")
+        return _bead_of(rows[0])
+
     def create(
-        self, title: str, description: str, priority: int, provider: str, cwd: str, model: str
+        self,
+        title: str,
+        description: str,
+        priority: int,
+        job_fields: dict[str, Any],
+        options: BeadOptions,
     ) -> str:
-        """A new open bead routed by its metadata; its id."""
-        metadata = {MetadataKey.PROVIDER: provider, MetadataKey.CWD: cwd}
-        if model:
-            metadata[MetadataKey.MODEL] = model
+        """A new open bead with its job parameters as `af_job` metadata; its id."""
         args = ["create", "--title", title, "--description", description]
-        args += ["--priority", str(priority), "--metadata", json.dumps(metadata), "--silent"]
+        args += ["--priority", str(priority), *_option_args(options)]
+        args += ["--metadata", json.dumps({JOB_KEY: job_fields}), "--silent"]
         return self._bd(args).strip()
+
+    def set_job_fields(self, bead_id: str, job_fields: dict[str, Any]) -> None:
+        """The bead's `af_job` replaced; bd merges metadata by key, so others stay."""
+        self._bd(["update", bead_id, "--metadata", json.dumps({JOB_KEY: job_fields})])
 
     def claim(self, bead_id: str) -> None:
         """Take one bead to in_progress; raises BeadsError when it is already taken."""
@@ -112,6 +117,10 @@ class BeadsClient:
         with contextlib.suppress(BeadsError):
             self._bd(["comment", bead_id, text])
 
+    def note(self, bead_id: str, text: str) -> None:
+        """A comment that must land before the next step; raises BeadsError when it fails."""
+        self._bd(["comment", bead_id, text])
+
     def close(self, bead_id: str) -> None:
         """Close a finished bead; raises BeadsError when it fails."""
         self._bd(["close", bead_id])
@@ -119,6 +128,14 @@ class BeadsClient:
     def reopen(self, bead_id: str) -> None:
         """Release an orphaned claim back to open; raises BeadsError when it fails."""
         self._bd(["reopen", bead_id])
+
+    def block(self, bead_id: str) -> None:
+        """Mark a bead blocked, so it and its dependents stay unready; raises BeadsError."""
+        self._bd(["update", bead_id, "--status", Status.BLOCKED])
+
+    def unblock(self, bead_id: str) -> None:
+        """A blocked bead back to open, ready again; raises BeadsError when it fails."""
+        self._bd(["update", bead_id, "--status", Status.OPEN])
 
     def output(self, args: list[str]) -> str:
         """`bd <args>` stdout as is, for the cli to print."""
@@ -144,43 +161,47 @@ def _parsed(raw: str) -> Any:
     return parsed
 
 
+def _listed(rows: Any) -> list[Any]:
+    """`bd show` answers a list of one, or the row itself."""
+    return rows if isinstance(rows, list) else [rows]
+
+
 def _rows_with_id(rows: Any) -> list[dict[str, Any]]:
     """The rows that are objects with an id; anything else is dropped."""
     listed = rows if isinstance(rows, list) else []
     return [row for row in listed if isinstance(row, dict) and row.get("id")]
 
 
+def _option_args(options: BeadOptions) -> list[str]:
+    """The `bd create` flags for the options that are set."""
+    args = ["--deps", ",".join(options.after)] if options.after else []
+    args += ["--parent", options.parent] if options.parent else []
+    args += ["--labels", ",".join(options.labels)] if options.labels else []
+    args += ["--type", options.type] if options.type else []
+    args += ["--id", options.id] if options.id else []
+    return args
+
+
 def _bead_of(row: dict[str, Any]) -> Bead:
-    """One `bd ready` row as a Bead, its routing read from the metadata."""
-    metadata = _metadata_of(row)
+    """One `bd ready`/`bd show` row as a Bead, its job parameters as stored."""
     return Bead(
         id=str(row["id"]),
         title=str(row.get("title") or ""),
         description=str(row.get("description") or ""),
-        provider=str(metadata.get(MetadataKey.PROVIDER) or ""),
-        model=str(metadata.get(MetadataKey.MODEL) or ""),
-        cwd=str(metadata.get(MetadataKey.CWD) or ""),
+        status=str(row.get("status") or ""),
+        job_fields=_json_or_as_is(_metadata_of(row).get(JOB_KEY)),
     )
 
 
 def _metadata_of(row: dict[str, Any]) -> dict[str, Any]:
     """A row's metadata as a dict: an object, a JSON string of one, or {}."""
-    metadata = row.get("metadata")
-    if isinstance(metadata, str):
-        with contextlib.suppress(ValueError):
-            metadata = json.loads(metadata)
+    metadata = _json_or_as_is(row.get("metadata"))
     return metadata if isinstance(metadata, dict) else {}
 
 
-def marker_for(comments: list[str]) -> str | None:
-    """The workflow id our spawn marker names, if any comment carries one."""
-    for text in reversed(comments):
-        at = text.find(MARKER_PREFIX)
-        if at >= 0:
-            return text[at + len(MARKER_PREFIX) :].split()[0]
-    return None
-
-
-def marker(workflow_id: str) -> str:
-    """The comment a spawn leaves so later ticks recognize their own beads."""
-    return f"{MARKER_PREFIX}{workflow_id}"
+def _json_or_as_is(value: Any) -> Any:
+    """A JSON string parsed; anything else, or a string that is not JSON, as is."""
+    if isinstance(value, str):
+        with contextlib.suppress(ValueError):
+            return json.loads(value)
+    return value

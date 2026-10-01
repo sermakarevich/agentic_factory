@@ -16,6 +16,10 @@ BEADS_DIR = "BEADS_DIR"
 Run = Callable[[list[str], Path, int], str]
 """`bd <args>` in a cwd within a timeout: its stdout. `run_bd` for real, a fake in tests."""
 
+Forward = Callable[[list[str], Path], int]
+"""`bd <args>` in a cwd on our own stdin, stdout and stderr: its exit code.
+`forward_bd` for real, a fake in tests."""
+
 
 class BeadsError(RuntimeError):
     """A failed beads call: the command, its stderr, and its return code."""
@@ -56,6 +60,18 @@ def run_bd(args: list[str], cwd: Path, timeout_sec: int) -> str:
             f"bd {' '.join(args)} failed (rc={done.returncode}): {done.stderr.strip()}"
         )
     return done.stdout
+
+
+def forward_bd(args: list[str], cwd: Path) -> int:
+    """`bd <args>` run in `cwd` with nothing captured and no timeout, as if
+    typed there; its exit code. Raises BeadsError when `bd` cannot start."""
+    try:
+        done = subprocess.run(
+            [bd_bin(), *args], cwd=cwd, env=_without_beads_dir(os.environ), check=False
+        )
+    except FileNotFoundError as error:
+        raise BeadsError(f"bd executable not found: {error}") from error
+    return done.returncode
 
 
 def _without_beads_dir(env: Mapping[str, str]) -> dict[str, str]:

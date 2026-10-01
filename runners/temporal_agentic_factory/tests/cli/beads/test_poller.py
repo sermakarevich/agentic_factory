@@ -19,7 +19,7 @@ def _bd(monkeypatch: Any, home: Path, bd: FakeBd) -> FakeBd:
 
 def test_ready_prints_the_beads_the_next_tick_would_pull(monkeypatch: Any, tmp_path: Path) -> None:
     (tmp_path / ".beads").mkdir()
-    rows = [{"id": "af-1", "title": "T", "metadata": {"af_provider": "opencode"}}]
+    rows = [{"id": "af-1", "title": "T", "metadata": {"af_job": {"provider": "opencode"}}}]
     bd = _bd(monkeypatch, tmp_path, FakeBd({"ready": rows}))
     result = CliRunner().invoke(app, ["beads", "ready"])
     assert result.exit_code == 0, result.output
