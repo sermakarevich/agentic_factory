@@ -799,3 +799,15 @@ sources one module per kind** (Oct 1).
   context, nothing to review per chapter), an unbounded review loop (cost
   with no end), and failing the run on one bad chapter (the rest is worth
   keeping).
+- **One `af run <workflow>` verb** (2026-10-01). Every workflow starts the
+  same way: `af run job "<prompt>"`, `af run research ...`, `af run distill
+  <source>`, `af run tutorial "<topic>"`, each with exactly the arguments and
+  options it had. The workflow names are listed and completed: `cli/run.py`
+  registers them on one group, the only list (a new workflow is one line),
+  `af run` and `af run --help` show each with one line, the shell completes
+  them, and an unknown name fails naming the choices, with a hint to `af run
+  job` when it looks like an old-style prompt. The top-level `af research`,
+  `af distill` and `af tutorial` are gone with no aliases. Rejected: keeping
+  the old commands as aliases (two spellings of everything in the docs and
+  the help) and guessing that an unknown first argument is a job prompt (a
+  typo in a workflow name would start a coder on it).

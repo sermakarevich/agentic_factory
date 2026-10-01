@@ -57,9 +57,9 @@ coders:
 coders-stop:
     for pid in $(pgrep -f '^(\S*python\S* |uv run )?(\S*/)?(factory|af) coders( |$)'); do kill "$pid" && echo "coders $pid stopped"; done
 
-# start one job on Temporal and wait for it: just run "prompt" [--provider claude] [--model ...]
+# start one job on Temporal and wait for it (`af run job`): just run "prompt" [--provider claude] [--model ...]
 run *ARGS:
-    uv run factory run "$@"
+    uv run factory run job "$@"
 
 # Temporal dev server: one binary, SQLite file, web UI. Data survives restarts.
 # Use the IP, not "localhost": that resolves to ::1 first on macOS and the server is IPv4 only.

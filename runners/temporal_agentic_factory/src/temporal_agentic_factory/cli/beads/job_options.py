@@ -1,4 +1,4 @@
-"""The job options `af beads add` and `af beads set` share with `af run`, and the
+"""The job options `af beads add` and `af beads set` share with `af run job`, and the
 `af_job` fields they make: only the options given, validated before any
 bead is written."""
 

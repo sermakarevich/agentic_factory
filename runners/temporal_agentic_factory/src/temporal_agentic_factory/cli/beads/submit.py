@@ -29,7 +29,7 @@ BeadIdArgument = Annotated[str, typer.Argument(help="the bead id, e.g. af-1x2")]
 SETTLED = (Status.IN_PROGRESS, Status.CLOSED)  # a job runs or ran: its options are spent
 
 
-def add(  # noqa: PLR0913 - one parameter per option, as `af run` has them
+def add(  # noqa: PLR0913 - one parameter per option, as `af run job` has them
     title: Annotated[str, typer.Argument(help="what the coder is asked, in one line")],
     provider: ProviderOption = None,
     model: ModelOption = None,
@@ -88,7 +88,7 @@ def add(  # noqa: PLR0913 - one parameter per option, as `af run` has them
     typer.echo(created)
 
 
-def set_job(  # noqa: PLR0913 - one parameter per option, as `af run` has them
+def set_job(  # noqa: PLR0913 - one parameter per option, as `af run job` has them
     bead_id: BeadIdArgument,
     provider: ProviderOption = None,
     model: ModelOption = None,

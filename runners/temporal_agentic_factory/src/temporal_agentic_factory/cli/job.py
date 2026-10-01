@@ -1,4 +1,4 @@
-"""The `run` command: one job submitted to Temporal, waited for by default."""
+"""The `af run job` command: one job submitted to Temporal, waited for by default."""
 
 from typing import Annotated
 

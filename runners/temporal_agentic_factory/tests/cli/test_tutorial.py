@@ -50,7 +50,7 @@ def _request(client: FakeClient) -> TutorialRequest:
 
 
 def test_help_names_every_option() -> None:
-    result = CliRunner().invoke(app, ["tutorial", "--help"])
+    result = CliRunner().invoke(app, ["run", "tutorial", "--help"])
 
     assert result.exit_code == 0
     for option in ("--name", "--formats", "--level", "--review-rounds", "--detach"):
@@ -60,7 +60,7 @@ def test_help_names_every_option() -> None:
 def test_detach_prints_the_workflow_id(monkeypatch: Any) -> None:
     client = _client(monkeypatch)
 
-    result = CliRunner().invoke(app, ["tutorial", "Grafana dashboards", "--detach"])
+    result = CliRunner().invoke(app, ["run", "tutorial", "Grafana dashboards", "--detach"])
 
     assert result.exit_code == 0
     assert client.kwargs["id"].startswith("tutorial-grafana-dashboards-")
@@ -73,7 +73,7 @@ def test_detach_prints_the_workflow_id(monkeypatch: Any) -> None:
 def test_options_left_out_keep_the_settings_defaults(monkeypatch: Any) -> None:
     client = _client(monkeypatch)
 
-    result = CliRunner().invoke(app, ["tutorial", "Grafana dashboards", "--detach"])
+    result = CliRunner().invoke(app, ["run", "tutorial", "Grafana dashboards", "--detach"])
 
     assert result.exit_code == 0
     request = _request(client)
@@ -91,6 +91,7 @@ def test_the_options_pass_through(monkeypatch: Any) -> None:
     result = CliRunner().invoke(
         app,
         [
+            "run",
             "tutorial",
             "Grafana dashboards",
             "--name",
@@ -125,7 +126,9 @@ def test_the_options_pass_through(monkeypatch: Any) -> None:
 def test_a_bad_level_is_refused(monkeypatch: Any) -> None:
     client = _client(monkeypatch)
 
-    result = CliRunner().invoke(app, ["tutorial", "Grafana", "--level", "expert", "--detach"])
+    result = CliRunner().invoke(
+        app, ["run", "tutorial", "Grafana", "--level", "expert", "--detach"]
+    )
 
     assert result.exit_code != 0
     assert client.args == ()

@@ -1,3 +1,5 @@
+"""The `af run distill` command: one source submitted to Temporal, waited for by default."""
+
 from typing import Annotated, Any
 
 import typer

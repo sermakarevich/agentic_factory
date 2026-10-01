@@ -1,4 +1,5 @@
-"""The `research` command: one focus question submitted to Temporal, waited for by default."""
+"""The `af run research` command: one focus question submitted to Temporal, waited for
+by default."""
 
 from typing import Annotated
 

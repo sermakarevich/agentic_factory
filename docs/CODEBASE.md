@@ -82,12 +82,13 @@ agentic_factory/
         cleaner/              # rules (the summary models and which runs one rule deletes, pure),
                               # clean (the clean_history activity: list, select, delete), workflow
                               # (cleaner: one clean), schedule (the cleaner schedule: start, status)
-        cli/                  # app (the `af` typer app), one module per subject (job: `run`, distill,
-                              # research, tutorial, coders), errors, ids (readable workflow ids), options,
-                              # providers (refuses a provider with no settings table), workflows
+        cli/                  # app (the `af` typer app), run (the `af run` group: the one list of
+                              # workflows), one module per subject (job, distill, research,
+                              # tutorial: `af run <workflow>`; coders), errors, ids (readable
+                              # workflow ids), options, providers (refuses a provider with no settings table), workflows
                               # (status, result, list, cancel, terminate, health)
           beads/              # app (the `af beads` group), opened (the configured database),
-                              # job_options (the `af run` job options add and set share), submit
+                              # job_options (the `af run job` options add and set share), submit
                               # (add, set, retry), database (init, list, show, close), poller
                               # (ready, poll --once), watcher (start, stop, restart, status of the schedule),
                               # forward (`bd ...` and unknown commands passed to bd)
@@ -161,8 +162,8 @@ runner's tutorial workflow orders its jobs.
 **runners/temporal_agentic_factory** owns the engine binding and the
 workflows. It wraps app functions as Temporal activities, implements the
 workflows that compose them (the job workflow, the job with structured
-output, distill, research, tutorial) and exposes the CLI (`runner`, `coders`, `run`,
-`distill`, `research`, `tutorial`, `beads`, `attributes`). It is grouped by role, then by subject
+output, distill, research, tutorial) and exposes the CLI (`runner`, `coders`, `run job|research|distill|tutorial`,
+`beads`, `cleaner`, `attributes`). It is grouped by role, then by subject
 inside each role: `workflows/` holds one folder per workflow with its
 activities, `watchers/` the things that watch a state and start
 workflows (the beads poll schedule), `cleaner/` the schedule that deletes old

@@ -54,6 +54,7 @@ def test_detach_prints_the_workflow_id(monkeypatch: Any) -> None:
     result = CliRunner().invoke(
         app,
         [
+            "run",
             "research",
             "agents",
             "--focus",
@@ -79,6 +80,7 @@ def test_the_request_splits_comma_lists_and_keeps_defaults(monkeypatch: Any) -> 
     result = CliRunner().invoke(
         app,
         [
+            "run",
             "research",
             "agents,safety",
             "--focus",
@@ -112,6 +114,7 @@ def test_n_sources_and_workflow_id_pass_through(monkeypatch: Any) -> None:
     result = CliRunner().invoke(
         app,
         [
+            "run",
             "research",
             "agents",
             "--focus",

@@ -307,12 +307,18 @@ roles share (`runner.py`, `coders.py`, `other_coders.py`, `client.py`, `identity
   for the engine's part: server address, namespace, task queue, activity
   margins, retry policy, concurrency. Precedence for a job field: CLI
   override, then app settings.
-- `factory run PROMPT [--workdir] [--provider] [--model] [--timeout-sec]
+- `af run <workflow> ...` is the one verb that starts a workflow
+  (`cli/run.py`, the only place the workflows are listed): `job`, `research`,
+  `distill`, `tutorial`. `af run` and `af run --help` list them with one line
+  each, the shell completes their names, and a name it does not know fails
+  with `unknown workflow 'x'; choose from: job, research, distill, tutorial`
+  (plus `to run a job: af run job "<prompt>"` when it looks like a prompt).
+- `factory run job PROMPT [--workdir] [--provider] [--model] [--timeout-sec]
   [--stall-sec] [--context-limit-tokens] [--tools]` starts one job and
   waits; `just run` at the root. A provider with no `[providers.<name>]`
   table is refused at start (`cli/providers.py`): nothing would poll its
   coder queue, so the job would wait forever. The workdir is made absolute by the CLI and
-  created by the job engine. `factory distill URL [--topic]
+  created by the job engine. `factory run distill URL [--topic]
   [--chunk-chars] [--research-target] [--target-dir]` starts the distill
   workflow and waits. `factory runner` polls.
 - Workflow ids are readable (`cli/ids.py`, one function):
@@ -522,7 +528,7 @@ logic:
   mapped to a retryable `ApplicationError` only when it says `transient`;
   `verify_entry`: the app's check on a thread), `workflows/distill/workflow.py`
   (`DistillWorkflow`, type name `distill`) and the
-  `cli/distill.py` command `factory distill URL [--topic] [--chunk-chars] [--research-target]
+  `cli/distill.py` command `factory run distill URL [--topic] [--chunk-chars] [--research-target]
   [--target-dir]` command.
 
 The workflow orders the app's steps: fetch (activity, under
@@ -564,7 +570,7 @@ readable, all Temporal features, none of them history-changing:
   `index: verifying, attempt 2 of 3`, `done: /path`. It is workflow
   metadata, not history, so it costs nothing on replay.
 - The run itself has a **static summary** at start: the source URL of a
-  distill run, the job's name of a `factory run --name`.
+  distill run, the job's name of a `factory run job --name`.
 
 - Each workflow has a readable id (`distill-arxiv-org-2401-01234-4f2a`) and
   the `Name` search attribute, so `af list` and the UI's list show what a
@@ -617,7 +623,7 @@ The runner half lives in `runners/temporal_agentic_factory/workflows/research/`:
 `activities.py` (`locate_target`: the topic checked as the child distill
 runs check it, then the run's folder made; `read_candidates`: the discover
 file read back and validated), `workflow.py` (`ResearchWorkflow`, type name
-`research`); the `factory research` command is `cli/research.py`. The workflow is a short
+`research`); the `factory run research` command is `cli/research.py`. The workflow is a short
 story of one small function per stage over the app's `Research` state and
 holds no domain logic: it converts the app's question dicts to judge
 questions and the judge's answers to plain values, nothing more. There is
@@ -652,13 +658,13 @@ job names label the run in the UI the way distill's do. The table also
 holds `sources_at_once`, and `[locate_activity]` and
 `[candidates_activity]` bound the two short activities.
 
-`factory research TOPICS --focus FOCUS --target TARGET --topic TOPIC
+`factory run research TOPICS --focus FOCUS --target TARGET --topic TOPIC
 [--n-sources] [--lenses] [--date-from] [--kinds] [--detach]
 [--workflow-id]` starts one run and waits, printing the `ResearchedTopic`
 as JSON:
 
 ```
-factory research agents,safety \
+factory run research agents,safety \
   --focus "What can coding agents do for literature review, for researchers?" \
   --target literature-review --topic agents --lenses tech,ai
 ```
@@ -718,7 +724,7 @@ status, rewrites and last problems, plus the cost and tokens summed per
 chapter and in total. There is no human gate.
 
 ```
-af tutorial "Grafana dashboards for beginners" --name grafana --formats md,ipynb --level beginner
+af run tutorial "Grafana dashboards for beginners" --name grafana --formats md,ipynb --level beginner
 ```
 
 waits and prints the `TutorialOutcome` as JSON; `--detach` prints the
@@ -746,7 +752,7 @@ cwd, so the database never depends on where a command is started.
    name, the bead id unless set). The next tick after the workflow ends
    closes the bead or blocks it (below).
 
-**Job parameters.** A bead carries the same job options as `af run`:
+**Job parameters.** A bead carries the same job options as `af run job`:
 `provider`, `model`, `name`, `workdir`, `tools`, `timeout_sec`, `stall_sec`,
 `context_limit_tokens`, and `structured_output` (a JSON schema; when it is
 there the bead runs the job-with-structured-output workflow). They live in

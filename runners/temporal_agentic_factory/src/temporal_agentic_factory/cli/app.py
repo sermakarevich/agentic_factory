@@ -9,11 +9,8 @@ from temporal_agentic_factory.cli import workflows
 from temporal_agentic_factory.cli.beads.app import beads_app
 from temporal_agentic_factory.cli.cleaner import cleaner_app
 from temporal_agentic_factory.cli.coders import coders
-from temporal_agentic_factory.cli.distill import distill
 from temporal_agentic_factory.cli.errors import run_coro
-from temporal_agentic_factory.cli.job import run
-from temporal_agentic_factory.cli.research import research
-from temporal_agentic_factory.cli.tutorial import tutorial
+from temporal_agentic_factory.cli.run import run_app
 from temporal_agentic_factory.client import connect
 from temporal_agentic_factory.identity import runner_identity
 from temporal_agentic_factory.runner import serve
@@ -52,10 +49,6 @@ async def _registered_attributes() -> list[str]:
 
 
 app.command()(coders)
-app.command()(run)
-app.command()(distill)
-app.command()(research)
-app.command()(tutorial)
 app.command(name="status")(workflows.status)
 app.command(name="describe")(workflows.status)
 app.command(name="result")(workflows.result)
@@ -63,5 +56,6 @@ app.command(name="list")(workflows.list_workflows)
 app.command(name="cancel")(workflows.cancel)
 app.command(name="terminate")(workflows.terminate)
 app.command(name="health")(workflows.health)
+app.add_typer(run_app, name="run")
 app.add_typer(beads_app, name="beads")
 app.add_typer(cleaner_app, name="cleaner")

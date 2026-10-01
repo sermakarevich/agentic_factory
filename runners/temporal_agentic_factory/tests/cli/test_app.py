@@ -2,6 +2,8 @@ import re
 
 import pytest
 import typer
+import typer.main
+from typer._completion_classes import BashComplete
 from typer.testing import CliRunner
 
 from temporal_agentic_factory.cli.app import app
@@ -13,6 +15,8 @@ from temporal_agentic_factory.cli.errors import (
 from temporal_agentic_factory.cli.ids import new_id
 from temporal_agentic_factory.settings.load import settings
 
+WORKFLOWS = ("job", "research", "distill", "tutorial")
+
 
 def test_cli_lists_commands() -> None:
     result = CliRunner().invoke(app, ["--help"])
@@ -20,21 +24,60 @@ def test_cli_lists_commands() -> None:
     assert "runner" in result.output and "coders" in result.output
 
 
+def test_cli_run_lists_every_workflow() -> None:
+    for args in (["run"], ["run", "--help"]):
+        listing = CliRunner().invoke(app, args).output
+        for workflow in WORKFLOWS:
+            assert workflow in listing
+
+
+def test_cli_run_reaches_every_workflow() -> None:
+    for workflow in WORKFLOWS:
+        result = CliRunner().invoke(app, ["run", workflow, "--help"])
+        assert result.exit_code == 0, workflow
+        assert "--detach" in result.output and "--workflow-id" in result.output
+
+
+def test_cli_run_refuses_an_unknown_workflow() -> None:
+    result = CliRunner().invoke(app, ["run", "x"])
+    assert result.exit_code == 1
+    assert "unknown workflow 'x'; choose from: job, research, distill, tutorial" in result.output
+    assert "to run a job" not in result.output
+
+
+def test_cli_run_hints_the_job_form_for_an_old_style_prompt() -> None:
+    result = CliRunner().invoke(app, ["run", "some prompt", "--detach"])
+    assert result.exit_code == 1
+    assert "unknown workflow 'some prompt'; choose from: job, research, distill" in result.output
+    assert 'to run a job: af run job "<prompt>"' in result.output
+
+
+def test_cli_run_completes_the_workflow_names() -> None:
+    complete = BashComplete(typer.main.get_command(app), {}, "af", "_AF_COMPLETE")
+    assert [item.value for item in complete.get_completions(["run"], "")] == list(WORKFLOWS)
+    assert [item.value for item in complete.get_completions(["run"], "t")] == ["tutorial"]
+
+
+def test_cli_has_no_top_level_workflow_commands() -> None:
+    for workflow in ("research", "distill", "tutorial"):
+        assert CliRunner().invoke(app, [workflow, "--help"]).exit_code != 0, workflow
+
+
 def test_cli_offers_distill() -> None:
-    result = CliRunner().invoke(app, ["distill", "--help"])
+    result = CliRunner().invoke(app, ["run", "distill", "--help"])
     assert result.exit_code == 0
     assert "--topic" in result.output and "--research-target" in result.output
     assert "--target-dir" in result.output
 
 
 def test_cli_run_takes_a_job_name() -> None:
-    result = CliRunner().invoke(app, ["run", "--help"])
+    result = CliRunner().invoke(app, ["run", "job", "--help"])
     assert result.exit_code == 0
     assert "--name" in result.output
 
 
 def test_cli_run_offers_detach_and_workflow_id() -> None:
-    result = CliRunner().invoke(app, ["run", "--help"])
+    result = CliRunner().invoke(app, ["run", "job", "--help"])
     assert result.exit_code == 0
     assert "--detach" in result.output
     assert "--workflow-id" in result.output
@@ -42,7 +85,7 @@ def test_cli_run_offers_detach_and_workflow_id() -> None:
 
 
 def test_cli_distill_offers_detach_and_workflow_id() -> None:
-    result = CliRunner().invoke(app, ["distill", "--help"])
+    result = CliRunner().invoke(app, ["run", "distill", "--help"])
     assert result.exit_code == 0
     assert "--detach" in result.output
     assert "--workflow-id" in result.output
@@ -89,7 +132,7 @@ def test_new_id_cuts_a_long_name_to_the_slug_length() -> None:
 
 
 def test_run_refuses_a_provider_with_no_settings_table() -> None:
-    result = CliRunner().invoke(app, ["run", "hi", "--provider", "codex", "--detach"])
+    result = CliRunner().invoke(app, ["run", "job", "hi", "--provider", "codex", "--detach"])
     assert result.exit_code == 1
     assert "provider 'codex' has no [providers.codex] table" in result.output
     assert "configured: claude, opencode" in result.output

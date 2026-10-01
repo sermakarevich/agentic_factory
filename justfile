@@ -61,7 +61,7 @@ coders:
 coders-stop:
     just --justfile runners/temporal_agentic_factory/justfile --working-directory runners/temporal_agentic_factory coders-stop
 
-# Start one job on Temporal and wait for it (needs `just temporal`, `just runner` and `just coders`): just run "prompt" --model ...
+# Start one job on Temporal and wait for it (`af run job`; needs `just temporal`, `just runner` and `just coders`): just run "prompt" --model ...
 run *ARGS:
     just --justfile runners/temporal_agentic_factory/justfile --working-directory runners/temporal_agentic_factory run "$@"
 

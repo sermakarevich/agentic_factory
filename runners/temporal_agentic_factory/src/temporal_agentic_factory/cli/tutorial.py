@@ -1,4 +1,4 @@
-"""The `tutorial` command: one topic submitted to Temporal, waited for by default."""
+"""The `af run tutorial` command: one topic submitted to Temporal, waited for by default."""
 
 from typing import Annotated
 

@@ -15,7 +15,7 @@ def test_the_pattern_matches_a_coders_process_and_not_a_prompt_naming_it() -> No
     ):
         assert re.search(CODERS_COMMAND, command), command
     for command in (
-        "/repo/.venv/bin/af run Run `factory coders` once",
+        "/repo/.venv/bin/af run job Run `factory coders` once",
         "/repo/.venv/bin/factory runner",
         "sh -c nohup uv run factory coders > coders.log 2>&1 &",
         "/bin/zsh -c uv run factory coders",
