@@ -13,8 +13,10 @@ SETTINGS_FILES = ["settings.toml", "settings.local.toml"]  # in the package's se
 
 def load[T: Table](model: type[T], folder: Path) -> T:
     """The package's settings.toml in `folder`, then its settings.local.toml
-    over it, then the environment over both, as `model`."""
-    return model.model_validate(_tables(_raw_values(folder)))
+    over it, then the environment over both, as `model`. Only the model's
+    own tables are kept: the `AF_` prefix is shared by every package, so
+    `AF_STORE__URL` reaches packages that have no `[store]` table."""
+    return model.model_validate(_tables(_raw_values(folder), set(model.model_fields)))
 
 
 def _raw_values(folder: Path) -> dict[str, Any]:
@@ -29,7 +31,11 @@ def _raw_values(folder: Path) -> dict[str, Any]:
     return values
 
 
-def _tables(values: dict[str, Any]) -> dict[str, Any]:
-    """The tables only, named as the file names them: dynaconf upper-cases
-    the keys and adds its own scalar options (`LOAD_DOTENV`)."""
-    return {key.lower(): value for key, value in values.items() if isinstance(value, dict)}
+def _tables(values: dict[str, Any], names: set[str]) -> dict[str, Any]:
+    """The tables named in `names`, named as the file names them: dynaconf
+    upper-cases the keys and adds its own scalar options (`LOAD_DOTENV`)."""
+    return {
+        key.lower(): value
+        for key, value in values.items()
+        if isinstance(value, dict) and key.lower() in names
+    }

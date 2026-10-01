@@ -40,3 +40,10 @@ def test_a_misspelled_key_is_refused(tmp_path: Path) -> None:
 def test_the_shared_values_are_typed() -> None:
     assert isinstance(shared, SharedSettings)
     assert shared.store.url.startswith("postgresql+asyncpg://")
+
+
+def test_another_package_table_in_the_environment_is_ignored(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("AF_STORE__URL", "sqlite:///elsewhere")
+    assert load(DemoSettings, folder_with(tmp_path, "[demo]\nsize = 1\n")).demo.size == 1
