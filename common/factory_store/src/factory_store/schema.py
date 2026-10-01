@@ -126,14 +126,24 @@ report = Table(
     Column("verdict", String, nullable=False),
 )
 
-# The structured output a workflow asked the job for, once a step picked it
-# out of the coder's text. Only jobs asked for one have a row.
+# The JSON schema a workflow asks the job's structured output to match, saved
+# before the coder starts so that `af output submit` can check against it.
+output_schema = Table(
+    "output_schema",
+    metadata,
+    Column("session_id", String, ForeignKey("session.id"), primary_key=True),
+    Column("created_at", STAMP, nullable=False),
+    Column("schema", PAYLOAD, nullable=False),  # the JSON schema the workflow asked for
+)
+
+# The structured output a workflow asked the job for: submitted by the coder,
+# or picked out of its text by a step. Only jobs asked for one have a row.
 structured_output = Table(
     "structured_output",
     metadata,
     Column("session_id", String, ForeignKey("session.id"), primary_key=True),
     Column("created_at", STAMP, nullable=False),
-    Column("source", String, nullable=False),  # where they were found: last_message | conversation
+    Column("source", String, nullable=False),  # submitted | last_message | conversation
     Column("schema", PAYLOAD, nullable=False),  # the JSON schema the workflow asked for
     Column("structured_output", PAYLOAD, nullable=False),  # the output, matching it
 )

@@ -21,6 +21,7 @@ from temporal_agentic_factory.workflows.judge.activity import judge
 from temporal_agentic_factory.workflows.research.activities import locate_target, read_candidates
 from temporal_agentic_factory.workflows.research.workflow import ResearchWorkflow
 from temporal_agentic_factory.workflows.structured_output.extract import StructuredOutputActivity
+from temporal_agentic_factory.workflows.structured_output.submission import SubmissionActivity
 from temporal_agentic_factory.workflows.structured_output.workflow import (
     JobWithStructuredOutputWorkflow,
 )
@@ -61,6 +62,8 @@ def _activities(store: Store) -> list[Callable[..., Any]]:
     return [
         SessionActivity(store).create_session,
         ReportActivity(store).build_report,
+        SubmissionActivity(store).ask_for_submission,
+        SubmissionActivity(store).read_submitted_output,
         StructuredOutputActivity(store).extract_structured_output,
         RecordActivity(store).record_job,
         fetch_source,

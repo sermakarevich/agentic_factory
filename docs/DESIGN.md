@@ -248,8 +248,16 @@ roles share (`runner.py`, `coders.py`, `other_coders.py`, `client.py`, `identity
   saves it, has the report step read it, saves the report and returns it.
   Given the app's step timeout plus a margin, with the `report_activity`
   retries.
-- `extract_structured_output(request)` — after a job that must state a
-  structured output: the app's `job/structured_output/extract.py` reads
+- `ask_for_submission(request)` and `read_submitted_output(session_id)`
+  (`workflows/structured_output/submission.py`) — around a job that must
+  submit a structured output: the first saves the job's schema under its
+  session and returns the job with the submit request in its prompt and
+  `af output submit` allowed in its tools, naming `af` by its absolute
+  path (the one beside the runner's Python), because a coder's PATH need
+  not hold it; the second returns what the coder last submitted, or None.
+  One store call each, behind the `submission_activity` timeout and retries.
+- `extract_structured_output(request)` — the fallback, after a job that
+  submitted nothing: the app's `job/structured_output/extract.py` reads
   the session's stored events, runs the extraction step over the coder's
   last message and, when that says "not stated", over the whole
   conversation; saves and returns the output as a dict matching the schema
@@ -292,9 +300,12 @@ roles share (`runner.py`, `coders.py`, `other_coders.py`, `client.py`, `identity
   the outcome and the output as a dict. The
   `run_job_with_structured_output(job, schema)` helper
   (`workflows/structured_output/child.py`) is for any workflow that needs
-  typed data out of a job: it starts this workflow as a child, which appends
-  the request to the prompt (`job/structured_output/prompt.py`), runs the job
-  here, then the extraction activity. A child's failure is raised again with
+  typed data out of a job: it starts this workflow as a child, which makes
+  the session, saves the schema and appends the submit request to the
+  prompt (`job/structured_output/prompt.py`), runs the job here, then reads
+  what the coder submitted; nothing there, it reminds the coder in the same
+  session, then falls back to the extraction activity (see "Structured
+  output of a job"). A child's failure is raised again with
   its own type (`JobFailed`, `StructuredOutputNotStated`). A job that failed for good, or an output the coder
   never stated, fail the workflow: nothing downstream can run on made-up
   values. The caller owns the model and validates the dict with it.
@@ -478,10 +489,42 @@ answered from the summary.
 
 A workflow that chains jobs needs typed data out of one job to start the
 next (fleet's summarise flow reads the urls one job fetched from a file the
-coder wrote). Here the coder writes no file and calls no tool: the workflow
-gives a JSON schema, and appends a request to the prompt naming each of its
-fields with type and description, to be stated plainly in the final
-message, before the summary block the engine asks for. After the job, one
+coder wrote). Here the coder submits it itself, with a command:
+
+1. The workflow makes the session first, so its id is known before the
+   prompt is built, and saves the JSON schema under it (`output_schema`
+   table, `ask_for_submission` activity).
+2. The prompt (`job/structured_output/prompt.py`) shows the exact command
+   with the real session id, as a heredoc:
+   `<af> output submit <session id> <<'JSON' ... JSON`, says to fix the
+   JSON and run it again until it prints `ok` (the last `ok` counts), and
+   shows the whole schema as indented JSON, `$defs` included. A job with
+   a tool allow-list gets the command added to it
+   (`Harness.tools_with_command`: `Bash(<af> output submit:*)` for claude;
+   opencode enforces no list, so nothing there).
+3. `af output submit <session id>` (`cli/output.py`, JSON on stdin or
+   `--file`) checks the JSON against the saved schema with jsonschema
+   (Draft 2020-12, `job/structured_output/check.py`). Valid: prints `ok`,
+   saves it in `structured_output` with source `submitted`, replacing any
+   earlier submission, exit 0. Invalid: prints `invalid:` and every error
+   with its path, one per line (`chapters[1].formats[0]: 'pdf' is not one
+   of ['md', 'ipynb']`; bad JSON is one line with its line and column),
+   saves nothing, exit 1. No schema for the session: exit 2.
+   `af output schema <id>` prints the schema, `af output show <id>` what
+   was saved and its source.
+4. After the job, the workflow reads the submission
+   (`read_submitted_output`). None: it runs up to
+   `[structured_output_workflow].submit_reminders` reminder jobs
+   (`job/structured_output/reminder.py`) in the same session, named
+   `<job>/reminder`, reading again after each. A reminder's tries are
+   journaled after the job's (`Job.try_offset`), so no try row is
+   overwritten, and its spend is added to the outcome
+   (`with_follow_up_spend`) and to the `job` row. The `session` row keeps
+   the job's own prompt, without the submit request.
+5. Still nothing: with `llm_fallback` on (the default) the old extraction
+   below runs; off, the workflow fails with `StructuredOutputNotStated`.
+
+The extraction fallback: one
 step with a schema built around the workflow's picks the output out of the
 coder's last message. The step's schema is the output or null, plus the
 fields not stated: strict mode requires every field, and without the null
@@ -493,8 +536,8 @@ answer, not a `BadOutput`: it triggers a second step over the whole
 rendered conversation. Not stated there either raises
 `StructuredOutputNotStated`, final, and the workflow stops. No second
 JSON-block parser: extraction is the only path. A found output is saved in
-the `structured_output` table with the schema and the pass that found it,
-so a later workflow, or a person, can read it without the Temporal
+the `structured_output` table with the schema and the pass that found it
+(a submitted one has source `submitted`), so a later workflow, or a person, can read it without the Temporal
 history.
 
 ## Distill workflow
@@ -939,11 +982,15 @@ Tables, one job = one session:
   rate limits, compactions, the finish line. Clip sizes are settings.
 - `report` — the `JobResult` as json (empty when every try failed), the
   `JobReport` the model wrote, and its verdict as a column.
+- `output_schema` — for a job a workflow asked a structured output of:
+  the JSON schema, keyed by session id, saved before the coder starts so
+  `af output submit` can check against it.
 - `structured_output` — for a job a workflow asked for one: the JSON
-  schema it asked for, the output the extraction step found, and where
-  (`last_message | conversation`). Written by the
-  `extract_structured_output` activity once the step found it; a job whose
-  output was not stated has no row.
+  schema it asked for, the output, and where it came from
+  (`submitted | last_message | conversation`). Written by
+  `af output submit` on a valid submission (a later one replaces it), or by
+  the `extract_structured_output` fallback once the step found it; a job
+  whose output was neither submitted nor stated has no row.
 - `job` — one row per workflow run, written last: first try's start, end
   time, number of tries, outcome `done | failed`, failure text, the
   totals summed over every try (same columns as `attempt`), the result as
@@ -982,7 +1029,9 @@ settings model is a `Table` with `extra="forbid"`, so a misspelled key in a
 toml file or an `AF_` variable is refused on load instead of ignored.
 The conversation's clip sizes are `[conversation]`, the report's transcript
 limit `[report]`, the structured output extraction's text limit
-`[structured_output]`.
+`[structured_output]`. The runner's `[structured_output_workflow]` holds
+`submit_reminders` and `llm_fallback`, `[submission_activity]` the
+submission activities' timeout and retries.
 Overrides, in order: `settings.local.toml` next to it (git-ignored), a
 `.env` found walking up from the package (repo root or `~/.env`), and
 environment variables `AF_<TABLE>__<KEY>`. `Job` and `Step` take their

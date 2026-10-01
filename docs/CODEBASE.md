@@ -22,7 +22,9 @@ agentic_factory/
           process/            # spawn, kill, environment, workdir, tail: the coder process
           summary/            # contract, prompt, block, parse, repair: the coder's own summary
           report/             # contract, conversation, step, build: the report a model writes over the run
-          structured_output/  # contract, prompt, step, extract: the output asked for in the prompt, picked out by a step, saved
+          structured_output/  # contract, prompt (the submit request), check (jsonschema errors with
+                              # paths), submission (save a valid submit, read it back), ask (the
+                              # schema saved, the job asked), reminder, step, extract (the llm fallback)
         step/                 # contract, reasoning, engine, defaults: the llm step
           judge/              # question, answer, contract, client, catalog, defaults, engine, typesafe: the judge step
           providers/          # client base, catalog; opencode/ (client)
@@ -64,7 +66,8 @@ agentic_factory/
                               # ApplicationError, what their activities share)
           job/                # workflow, child (a job as a child workflow), coder_queue, session,
                               # execute, heartbeat, report, record, search_attributes (the ui's columns)
-          structured_output/  # workflow, child, extract: the output asked for in the prompt, picked out by a step
+          structured_output/  # workflow (submit, remind, fall back), child, submission (ask_for_submission,
+                              # read_submitted_output), extract (the llm fallback)
           judge/              # workflow (run_judgment), activity: the judge step for workflows that branch on an answer
           distill/            # workflow, activities (fetch + verify), name (a source's url tail)
           research/           # activities (locate_target, read_candidates), workflow (the chain of jobs
@@ -93,10 +96,12 @@ agentic_factory/
                               # (ready, poll --once), watcher (start, stop, restart, status of the schedule),
                               # forward (`bd ...` and unknown commands passed to bd)
           cleaner.py          # the `af cleaner` group: start, stop, restart, status, run
+          output.py           # the `af output` group a coder runs: submit, schema, show
         settings/             # server address, activity limits, [providers.<name>] coder limits, one table per workflow
                               # and activity ([job_activity], [distill_workflow],
                               # [research_workflow], [locate_activity], [candidates_activity],
-                              # [tutorial_locate_activity], ...)
+                              # [tutorial_locate_activity], [structured_output_workflow],
+                              # [submission_activity], ...)
       tests/                  # mirrors src: workflows/<subject>/, watchers/beads/, cleaner/, cli/;
                               # fakes.py and workers.py (a main worker plus one per coder queue),
                               # fake_bd.py (a scripted `bd`) and fake_schedules.py (schedules and
@@ -108,11 +113,11 @@ agentic_factory/
       justfile
       src/factory_settings/ # table.py (Table base), load.py (load), vault.py (knowledge-base folders), shared.py + settings.toml ([store] url, [vault] folders)
       tests/
-    factory_store/          # the database: schema.py (tables), store.py (async API), clean.py, migrations/ (alembic)
+    factory_store/          # the database: schema.py (tables, output_schema among them), store.py (async API), clean.py, migrations/ (alembic)
       pyproject.toml        # package `factory_store`
       justfile              # check, migrate, revision
       src/factory_store/
-      tests/                # on in-memory sqlite
+      tests/                # on in-memory sqlite; test_migrations runs alembic on a temporary file
 ```
 
 ## Responsibilities

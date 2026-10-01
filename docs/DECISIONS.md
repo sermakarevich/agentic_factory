@@ -223,6 +223,39 @@ queues.
   fenced block per message is what coders manage; a second one competes
   with it, and the summary parser already carries five layers of repair.
 
+### Structured output submitted by the coder (2026-10-01)
+
+- **Chosen.** Structured output is submitted by the coder through
+  `af output submit` and validated with jsonschema; the LLM extraction
+  stays only as a fallback; a CLI, not an MCP tool. The session is made
+  before the prompt, the schema saved under it, and the prompt shows the
+  exact command with the real session id and the whole schema. The
+  command prints `ok`, or `invalid:` with every error and its path; the
+  coder fixes and runs it again, and the last `ok` counts. A coder that
+  submitted nothing gets `submit_reminders` reminder jobs in the same
+  session, then the extraction runs when `llm_fallback` is on.
+- **Why it replaces "the coder's words are enough".** The extraction is
+  a second model guessing what the first meant, and nothing checks the
+  coder's values against the schema while the coder can still fix them.
+  A checker the coder runs gives it the errors with paths and a retry
+  loop, and costs no step on the happy path. The write path the earlier
+  entry worried about is narrow: one command, one session, checked
+  against a schema the workflow saved, and nothing saved when invalid.
+- **Why a CLI, not an MCP tool.** Both coders already run shell
+  commands; `af` is installed with the runner. An MCP tool needs a server
+  per coder config and per-coder tool plumbing; the CLI needs one
+  allow-list entry for claude (`Bash(<af> output submit:*)`) and nothing
+  for opencode, which enforces no list. The prompt names `af` by its
+  absolute path, since a coder's PATH need not hold it.
+- **Why a reminder, then the fallback.** A coder that forgot usually
+  submits when asked once more in the same session, which is cheaper than
+  two extraction steps and gives checked values. The fallback keeps the
+  old behaviour for a coder that still does not, so no caller breaks;
+  `llm_fallback = false` makes a missing submission a failure.
+- **Try rows.** A reminder is a second job in the same session, and the
+  journal keys tries by (session, attempt). `Job.try_offset` shifts the
+  reminder's tries past the job's own, so none is overwritten.
+
 ## 2. Step: structured output that is useful
 
 - **Chosen.** `Step` carries a prompt, a system prompt and a JSON schema

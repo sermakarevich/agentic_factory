@@ -35,6 +35,7 @@ from temporal_agentic_factory.workflows.structured_output.workflow import (
 )
 from temporal_agentic_factory.workflows.tutorial.workflow import TutorialWorkflow
 from tests.workers import running
+from tests.workflows.structured_output.submitted import submitted_by
 
 INDEX_PATH = "/tmp/tutorials/grafana/index.md"
 STUCK = "the notebook does not run"
@@ -128,7 +129,7 @@ async def _run(request: TutorialRequest) -> TutorialOutcome:
             env.client,
             queue,
             [TutorialWorkflow, JobWorkflow, JobWithStructuredOutputWorkflow],
-            [fake_locate, fake_session, fake_report, fake_record, fake_extract],
+            [fake_locate, fake_session, fake_report, fake_record, *submitted_by(fake_extract)],
             fake_job,
         ):
             return await env.client.execute_workflow(

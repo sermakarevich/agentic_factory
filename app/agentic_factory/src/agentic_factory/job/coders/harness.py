@@ -34,6 +34,13 @@ class Harness(ABC):
         `ValueError` when the output does not name one."""
         raise NotImplementedError(f"{type(self).__name__} names no sessions")
 
+    def tools_with_command(self, tools: list[str], command: str) -> list[str]:
+        """The job's tools with one shell command, and any arguments after it,
+        allowed too. The default leaves them as they are: an empty list
+        already allows everything, and a coder that enforces no allow-list
+        runs any command."""
+        return tools
+
     @abstractmethod
     def compact_command(self, session_id: str) -> list[str]:
         """Command line that asks the coder to summarize this session's context."""

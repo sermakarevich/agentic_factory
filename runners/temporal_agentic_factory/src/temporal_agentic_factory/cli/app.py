@@ -10,6 +10,7 @@ from temporal_agentic_factory.cli.beads.app import beads_app
 from temporal_agentic_factory.cli.cleaner import cleaner_app
 from temporal_agentic_factory.cli.coders import coders
 from temporal_agentic_factory.cli.errors import run_coro
+from temporal_agentic_factory.cli.output import output_app
 from temporal_agentic_factory.cli.run import run_app
 from temporal_agentic_factory.client import connect
 from temporal_agentic_factory.identity import runner_identity
@@ -59,3 +60,4 @@ app.command(name="health")(workflows.health)
 app.add_typer(run_app, name="run")
 app.add_typer(beads_app, name="beads")
 app.add_typer(cleaner_app, name="cleaner")
+app.add_typer(output_app, name="output")

@@ -231,3 +231,18 @@ async def test_structured_output_round_trip_and_replace_earlier_rows() -> None:
             assert len(result.mappings().all()) == 1
     finally:
         await store.dispose()
+
+
+async def test_output_schema_round_trip_and_replace() -> None:
+    store = await make_store()
+    try:
+        await store.start_session("s1", "claude", "m", "/w", "plan")
+        assert await store.load_output_schema("s1") is None
+        await store.save_output_schema("s1", {"type": "object"})
+        await store.save_output_schema("s1", {"type": "object", "properties": {"a": {}}})
+        assert await store.load_output_schema("s1") == {
+            "type": "object",
+            "properties": {"a": {}},
+        }
+    finally:
+        await store.dispose()

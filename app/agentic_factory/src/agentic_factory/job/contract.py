@@ -41,6 +41,11 @@ class Job(BaseModel):
     session_tokens: int = Field(
         default=0, description="Context size of that session when it was last seen, if known."
     )
+    try_offset: int = Field(
+        default=0,
+        description="Tries earlier jobs may have stored in this session: try n of this job is "
+        "stored as try `try_offset + n`, so a follow-up job keeps the earlier rows.",
+    )
 
 
 class JobResult(BaseModel):

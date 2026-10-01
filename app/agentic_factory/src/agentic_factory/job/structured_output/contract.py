@@ -10,8 +10,9 @@ job only ever sees the schema."""
 
 
 class Source(StrEnum):
-    """Where the structured output was found; stored beside it."""
+    """Where the structured output came from; stored beside it."""
 
+    SUBMITTED = "submitted"  # the coder's own `af output submit`, checked against the schema
     LAST_MESSAGE = "last_message"  # the coder's last message, where the prompt asked for it
     CONVERSATION = "conversation"  # the whole rendered conversation, when the last message had none
 

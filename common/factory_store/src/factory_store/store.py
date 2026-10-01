@@ -269,6 +269,27 @@ class Store:
                 },
             )
 
+    async def save_output_schema(self, session_id: str, schema: dict[str, Any]) -> None:
+        """Insert or replace the output_schema row (created_at = now UTC)."""
+        async with self.engine.begin() as conn:
+            await _upsert(
+                conn,
+                schema_.output_schema,
+                {"session_id": session_id},
+                {"created_at": _now(), "schema": without_nul(schema)},
+            )
+
+    async def load_output_schema(self, session_id: str) -> dict[str, Any] | None:
+        """The schema saved for the session, or None when none was."""
+        async with self.engine.begin() as conn:
+            result = await conn.execute(
+                select(schema_.output_schema.c.schema).where(
+                    schema_.output_schema.c.session_id == session_id
+                )
+            )
+            found: dict[str, Any] | None = result.scalars().first()
+            return found
+
     async def save_structured_output(
         self,
         session_id: str,

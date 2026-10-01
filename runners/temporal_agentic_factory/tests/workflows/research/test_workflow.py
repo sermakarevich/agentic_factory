@@ -38,6 +38,7 @@ from temporal_agentic_factory.workflows.structured_output.workflow import (
     JobWithStructuredOutputWorkflow,
 )
 from tests.workers import running
+from tests.workflows.structured_output.submitted import submitted_by
 
 TARGET_DIR = "/tmp/research/t1"
 INDEX_PATH = "/tmp/research/t1/index.md"
@@ -222,7 +223,7 @@ async def _run(request: ResearchRequest):  # type: ignore[no-untyped-def]
                 fake_session,
                 fake_report,
                 fake_record,
-                fake_extract,
+                *submitted_by(fake_extract),
             ],
             fake_job,
         ):

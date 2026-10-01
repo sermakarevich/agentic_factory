@@ -11,7 +11,7 @@ with workflow.unsafe.imports_passed_through():
         TimeoutError,
     )
 
-    from agentic_factory.job.contract import Job
+    from agentic_factory.job.contract import Job, JobResult
     from agentic_factory.job.outcome import JobOutcome
     from agentic_factory.job.report.contract import JobReport
     from agentic_factory.settings.load import settings as app_settings
@@ -48,7 +48,7 @@ def _report_retry() -> RetryPolicy:
     return RetryPolicy(maximum_attempts=settings.report_activity.max_attempts)
 
 
-async def _with_session(job: Job) -> Job:
+async def with_session(job: Job) -> Job:
     """The job with a session id: made once before try 1, reused by retries."""
     if job.session_id:
         return job
@@ -110,7 +110,7 @@ async def run_job_here(job: Job) -> JobOutcome:
     failed job still gets its report, then the outcome carries the failure
     instead of a result. A failed report step is not fatal: the outcome has
     none. Neither is a failed record: the outcome is still returned."""
-    job = await _with_session(job)
+    job = await with_session(job)
     request = await _job_as_report_request(job)
     report = await _report_or_none(request, job.name)
     outcome = JobOutcome(
@@ -120,7 +120,7 @@ async def run_job_here(job: Job) -> JobOutcome:
         report=report,
     )
     workflow.upsert_search_attributes(search_attributes.at_end(outcome))
-    await _recorded(outcome, job.name)
+    await record_outcome(outcome, job.name)
     return outcome
 
 
@@ -146,6 +146,17 @@ def job_failed(job: Job, failure: str) -> ApplicationError:
 def _named(job: Job, failure: str) -> str:
     """The failure with the job's name in front, when it has one: `wiki/3: Stalled: ...`."""
     return f"{job.name}: {failure}" if job.name else failure
+
+
+async def run_follow_up_here(job: Job) -> JobResult | None:
+    """In this workflow's own history: a follow-up job in the session of a job
+    that already ran, its tries only. No report and no row of its own: the
+    caller records the job's outcome again when it wants the follow-up's
+    tries counted. None when it failed for good."""
+    try:
+        return (await _execute_job_activity(job)).result
+    except ActivityError:
+        return None
 
 
 async def _job_as_report_request(job: Job) -> ReportRequest:
@@ -178,7 +189,7 @@ async def _report_or_none(request: ReportRequest, name: str) -> JobReport | None
         return None
 
 
-async def _recorded(outcome: JobOutcome, name: str) -> None:
+async def record_outcome(outcome: JobOutcome, name: str) -> None:
     """The record_job activity with the record policy, labeled with the job's
     name in the UI; a write that failed for good is logged, not raised: the
     outcome is worth more than its row."""

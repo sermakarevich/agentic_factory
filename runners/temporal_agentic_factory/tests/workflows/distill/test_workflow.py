@@ -25,6 +25,7 @@ from temporal_agentic_factory.workflows.structured_output.workflow import (
     JobWithStructuredOutputWorkflow,
 )
 from tests.workers import running
+from tests.workflows.structured_output.submitted import submitted_by
 
 RESEARCH_DIR = "/kb/knowledge/research/AThing"
 PLAN = {"research_dir": RESEARCH_DIR, "slug": "AThing", "title": "A thing", "type": "Article"}
@@ -123,7 +124,14 @@ async def _run(request: DistillRequest, verify: Any) -> DistilledEntry:
             env.client,
             queue,
             [DistillWorkflow, JobWorkflow, JobWithStructuredOutputWorkflow],
-            [fake_fetch, fake_session, fake_report, fake_record, fake_extract, verify],
+            [
+                fake_fetch,
+                fake_session,
+                fake_report,
+                fake_record,
+                *submitted_by(fake_extract),
+                verify,
+            ],
             fake_job,
         ):
             handle = await env.client.start_workflow(
@@ -203,7 +211,8 @@ async def test_every_activity_is_labeled_with_its_job_in_the_ui() -> None:
         by_kind.setdefault(kind, []).append(summary)
     assert by_kind["fetch_source"] == ["https://example.org/a"]
     assert by_kind["verify_entry"] == ["AThing", "AThing"]
-    assert sorted(by_kind["extract_structured_output"]) == ["plan"]
+    assert by_kind["ask_for_submission"] == by_kind["read_submitted_output"] == ["plan"]
+    assert "extract_structured_output" not in by_kind
     assert sorted(by_kind["execute_job"]) == sorted(
         [
             "plan",

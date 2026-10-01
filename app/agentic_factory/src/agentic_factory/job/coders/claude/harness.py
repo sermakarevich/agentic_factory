@@ -57,6 +57,13 @@ class ClaudeHarness(Harness):
         argv += _tool_args(job.tools)
         return argv
 
+    def tools_with_command(self, tools: list[str], command: str) -> list[str]:
+        """`Bash(<command>:*)` added to a restricted list: claude's rule for one
+        shell command with any arguments. An empty list allows everything."""
+        if not tools:
+            return tools
+        return [*tools, f"Bash({command}:*)"]
+
     def compact_command(self, session_id: str) -> list[str]:
         """A run of its own that only compacts; ~12 s. Used before a resume, as
         `--autocompact` covers the running session."""

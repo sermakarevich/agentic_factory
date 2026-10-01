@@ -43,7 +43,7 @@ class JobActivity:
         for Temporal."""
         info = activity.info()
         job = _continued_for_this_try(job, info)
-        callback = self._callback_for_try(job.session_id, info.attempt)
+        callback = self._callback_for_try(job.session_id, job.try_offset + info.attempt)
         try:
             result = await jobs.run(
                 job, callback, harness_for(job.provider), _repair_summary_with_step_client

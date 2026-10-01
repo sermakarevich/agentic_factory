@@ -8,10 +8,12 @@ from temporalio.contrib.pydantic import pydantic_data_converter
 from temporalio.exceptions import ApplicationError
 from temporalio.testing import WorkflowEnvironment
 
+from agentic_factory.job.coders.catalog import harness_for
 from agentic_factory.job.contract import Job, JobResult
 from agentic_factory.job.outcome import JobOutcome
 from agentic_factory.job.report.contract import JobReport, Verdict
-from agentic_factory.job.structured_output.prompt import INSTRUCTION
+from agentic_factory.job.structured_output.ask import AskedJob, asked_job
+from temporal_agentic_factory.settings.load import settings
 from temporal_agentic_factory.workflows.job import search_attributes
 from temporal_agentic_factory.workflows.job.execute import TryResult
 from temporal_agentic_factory.workflows.job.report import ReportRequest
@@ -20,6 +22,7 @@ from temporal_agentic_factory.workflows.structured_output.child import (
     run_job_with_structured_output,
 )
 from temporal_agentic_factory.workflows.structured_output.extract import StructuredOutputRequest
+from temporal_agentic_factory.workflows.structured_output.submission import SubmissionRequest
 from temporal_agentic_factory.workflows.structured_output.workflow import (
     JobWithStructuredOutputWorkflow,
     StructuredOutputJob,
@@ -27,8 +30,13 @@ from temporal_agentic_factory.workflows.structured_output.workflow import (
 from tests.workers import running
 
 SCHEMA = {"type": "object", "properties": {"urls": {"type": "array", "items": {"type": "string"}}}}
-prompts: list[str] = []
+SUBMITTED = {"urls": ["submitted"]}
+EXTRACTED = {"urls": ["extracted"]}
+jobs: list[Job] = []
+asked: list[SubmissionRequest] = []
+reads: list[str] = []
 extractions: list[StructuredOutputRequest] = []
+submissions: list[dict[str, Any] | None] = []  # what each read gives, in turn; then None
 
 
 @activity.defn(name="create_session")
@@ -38,7 +46,7 @@ async def fake_session(job: Job) -> str:
 
 @activity.defn(name="execute_job")
 async def fake_job(job: Job) -> TryResult:
-    prompts.append(job.prompt)
+    jobs.append(job)
     return TryResult(result=JobResult(session_id=job.session_id, cost_usd=0.5), runner="r1")
 
 
@@ -57,10 +65,22 @@ async def fake_record(outcome: JobOutcome) -> None:
     return None
 
 
+@activity.defn(name="ask_for_submission")
+async def fake_ask(request: SubmissionRequest) -> AskedJob:
+    asked.append(request)
+    return asked_job(request.job, request.output_schema, "af", harness_for(request.job.provider))
+
+
+@activity.defn(name="read_submitted_output")
+async def fake_read(session_id: str) -> dict[str, Any] | None:
+    reads.append(session_id)
+    return submissions.pop(0) if submissions else None
+
+
 @activity.defn(name="extract_structured_output")
 async def fake_extract(request: StructuredOutputRequest) -> dict[str, Any]:
     extractions.append(request)
-    return {"urls": ["u"]}
+    return EXTRACTED
 
 
 @activity.defn(name="extract_structured_output")
@@ -68,6 +88,13 @@ async def nothing_stated(request: StructuredOutputRequest) -> dict[str, Any]:
     raise ApplicationError(
         "the coder did not state: urls", type="StructuredOutputNotStated", non_retryable=True
     )
+
+
+def _submitting(*outputs: dict[str, Any] | None) -> None:
+    """Every record cleared, and the reads to give `outputs` in turn."""
+    for record in (jobs, asked, reads, extractions, submissions):
+        record.clear()
+    submissions.extend(outputs)
 
 
 async def _environment() -> WorkflowEnvironment:
@@ -83,7 +110,7 @@ async def _run(execute: Any, extract: Any) -> Any:
             env.client,
             queue,
             [JobWithStructuredOutputWorkflow],
-            [fake_session, fake_report, fake_record, extract],
+            [fake_session, fake_report, fake_record, fake_ask, fake_read, extract],
             execute,
         ):
             return await env.client.execute_workflow(
@@ -97,25 +124,64 @@ async def _run(execute: Any, extract: Any) -> Any:
             )
 
 
-async def test_the_job_is_asked_for_the_structured_output_and_the_result_carries_it() -> None:
-    prompts.clear()
-    extractions.clear()
+async def test_a_submitted_output_is_the_result_and_nothing_is_extracted() -> None:
+    _submitting(SUBMITTED)
     result = await _run(fake_job, fake_extract)
-    assert result.structured_output == {"urls": ["u"]}
+
+    assert result.structured_output == SUBMITTED and extractions == []
     assert result.outcome.session_id == "s1" and result.outcome.report is not None
-    (prompt,) = prompts
-    assert prompt.startswith("fetch\n\n" + INSTRUCTION) and "- urls (array of string)" in prompt
+    (request,) = asked
+    assert request.job.session_id == "s1" and request.output_schema == SCHEMA
+    (job,) = jobs
+    assert job.prompt.startswith("fetch\n\n") and "af output submit s1 <<'JSON'" in job.prompt
+    assert '"urls"' in job.prompt and reads == ["s1"]
+
+
+async def test_a_coder_that_did_not_submit_is_reminded_in_its_session() -> None:
+    _submitting(None, SUBMITTED)
+    result = await _run(fake_job, fake_extract)
+
+    assert result.structured_output == SUBMITTED and extractions == []
+    first, reminder = jobs
+    assert reminder.name == "urls/reminder" and reminder.session_id == first.session_id == "s1"
+    assert reminder.try_offset == settings.job_activity.max_attempts
+    assert "af output submit s1" in reminder.prompt and reads == ["s1", "s1"]
+    assert result.outcome.result.cost_usd == pytest.approx(1.0)
+
+
+async def test_nothing_submitted_after_the_reminders_falls_back_to_the_extraction() -> None:
+    _submitting()
+    result = await _run(fake_job, fake_extract)
+
+    assert result.structured_output == EXTRACTED
     assert extractions == [StructuredOutputRequest(session_id="s1", output_schema=SCHEMA)]
+    reminders = settings.structured_output_workflow.submit_reminders
+    assert len(jobs) == 1 + reminders and len(reads) == 1 + reminders
+
+
+async def test_nothing_submitted_with_the_fallback_off_fails_the_workflow(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(settings.structured_output_workflow, "llm_fallback", False)
+    _submitting()
+    with pytest.raises(WorkflowFailureError) as err:
+        await _run(fake_job, fake_extract)
+
+    cause = err.value.cause
+    assert isinstance(cause, ApplicationError) and cause.type == "StructuredOutputNotStated"
+    assert cause.message.startswith("urls: ") and extractions == []
 
 
 async def test_a_job_that_failed_for_good_fails_the_workflow() -> None:
+    _submitting()
     with pytest.raises(WorkflowFailureError) as err:
         await _run(failing_job, fake_extract)
     assert isinstance(err.value.cause, ApplicationError) and err.value.cause.type == "JobFailed"
     assert err.value.cause.message.startswith("urls: Stalled")
 
 
-async def test_structured_output_not_stated_fails_the_workflow() -> None:
+async def test_structured_output_not_stated_by_the_fallback_fails_the_workflow() -> None:
+    _submitting()
     with pytest.raises(WorkflowFailureError) as err:
         await _run(fake_job, nothing_stated)
     step_failure = err.value.cause.cause if err.value.cause else None
@@ -141,7 +207,7 @@ async def _parent_run(execute: Any, extract: Any) -> Any:
             env.client,
             queue,
             [ParentWorkflow, JobWithStructuredOutputWorkflow, JobWorkflow],
-            [fake_session, fake_report, fake_record, extract],
+            [fake_session, fake_report, fake_record, fake_ask, fake_read, extract],
             execute,
         ):
             parent_id = f"p-{uuid.uuid4()}"
@@ -156,8 +222,9 @@ async def _parent_run(execute: Any, extract: Any) -> Any:
 
 
 async def test_a_child_states_the_output_for_its_parent() -> None:
+    _submitting(SUBMITTED)
     stated, child = await _parent_run(fake_job, fake_extract)
-    assert stated == {"urls": ["u"]}
+    assert stated == SUBMITTED
     assert child.workflow_type == "job_with_structured_output"
     assert child.typed_search_attributes.get(search_attributes.NAME) == "urls"
 
@@ -172,6 +239,7 @@ async def test_a_child_states_the_output_for_its_parent() -> None:
 async def test_a_failed_child_raises_its_own_error_type_in_the_parent(
     execute: Any, extract: Any, error_type: str
 ) -> None:
+    _submitting()
     with pytest.raises(WorkflowFailureError) as err:
         await _parent_run(execute, extract)
     assert isinstance(err.value.cause, ApplicationError) and err.value.cause.type == error_type

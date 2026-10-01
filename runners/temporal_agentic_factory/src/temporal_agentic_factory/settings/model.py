@@ -48,6 +48,16 @@ class StructuredOutputActivitySettings(Table):
     max_attempts: int
 
 
+class StructuredOutputWorkflowSettings(Table):
+    submit_reminders: int
+    llm_fallback: bool
+
+
+class SubmissionActivitySettings(Table):
+    timeout_sec: int
+    max_attempts: int
+
+
 class JudgeActivitySettings(Table):
     close_margin_sec: int
     max_attempts: int
@@ -136,6 +146,8 @@ class Settings(Table):
     job_activity: JobActivitySettings
     report_activity: ReportActivitySettings
     structured_output_activity: StructuredOutputActivitySettings
+    structured_output_workflow: StructuredOutputWorkflowSettings
+    submission_activity: SubmissionActivitySettings
     judge_activity: JudgeActivitySettings
     record_activity: RecordActivitySettings
     distill_workflow: DistillWorkflowSettings
