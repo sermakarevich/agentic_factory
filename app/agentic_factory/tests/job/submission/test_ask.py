@@ -12,9 +12,14 @@ SCHEMA: Schema = {"type": "object", "properties": {"urls": {"type": "array"}}}
 class FakeStore:
     def __init__(self) -> None:
         self.saved: list[tuple[str, Schema]] = []
+        self.calls: list[str] = []
+
+    async def forget_submission(self, session_id: str) -> None:
+        self.calls.append(f"forget {session_id}")
 
     async def save_output_schema(self, session_id: str, schema: dict[str, Any]) -> None:
         self.saved.append((session_id, schema))
+        self.calls.append(f"save {session_id}")
 
 
 def job(provider: str, tools: list[str]) -> Job:
@@ -26,6 +31,7 @@ async def test_the_schema_is_saved_under_the_session_and_the_prompt_names_it() -
     claude = ClaudeHarness()
     asked = await ask_for_submission(store, job("claude", []), SCHEMA, "/v/af", claude)  # type: ignore[arg-type]
     assert store.saved == [("s1", SCHEMA)]
+    assert store.calls == ["forget s1", "save s1"]
     assert asked.command == "/v/af output submit s1"
     assert asked.job.prompt.startswith("fetch\n\n") and asked.command in asked.job.prompt
     assert asked.job.tools == [] and asked.job.session_id == "s1"

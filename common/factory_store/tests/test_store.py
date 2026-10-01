@@ -107,6 +107,19 @@ async def test_a_report_replaces_an_earlier_one() -> None:
         await store.dispose()
 
 
+async def test_a_forgotten_submission_reads_as_none() -> None:
+    store = await make_store()
+    try:
+        await store.start_session("s1", "opencode", "m", "/w", "do it")
+        await store.save_report("s1", {"task": "t", "verdict": "done"}, "done")
+        await store.save_structured_output("s1", {"type": "object"}, {"a": 1}, "submitted")
+        await store.forget_submission("s1")
+        assert await store.load_report("s1") is None
+        assert await store.load_structured_output("s1") is None
+    finally:
+        await store.dispose()
+
+
 async def test_starting_a_later_try_abandons_one_left_running() -> None:
     store = await make_store()
     try:

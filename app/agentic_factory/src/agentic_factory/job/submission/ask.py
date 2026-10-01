@@ -19,7 +19,10 @@ async def ask_for_submission(
 ) -> AskedJob:
     """The submission schema (`submission_schema`) saved under the job's
     session, which must exist already, and the job asked to submit with
-    `af`. The caller picks the job's harness (`harness_for`)."""
+    `af`. What an earlier job in the session submitted is forgotten first, so
+    it is never read as this job's. The caller picks the job's harness
+    (`harness_for`)."""
+    await store.forget_submission(job.session_id)
     await store.save_output_schema(job.session_id, schema)
     return asked_job(job, schema, af, harness)
 

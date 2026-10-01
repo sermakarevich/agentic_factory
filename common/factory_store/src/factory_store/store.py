@@ -2,7 +2,7 @@ from dataclasses import asdict, dataclass, fields, replace
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import RowMapping, Table, insert, select, update
+from sqlalchemy import RowMapping, Table, delete, insert, select, update
 from sqlalchemy.dialects.postgresql import insert as postgres_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_engine
@@ -270,6 +270,19 @@ class Store:
             )
             row = result.mappings().first()
             return _stored_report(row) if row is not None else None
+
+    async def forget_submission(self, session_id: str) -> None:
+        """The session's report and structured output deleted: a later job in
+        the same session starts with nothing submitted."""
+        async with self.engine.begin() as conn:
+            await conn.execute(
+                delete(schema_.report).where(schema_.report.c.session_id == session_id)
+            )
+            await conn.execute(
+                delete(schema_.structured_output).where(
+                    schema_.structured_output.c.session_id == session_id
+                )
+            )
 
     async def save_output_schema(self, session_id: str, schema: dict[str, Any]) -> None:
         """Insert or replace the output_schema row (created_at = now UTC)."""
