@@ -48,7 +48,10 @@ agentic_factory/
     temporal_agentic_factory/ # Temporal binding: installs `agentic_factory`
       pyproject.toml        # package `temporal_agentic_factory`
       justfile
-      src/temporal_agentic_factory/  # failure, heartbeat (what activities share), client, runner, identity, options, cli
+      src/temporal_agentic_factory/  # failure, heartbeat (what activities share), client, runner, identity, options,
+                              # capacity (free slots under the global job cap)
+        cli/                  # app (the `af` typer app), errors, ids, admission (the cap check of every
+                              # submit command), workflows (status, result, list, cancel, terminate)
         job/                  # workflow, session, execute, report, record, search_attributes (the ui's columns), cli (the `run` command)
         structured_output/    # workflow, extract: the output asked for in the prompt, picked out by a step
         judge/                # workflow (run_judgment), activity: the judge step for workflows that branch on an answer

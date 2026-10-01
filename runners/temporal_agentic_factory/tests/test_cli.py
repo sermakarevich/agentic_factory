@@ -2,7 +2,7 @@ import pytest
 import typer
 from typer.testing import CliRunner
 
-from temporal_agentic_factory.cli import app
+from temporal_agentic_factory.cli.app import app
 from temporal_agentic_factory.cli.errors import (
     normalize_status,
     normalize_workflow_type,
@@ -35,6 +35,7 @@ def test_cli_run_offers_detach_and_workflow_id() -> None:
     assert result.exit_code == 0
     assert "--detach" in result.output
     assert "--workflow-id" in result.output
+    assert "--force" in result.output
 
 
 def test_cli_distill_offers_detach_and_workflow_id() -> None:

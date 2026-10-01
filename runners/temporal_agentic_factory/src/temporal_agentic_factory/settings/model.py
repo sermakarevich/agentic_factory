@@ -78,11 +78,14 @@ class VerifyActivitySettings(Table):
 class BeadsPollerSettings(Table):
     interval_sec: int
     batch_limit: int
-    max_in_flight: int
     orphan_timeout_sec: int
     schedule_id: str
     command_timeout_sec: int
     tick_timeout_sec: int
+
+
+class LimitsSettings(Table):
+    max_concurrent_jobs: int
 
 
 class LocateActivitySettings(Table):
@@ -108,6 +111,7 @@ class Settings(Table):
     fetch_activity: FetchActivitySettings
     verify_activity: VerifyActivitySettings
     beads_poller: BeadsPollerSettings
+    limits: LimitsSettings
     research_workflow: ResearchWorkflowSettings
     locate_activity: LocateActivitySettings
     candidates_activity: CandidatesActivitySettings

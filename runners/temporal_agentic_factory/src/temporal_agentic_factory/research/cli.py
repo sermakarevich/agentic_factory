@@ -5,6 +5,7 @@ from typing import Annotated
 import typer
 from research.contract import ResearchedTopic, ResearchRequest
 
+from temporal_agentic_factory.cli.admission import refuse_when_full
 from temporal_agentic_factory.cli.errors import run_coro
 from temporal_agentic_factory.cli.ids import new_id
 from temporal_agentic_factory.client import awaited, connect
@@ -36,10 +37,15 @@ def research(
             help="workflow id to start with; reusing one is idempotent. Empty = generated"
         ),
     ] = None,
+    force: Annotated[
+        bool,
+        typer.Option("--force", help="start even past [limits] max_concurrent_jobs"),
+    ] = False,
 ) -> None:
     """Submit one focus question to Temporal. Waits and prints where the run
     landed and what it made as JSON, or with --detach prints the workflow id.
-    Options left out keep the settings defaults."""
+    Options left out keep the settings defaults. Refused at the global
+    concurrency cap unless --force."""
     request = ResearchRequest(
         topics=tool_list(topics) or [],
         focus=focus,
@@ -54,6 +60,8 @@ def research(
             }
         ),
     )
+    if not force:
+        refuse_when_full()
     result = run_coro(_started(request, workflow_id, detach))
     typer.echo(result if isinstance(result, str) else result.model_dump_json(indent=2))
 

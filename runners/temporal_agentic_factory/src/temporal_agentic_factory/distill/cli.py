@@ -1,10 +1,12 @@
-from collections.abc import Coroutine
 from typing import Annotated, Any
 
 import typer
 from temporalio.client import WorkflowHandle
 
 from distill.contract import DistillRequest
+from temporal_agentic_factory.cli.admission import refuse_when_full
+from temporal_agentic_factory.cli.errors import run_coro
+from temporal_agentic_factory.cli.ids import new_id
 from temporal_agentic_factory.client import awaited, connect
 from temporal_agentic_factory.distill.workflow import DistilledEntry, DistillWorkflow, _job
 from temporal_agentic_factory.job import search_attributes
@@ -20,8 +22,15 @@ def distill(
     target_dir: Annotated[str, typer.Option(help="folder the entry is written into as is")] = "",
     detach: Annotated[bool, typer.Option("--detach", help="submit without waiting")] = False,
     workflow_id: Annotated[str | None, typer.Option(help="workflow id to start with")] = None,
+    force: Annotated[
+        bool,
+        typer.Option("--force", help="start even past [limits] max_concurrent_jobs"),
+    ] = False,
 ) -> None:
-    """Submit one source; wait and print the entry folder, or just its id."""
+    """Submit one source; wait and print the entry folder, or just its id.
+    Refused at the global concurrency cap unless --force."""
+    if not force:
+        refuse_when_full()
     request = DistillRequest(
         url=source_url(url),
         topic=topic,
@@ -29,26 +38,11 @@ def distill(
         target_dir=absolute(target_dir) if target_dir else "",
         **given({"chunk_chars": chunk_chars}),
     )
+    wid = new_id("distill", workflow_id)
     if detach:
-        typer.echo(_run_coro(_submitted_id(request, _new_id(workflow_id))))
+        typer.echo(run_coro(_submitted_id(request, wid)))
     else:
-        typer.echo(
-            _run_coro(_distilled_entry(request, _new_id(workflow_id))).model_dump_json(indent=2)
-        )
-
-
-def _run_coro[T](coro: Coroutine[Any, Any, T]) -> T:
-    """`cli.errors.run_coro`, imported late: this module loads before the `cli` package."""
-    from temporal_agentic_factory.cli.errors import run_coro
-
-    return run_coro(coro)
-
-
-def _new_id(workflow_id: str | None) -> str:
-    """`cli.ids.new_id`, imported late for the same reason."""
-    from temporal_agentic_factory.cli.ids import new_id
-
-    return new_id("distill", workflow_id)
+        typer.echo(run_coro(_distilled_entry(request, wid)).model_dump_json(indent=2))
 
 
 async def _submitted_id(request: DistillRequest, wid: str) -> str:

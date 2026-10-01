@@ -43,7 +43,7 @@ class BeadsPollActivity:
             BeadsClient(timeout_sec=cfg.command_timeout_sec),
             TemporalWorkflows(),
             batch_limit=cfg.batch_limit,
-            max_in_flight=cfg.max_in_flight,
+            max_concurrent_jobs=settings.limits.max_concurrent_jobs,
             orphan_timeout_sec=cfg.orphan_timeout_sec,
             now=datetime.now(UTC),
         )

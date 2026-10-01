@@ -305,6 +305,16 @@ the two engines; workflows compose them; retries never appear in workflow code.
   jobs: the machine's total is that number times the runner count. A
   code change is rolled out one runner at a time: stop one, start one,
   then the other, and jobs in flight stay on the runner that holds them.
+- A global job cap, `[limits] max_concurrent_jobs` (0 = no cap), bounds
+  the coder jobs across every spawner: `capacity.py` counts the running
+  `job` and `job_with_structured_output` workflows on the queue (distill
+  and research are not counted: their coder work runs as those child
+  workflows) and gives the free slots. `af run`, `af distill` and
+  `af research` refuse when none is free unless `--force`; the beads
+  poller spawns at most the free slots per tick, within `batch_limit`.
+  It is a soft admission check: Temporal's visibility counts lag by a
+  second or so, and two submits at once can both pass. The hard limit
+  per machine stays `[runner] max_concurrent_activities`.
 
 Learned from the restart test (runner killed mid-job, restarted): Temporal
 failed the try with a heartbeat timeout, try 2 started with attempt 2 in

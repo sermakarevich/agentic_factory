@@ -7,7 +7,7 @@ from research.contract import ResearchRequest
 from research.settings.load import settings as research_settings
 from typer.testing import CliRunner
 
-from temporal_agentic_factory.cli import app
+from temporal_agentic_factory.cli.app import app
 from temporal_agentic_factory.research import cli
 
 

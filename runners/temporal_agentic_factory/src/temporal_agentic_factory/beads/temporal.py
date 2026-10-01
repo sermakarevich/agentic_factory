@@ -7,6 +7,7 @@ from agentic_factory.job.contract import Job
 from agentic_factory.job.outcome import JobOutcome
 from temporal_agentic_factory.beads.mapping import workflow_id
 from temporal_agentic_factory.beads.poll import AlreadySpawned, UnknownWorkflow
+from temporal_agentic_factory.capacity import free_slots
 from temporal_agentic_factory.client import connect
 from temporal_agentic_factory.job import search_attributes
 from temporal_agentic_factory.job.workflow import JobWorkflow
@@ -16,14 +17,9 @@ from temporal_agentic_factory.settings.load import settings
 class TemporalWorkflows:
     """`Workflows` over the configured server. One tick, one client."""
 
-    async def running_count(self) -> int:
-        """Running job workflows on this task queue."""
-        client = await connect()
-        counted = await client.count_workflows(
-            f"WorkflowType = 'job' AND ExecutionStatus = 'Running'"
-            f" AND TaskQueue = '{settings.temporal.task_queue}'"
-        )
-        return counted.count
+    async def free_slots(self, cap: int) -> int | None:
+        """Coder jobs that may still start under the global cap; None = no cap."""
+        return await free_slots(await connect(), cap, settings.temporal.task_queue)
 
     async def spawn(self, bead_id: str, job: Job) -> str:
         """Start the bead's job workflow; its id. Raises AlreadySpawned on conflict."""

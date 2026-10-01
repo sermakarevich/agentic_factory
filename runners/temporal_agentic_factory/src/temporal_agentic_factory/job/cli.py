@@ -1,7 +1,6 @@
 """The `run` command: one job submitted to Temporal, waited for by default."""
 
-from collections.abc import Coroutine
-from typing import Annotated, Any
+from typing import Annotated
 
 import typer
 
@@ -10,6 +9,9 @@ from agentic_factory.job.contract import Job
 from agentic_factory.job.defaults import with_default_model
 from agentic_factory.job.outcome import JobOutcome
 from agentic_factory.job.structured_output.contract import Schema
+from temporal_agentic_factory.cli.admission import refuse_when_full
+from temporal_agentic_factory.cli.errors import run_coro
+from temporal_agentic_factory.cli.ids import new_id
 from temporal_agentic_factory.client import awaited, connect
 from temporal_agentic_factory.job import search_attributes
 from temporal_agentic_factory.job.workflow import JobWorkflow
@@ -45,11 +47,18 @@ def run(
             help="workflow id to start with; reusing one is idempotent. Empty = generated"
         ),
     ] = None,
+    force: Annotated[
+        bool,
+        typer.Option("--force", help="start even past [limits] max_concurrent_jobs"),
+    ] = False,
 ) -> None:
     """Submit one job to Temporal. Waits and prints the result as JSON,
     or with --detach prints the workflow id and returns.
     Options left out keep the settings defaults. With --structured-output the
-    job must state it and the result carries it."""
+    job must state it and the result carries it. Refused at the global
+    concurrency cap unless --force."""
+    if not force:
+        refuse_when_full()
     options = {
         "provider": provider,
         "model": model,
@@ -61,31 +70,15 @@ def run(
     job = Job(name=name, prompt=prompt, workdir=absolute(workdir), **given(options))
     job = with_default_model(job, harness_for(job.provider))  # so the UI shows the model
     output_schema = schema(structured_output) if structured_output is not None else None
-    wid = _new_id(workflow_id)
+    wid = new_id("job", workflow_id)
     if detach:
-        typer.echo(_run_coro(_submitted_id(job, output_schema, wid)))
+        typer.echo(run_coro(_submitted_id(job, output_schema, wid)))
     elif output_schema is None:
-        typer.echo(_run_coro(_job_outcome(job, wid)).model_dump_json(indent=2))
+        typer.echo(run_coro(_job_outcome(job, wid)).model_dump_json(indent=2))
     else:
         typer.echo(
-            _run_coro(_job_with_structured_output(job, output_schema, wid)).model_dump_json(
-                indent=2
-            )
+            run_coro(_job_with_structured_output(job, output_schema, wid)).model_dump_json(indent=2)
         )
-
-
-def _run_coro[T](coro: Coroutine[Any, Any, T]) -> T:
-    """`cli.errors.run_coro`, imported late: this module loads before the `cli` package."""
-    from temporal_agentic_factory.cli.errors import run_coro
-
-    return run_coro(coro)
-
-
-def _new_id(workflow_id: str | None) -> str:
-    """`cli.ids.new_id`, imported late for the same reason."""
-    from temporal_agentic_factory.cli.ids import new_id
-
-    return new_id("job", workflow_id)
 
 
 async def _submitted_id(job: Job, output_schema: Schema | None, wid: str) -> str:

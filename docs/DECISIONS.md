@@ -410,6 +410,20 @@ queues.
   on the planning coder and model with the longer planning timeout. The
   writing jobs (topic digests, aggregates, lenses, index) ride the
   subscription coder the distill jobs use.
+- **The global job cap counts coder workflows only and is a soft gate**
+  (Oct 1). `[limits] max_concurrent_jobs` bounds the running `job` and
+  `job_with_structured_output` workflows on the queue, the types that run
+  a coder themselves; the names come from the classes' `@workflow.defn`.
+  The first cut also counted `distill` and `research`, but they only
+  orchestrate: their coder work runs as those child workflows, so one
+  research run counted several times over and a cap of 4 blocked every
+  submit and froze the poller. Every spawner asks `capacity.free_slots`
+  (None when the cap is 0): `af run`, `af distill` and `af research`
+  refuse at 0 unless `--force`, the poller spawns at most that many per
+  tick within `batch_limit`. It is an admission check, not a lock:
+  visibility counts lag by a second or so and two submits at once can
+  both pass. The hard per-machine limit stays `[runner]
+  max_concurrent_activities`.
 
 ## 4. Cross-cutting
 

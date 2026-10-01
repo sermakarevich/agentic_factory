@@ -2,9 +2,8 @@
 
 import asyncio
 import json
-from collections.abc import Coroutine
 from datetime import UTC, datetime, timedelta
-from typing import Annotated, Any
+from typing import Annotated
 from uuid import uuid4
 
 import typer
@@ -21,6 +20,7 @@ from temporal_agentic_factory.beads.models import PollSummary
 from temporal_agentic_factory.beads.poll import poll_once
 from temporal_agentic_factory.beads.temporal import TemporalWorkflows
 from temporal_agentic_factory.beads.workflow import BeadsPollWorkflow
+from temporal_agentic_factory.cli.errors import run_coro
 from temporal_agentic_factory.client import connect
 from temporal_agentic_factory.settings.load import settings
 
@@ -51,16 +51,9 @@ def poll(
     """
     cfg = settings.beads_poller
     if once:
-        typer.echo(_run_coro(_ticked()).model_dump_json(indent=2))
+        typer.echo(run_coro(_ticked()).model_dump_json(indent=2))
     else:
-        _run_coro(_loop(interval_sec or cfg.interval_sec))
-
-
-def _run_coro[T](coro: Coroutine[Any, Any, T]) -> T:
-    """`cli.errors.run_coro`, imported late: this module loads before the `cli` package."""
-    from temporal_agentic_factory.cli.errors import run_coro
-
-    return run_coro(coro)
+        run_coro(_loop(interval_sec or cfg.interval_sec))
 
 
 async def _ticked() -> PollSummary:
@@ -70,7 +63,7 @@ async def _ticked() -> PollSummary:
         BeadsClient(timeout_sec=cfg.command_timeout_sec),
         TemporalWorkflows(),
         batch_limit=cfg.batch_limit,
-        max_in_flight=cfg.max_in_flight,
+        max_concurrent_jobs=settings.limits.max_concurrent_jobs,
         orphan_timeout_sec=cfg.orphan_timeout_sec,
         now=datetime.now(UTC),
     )
@@ -90,7 +83,7 @@ def schedule(
 ) -> None:
     """Create or replace the Temporal Schedule that fires the poll workflow."""
     cfg = settings.beads_poller
-    _run_coro(_scheduled(interval_sec or cfg.interval_sec))
+    run_coro(_scheduled(interval_sec or cfg.interval_sec))
     typer.echo(f"scheduled {cfg.schedule_id}", err=True)
 
 
@@ -115,7 +108,7 @@ async def _scheduled(interval: int) -> None:
 @beads_app.command(name="unschedule")
 def unschedule() -> None:
     """Delete the poll schedule; already-spawned workflows keep running."""
-    _run_coro(_unscheduled())
+    run_coro(_unscheduled())
     typer.echo(f"unscheduled {settings.beads_poller.schedule_id}", err=True)
 
 

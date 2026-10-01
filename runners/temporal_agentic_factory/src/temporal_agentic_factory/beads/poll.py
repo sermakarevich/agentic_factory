@@ -11,7 +11,7 @@ from typing import Protocol
 from agentic_factory.job.contract import Job
 from temporal_agentic_factory.beads.client import BeadsClient, marker, marker_for
 from temporal_agentic_factory.beads.mapping import decide, workflow_id
-from temporal_agentic_factory.beads.models import PollSummary
+from temporal_agentic_factory.beads.models import Bead, PollSummary
 from temporal_agentic_factory.beads.shell import BeadsError
 
 TERMINAL = ("COMPLETED", "FAILED", "TIMED_OUT", "TERMINATED", "CANCELED")
@@ -20,7 +20,10 @@ TERMINAL = ("COMPLETED", "FAILED", "TIMED_OUT", "TERMINATED", "CANCELED")
 class Workflows(Protocol):
     """The Temporal side of a tick; the activity implements it for real."""
 
-    async def running_count(self) -> int: ...
+    async def free_slots(self, cap: int) -> int | None:
+        """Coder jobs that may still start under the cap; None when cap is 0 (no cap)."""
+        ...
+
     async def spawn(self, bead_id: str, job: Job) -> str:
         """Start the bead's job workflow; its id. Raises AlreadySpawned on conflict."""
         ...
@@ -48,14 +51,14 @@ async def poll_once(
     beads: BeadsClient,
     flows: Workflows,
     batch_limit: int,
-    max_in_flight: int,
+    max_concurrent_jobs: int,
     orphan_timeout_sec: int,
     now: datetime,
 ) -> PollSummary:
     """Reconcile, then spawn: the summary of what this tick did."""
     summary = PollSummary()
     await _reconcile(beads, flows, summary, orphan_timeout_sec, now)
-    await _spawn(beads, flows, summary, batch_limit, max_in_flight)
+    await _spawn(beads, flows, summary, batch_limit, max_concurrent_jobs)
     return summary
 
 
@@ -157,15 +160,16 @@ async def _spawn(
     flows: Workflows,
     summary: PollSummary,
     batch_limit: int,
-    max_in_flight: int,
+    max_concurrent_jobs: int,
 ) -> None:
-    """Ready beads claimed and spawned, up to the batch and the in-flight cap."""
+    """Ready beads claimed and spawned, up to the batch and the free slots of the global cap."""
     try:
-        if await flows.running_count() >= max_in_flight:
-            summary.skipped["*"] = f"at cap ({max_in_flight} running)"
-            return
+        slots = await flows.free_slots(max_concurrent_jobs)
     except Exception as error:
-        summary.errors.append(f"running count failed: {error}")
+        summary.errors.append(f"free slots failed: {error}")
+        return
+    if slots == 0:
+        summary.skipped["*"] = f"at cap ({max_concurrent_jobs} running)"
         return
     try:
         candidates = beads.ready()
@@ -173,21 +177,30 @@ async def _spawn(
         summary.errors.append(f"ready list failed: {error}")
         return
     for bead in candidates[:batch_limit]:
-        decision = decide(bead)
-        if decision.job is None:
-            summary.skipped[bead.id] = decision.skip
-            continue
-        try:
-            beads.claim(bead.id)
-        except BeadsError:
-            continue  # lost the race; another puller took it
-        try:
-            wid = await flows.spawn(bead.id, decision.job)
-        except AlreadySpawned:
-            summary.skipped[bead.id] = f"workflow {workflow_id(bead.id)} already runs"
-            continue
-        except Exception as error:
-            summary.errors.append(f"spawn {bead.id} failed: {error}")
-            continue
-        beads.comment(bead.id, marker(wid))
-        summary.spawned.append(bead.id)
+        if slots is not None and len(summary.spawned) >= slots:
+            return
+        await _spawned_one(beads, flows, summary, bead)
+
+
+async def _spawned_one(
+    beads: BeadsClient, flows: Workflows, summary: PollSummary, bead: Bead
+) -> None:
+    """One ready bead claimed, its job started and marked; or why not, in the summary."""
+    decision = decide(bead)
+    if decision.job is None:
+        summary.skipped[bead.id] = decision.skip
+        return
+    try:
+        beads.claim(bead.id)
+    except BeadsError:
+        return  # lost the race; another puller took it
+    try:
+        wid = await flows.spawn(bead.id, decision.job)
+    except AlreadySpawned:
+        summary.skipped[bead.id] = f"workflow {workflow_id(bead.id)} already runs"
+        return
+    except Exception as error:
+        summary.errors.append(f"spawn {bead.id} failed: {error}")
+        return
+    beads.comment(bead.id, marker(wid))
+    summary.spawned.append(bead.id)

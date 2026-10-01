@@ -66,8 +66,8 @@ class FakeFlows:
         self.known = set(known or [])
         self.spawned: list[str] = []
 
-    async def running_count(self) -> int:
-        return self.running
+    async def free_slots(self, cap: int) -> int | None:
+        return None if cap == 0 else max(cap - self.running, 0)
 
     async def spawn(self, bead_id: str, job: Job) -> str:
         if bead_id in self.known:
@@ -109,6 +109,22 @@ async def test_cap_stops_spawns() -> None:
     summary = await poll_once(beads, flows, 10, 4, 600, NOW)
     assert summary.spawned == []
     assert beads.taken == set()
+
+
+async def test_spawns_stop_at_the_free_slots() -> None:
+    beads = FakeBeads(ready=[_bead(f"bd-{n}") for n in range(10)])
+    flows = FakeFlows(running=1)
+    summary = await poll_once(beads, flows, 10, 4, 600, NOW)
+    assert summary.spawned == ["bd-0", "bd-1", "bd-2"]
+    assert flows.spawned == ["bd-0", "bd-1", "bd-2"]
+    assert beads.taken == {"bd-0", "bd-1", "bd-2"}
+
+
+async def test_no_cap_spawns_the_whole_batch() -> None:
+    beads = FakeBeads(ready=[_bead(f"bd-{n}") for n in range(10)])
+    flows = FakeFlows(running=50)
+    summary = await poll_once(beads, flows, 6, 0, 600, NOW)
+    assert len(summary.spawned) == 6
 
 
 async def test_unmapped_coder_never_claimed() -> None:
