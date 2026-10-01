@@ -844,3 +844,14 @@ sources one module per kind** (Oct 1).
   the old commands as aliases (two spellings of everything in the docs and
   the help) and guessing that an unknown first argument is a job prompt (a
   typo in a workflow name would start a coder on it).
+- **A job hands back its result one way** (2026-10-01). The coder submits
+  `{report, output?}` through `af output submit`; the summary block, its LLM
+  repair, the LLM report and the LLM extraction are removed;
+  `job_with_structured_output` is merged into `job`. One schema
+  (`submission_schema`) is saved before the job runs, one prompt asks for
+  it, one check validates it; the report (task, done with evidence, not
+  done, problems, verdict) is the coder's, `unknown` is the workflow's word
+  when nothing was submitted after the reminders, and a job the engine
+  could not finish gets a report made by code (verdict `failed`). Rejected:
+  keeping the LLM fallbacks (a second model call that can make up what the
+  coder never said, and three ways out of a job to keep in step).

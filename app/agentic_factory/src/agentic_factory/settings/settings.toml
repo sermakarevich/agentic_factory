@@ -1,6 +1,6 @@
 # Defaults of the application. Override without editing this file:
 #   - settings.local.toml next to it (git-ignored), same layout;
-#   - environment variables AF_<TABLE>__<KEY>, e.g. AF_STEP__MAX_TOKENS=4096;
+#   - environment variables AF_<TABLE>__<KEY>, e.g. AF_JOB__TIMEOUT_SEC=7200;
 #   - a .env file in the repo root, read on start.
 
 [job]
@@ -22,19 +22,6 @@ default_model = "opencode-go/muse-spark-1.3-contributor"
 default_model = "sonnet"
 autocompact_min_tokens = 100000  # the least claude accepts for --autocompact (100k to 1M); compact_at_tokens is raised to it
 
-[step]
-provider = "opencode"
-reasoning = "high"            # minimal | low | medium | high; tokens are covered by the plan
-max_tokens = 32768            # answer plus reasoning
-timeout_sec = 600
-error_clip_chars = 500        # longest answer text kept in a bad-output failure
-
-[step.opencode]
-default_model = "muse-spark-1.3-contributor"
-base_url = "https://opencode.ai/zen/go/v1"
-user_agent = "agentic-factory/0.1"   # Go refuses generic SDK agents
-retry_after_default_sec = 60         # wait after a rate limit that names no retry-after
-
 [step.judge]
 provider = "typesafe"         # which judge answers: typesafe
 timeout_sec = 60              # a judgment is one short call; the step's own limit
@@ -46,13 +33,3 @@ retry_after_default_sec = 60    # wait after a rate limit that names no retry-af
 
 [log]
 content_width = 160           # longest event text on one log line
-
-[conversation]
-tool_output_chars = 2000  # longest tool output kept in a rendered conversation; the middle is cut
-tool_args_chars = 300  # longest tool-call arguments kept, json, cut at the end
-
-[report]
-max_chars = 200000  # longest conversation sent to the report step; head and tail are kept
-
-[structured_output]
-max_chars = 200000  # longest text sent to the structured output extraction step; head and tail are kept

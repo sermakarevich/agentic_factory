@@ -36,8 +36,8 @@ with workflow.unsafe.imports_passed_through():
     from agentic_factory.job.contract import Job
     from agentic_factory.job.outcome import JobOutcome
     from temporal_agentic_factory.settings.load import settings
-    from temporal_agentic_factory.workflows.job.child import run_job_with_report
-    from temporal_agentic_factory.workflows.structured_output.child import (
+    from temporal_agentic_factory.workflows.job.child import (
+        run_job_with_report,
         run_job_with_structured_output,
     )
     from temporal_agentic_factory.workflows.tutorial.activities import locate_tutorial
@@ -247,12 +247,12 @@ async def stated[Output: BaseModel](job: Job, output: type[Output]) -> tuple[Out
     A statement that does not fit the model is the job's typed failure."""
     done = await run_job_with_structured_output(job, output.model_json_schema())
     try:
-        stated_output = output.model_validate(done.structured_output)
+        stated_output = output.model_validate(done.output)
     except ValidationError as error:
         raise ApplicationError(
             f"{job.name}: {error}", type="StructuredOutputInvalid", non_retryable=True
         ) from error
-    return stated_output, spend_of(done.outcome)
+    return stated_output, spend_of(done)
 
 
 def spend_of(outcome: JobOutcome) -> Spend:

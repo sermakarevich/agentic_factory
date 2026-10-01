@@ -36,8 +36,21 @@ def test_failed_run_blocks() -> None:
     assert "rate limited" in ending.note
 
 
-def test_missing_report_blocks() -> None:
-    assert not ending_of_completed(_outcome(None)).close
+def test_missing_report_blocks_with_verdict_unknown() -> None:
+    ending = ending_of_completed(_outcome(None))
+    assert not ending.close
+    assert ending.note == "verdict unknown: session ses_1 submitted no report"
+
+
+def test_a_failed_report_made_by_code_blocks_with_its_problem() -> None:
+    outcome = _outcome(None).model_copy(
+        update={
+            "report": JobReport(
+                task="t", done=[], not_done=[], problems=["Stalled: x"], verdict=Verdict.FAILED
+            )
+        }
+    )
+    assert ending_of_completed(outcome).note == "verdict failed: Stalled: x"
 
 
 def test_stopped_workflow_blocks() -> None:

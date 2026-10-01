@@ -41,6 +41,16 @@ class StoredEvent:
 
 
 @dataclass(frozen=True)
+class StoredReport:
+    """One `report` row: what the coder said it did, and its verdict."""
+
+    session_id: str
+    created_at: datetime
+    report: dict[str, Any]
+    verdict: str
+
+
+@dataclass(frozen=True)
 class StoredStructuredOutput:
     """One `structured_output` row: what the workflow asked for, what was
     found, and where."""
@@ -242,32 +252,24 @@ class Store:
                 conn, schema_.job, {"session_id": session_id}, _job_values(_job_without_nul(job))
             )
 
-    async def save_conversation(self, session_id: str, text: str, events_count: int) -> None:
-        """Insert or replace the conversation row (built_at = now UTC)."""
-        async with self.engine.begin() as conn:
-            await _upsert(
-                conn,
-                schema_.conversation,
-                {"session_id": session_id},
-                {"built_at": _now(), "events_count": events_count, "text": without_nul(text)},
-            )
-
-    async def save_report(
-        self, session_id: str, result: dict[str, Any], summary: dict[str, Any], verdict: str
-    ) -> None:
+    async def save_report(self, session_id: str, report: dict[str, Any], verdict: str) -> None:
         """Insert or replace the report row (created_at = now UTC)."""
         async with self.engine.begin() as conn:
             await _upsert(
                 conn,
                 schema_.report,
                 {"session_id": session_id},
-                {
-                    "created_at": _now(),
-                    "result": without_nul(result),
-                    "summary": without_nul(summary),
-                    "verdict": verdict,
-                },
+                {"created_at": _now(), "report": without_nul(report), "verdict": verdict},
             )
+
+    async def load_report(self, session_id: str) -> StoredReport | None:
+        """The report row, or None when the coder submitted none."""
+        async with self.engine.begin() as conn:
+            result = await conn.execute(
+                select(schema_.report).where(schema_.report.c.session_id == session_id)
+            )
+            row = result.mappings().first()
+            return _stored_report(row) if row is not None else None
 
     async def save_output_schema(self, session_id: str, schema: dict[str, Any]) -> None:
         """Insert or replace the output_schema row (created_at = now UTC)."""
@@ -404,6 +406,15 @@ def _stored_session(row: RowMapping) -> StoredSession:
         workdir=row["workdir"],
         prompt=row["prompt"],
         created_at=_as_utc(row["created_at"]),
+    )
+
+
+def _stored_report(row: RowMapping) -> StoredReport:
+    return StoredReport(
+        session_id=row["session_id"],
+        created_at=_as_utc(row["created_at"]),
+        report=row["report"],
+        verdict=row["verdict"],
     )
 
 

@@ -13,7 +13,7 @@ from typing import Protocol
 
 from agentic_factory.job.contract import Job
 from agentic_factory.job.outcome import JobOutcome
-from agentic_factory.job.structured_output.contract import Schema
+from agentic_factory.job.submission.contract import Schema
 from temporal_agentic_factory.watchers.beads.client import BeadsClient
 from temporal_agentic_factory.watchers.beads.ending import (
     COMPLETED,

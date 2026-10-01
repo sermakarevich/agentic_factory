@@ -38,19 +38,8 @@ class JobActivitySettings(Table):
     min_retry_delay_sec: int
 
 
-class ReportActivitySettings(Table):
-    close_margin_sec: int
-    max_attempts: int
-
-
-class StructuredOutputActivitySettings(Table):
-    close_margin_sec: int
-    max_attempts: int
-
-
-class StructuredOutputWorkflowSettings(Table):
+class JobWorkflowSettings(Table):
     submit_reminders: int
-    llm_fallback: bool
 
 
 class SubmissionActivitySettings(Table):
@@ -144,9 +133,7 @@ class Settings(Table):
     coders: CodersSettings
     cli: CliSettings
     job_activity: JobActivitySettings
-    report_activity: ReportActivitySettings
-    structured_output_activity: StructuredOutputActivitySettings
-    structured_output_workflow: StructuredOutputWorkflowSettings
+    job_workflow: JobWorkflowSettings
     submission_activity: SubmissionActivitySettings
     judge_activity: JudgeActivitySettings
     record_activity: RecordActivitySettings

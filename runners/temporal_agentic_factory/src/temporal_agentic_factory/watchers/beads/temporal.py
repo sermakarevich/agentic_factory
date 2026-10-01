@@ -6,31 +6,24 @@ from temporalio.service import RPCError, RPCStatusCode
 
 from agentic_factory.job.contract import Job
 from agentic_factory.job.outcome import JobOutcome
-from agentic_factory.job.structured_output.contract import Schema
+from agentic_factory.job.submission.contract import Schema
 from temporal_agentic_factory.client import connect
 from temporal_agentic_factory.settings.load import settings
 from temporal_agentic_factory.watchers.beads.poll import AlreadySpawned, UnknownWorkflow
 from temporal_agentic_factory.workflows.job import search_attributes
-from temporal_agentic_factory.workflows.job.workflow import JobWorkflow
-from temporal_agentic_factory.workflows.structured_output.workflow import (
-    JobWithStructuredOutputWorkflow,
-    StructuredOutputJob,
-)
-
-STRUCTURED_TYPE = "job_with_structured_output"
+from temporal_agentic_factory.workflows.job.workflow import JobRequest, JobWorkflow
 
 
 class TemporalWorkflows:
     """`Workflows` over the configured server. One tick, one client."""
 
     async def spawn(self, workflow_id: str, job: Job, output_schema: Schema | None) -> str:
-        """Start the job workflow, or the job with structured output when a schema
+        """Start the job workflow, asked for a structured output when a schema
         is given; its id. Raises AlreadySpawned on conflict."""
         client = await connect()
+        request = JobRequest(job=job, output_schema=output_schema)
         try:
-            if output_schema is None:
-                return await _started_job(client, workflow_id, job)
-            return await _started_structured(client, workflow_id, job, output_schema)
+            return await _started_job(client, workflow_id, request)
         except WorkflowAlreadyStartedError as error:
             raise AlreadySpawned(workflow_id) from error
 
@@ -47,13 +40,9 @@ class TemporalWorkflows:
         return str(name or desc.status)
 
     async def outcome_of(self, workflow_id: str) -> JobOutcome:
-        """The job outcome a completed workflow returned, read by its workflow type."""
+        """The job outcome a completed workflow returned."""
         client = await connect()
-        desc = await client.get_workflow_handle(workflow_id).describe()
-        if desc.workflow_type != STRUCTURED_TYPE:
-            return await client.get_workflow_handle_for(JobWorkflow.run, workflow_id).result()
-        handle = client.get_workflow_handle_for(JobWithStructuredOutputWorkflow.run, workflow_id)
-        return (await handle.result()).outcome
+        return await client.get_workflow_handle_for(JobWorkflow.run, workflow_id).result()
 
     async def exists(self, workflow_id: str) -> bool:
         """Whether this workflow resolves, whatever its status."""
@@ -64,26 +53,12 @@ class TemporalWorkflows:
         return True
 
 
-async def _started_job(client: Client, workflow_id: str, job: Job) -> str:
+async def _started_job(client: Client, workflow_id: str, request: JobRequest) -> str:
     """The job workflow started; its id."""
+    job = request.job
     handle = await client.start_workflow(
         JobWorkflow.run,
-        job,
-        id=workflow_id,
-        task_queue=settings.temporal.task_queue,
-        search_attributes=search_attributes.at_start(job, job.name),
-        static_summary=job.name,
-    )
-    return handle.id
-
-
-async def _started_structured(
-    client: Client, workflow_id: str, job: Job, output_schema: Schema
-) -> str:
-    """The job-with-structured-output workflow started; its id."""
-    handle = await client.start_workflow(
-        JobWithStructuredOutputWorkflow.run,
-        StructuredOutputJob(job=job, output_schema=output_schema),
+        request,
         id=workflow_id,
         task_queue=settings.temporal.task_queue,
         search_attributes=search_attributes.at_start(job, job.name),

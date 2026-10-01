@@ -1,9 +1,11 @@
 from datetime import timedelta
+from typing import Any
 
 from temporalio import workflow
 from temporalio.common import RetryPolicy
 
 with workflow.unsafe.imports_passed_through():
+    from pydantic import BaseModel
     from temporalio.exceptions import (
         ActivityError,
         ApplicationError,
@@ -12,26 +14,43 @@ with workflow.unsafe.imports_passed_through():
     )
 
     from agentic_factory.job.contract import Job, JobResult
-    from agentic_factory.job.outcome import JobOutcome
-    from agentic_factory.job.report.contract import JobReport
-    from agentic_factory.settings.load import settings as app_settings
+    from agentic_factory.job.outcome import JobOutcome, with_follow_up_spend
+    from agentic_factory.job.report.failure import failed_report
+    from agentic_factory.job.submission.ask import AskedJob
+    from agentic_factory.job.submission.contract import Schema
+    from agentic_factory.job.submission.reminder import reminder_job
+    from agentic_factory.job.submission.submit import Submitted
     from temporal_agentic_factory.settings.load import settings
     from temporal_agentic_factory.workflows.job import search_attributes
     from temporal_agentic_factory.workflows.job.coder_queue import coder_queue
     from temporal_agentic_factory.workflows.job.execute import JobActivity, TryResult
     from temporal_agentic_factory.workflows.job.record import RecordActivity
-    from temporal_agentic_factory.workflows.job.report import ReportActivity, ReportRequest
     from temporal_agentic_factory.workflows.job.session import SessionActivity
+    from temporal_agentic_factory.workflows.job.submission import (
+        SubmissionActivity,
+        SubmissionRequest,
+    )
+
+NOT_SUBMITTED = "the coder did not submit the structured output"
+
+
+class JobRequest(BaseModel):
+    """A job, and the schema of the structured output it must hand back
+    besides its report, when it must hand one back."""
+
+    job: Job
+    output_schema: Schema | None = None
 
 
 @workflow.defn(name="job")
 class JobWorkflow:
-    """One job, run to a result. Tries of it are retries of the activity, all
-    in one session made up front; this workflow never sees them."""
+    """One job, run to a result and the report the coder submitted with it.
+    Tries of it are retries of the activity, all in one session made up
+    front; this workflow never sees them."""
 
     @workflow.run
-    async def run(self, job: Job) -> JobOutcome:
-        return await run_job_here(job)
+    async def run(self, request: JobRequest) -> JobOutcome:
+        return await run_job_here(request.job, request.output_schema)
 
 
 def _job_retry() -> RetryPolicy:
@@ -42,10 +61,6 @@ def _job_retry() -> RetryPolicy:
         maximum_interval=timedelta(seconds=cfg.retry_max_sec),
         maximum_attempts=cfg.max_attempts,
     )
-
-
-def _report_retry() -> RetryPolicy:
-    return RetryPolicy(maximum_attempts=settings.report_activity.max_attempts)
 
 
 async def with_session(job: Job) -> Job:
@@ -103,25 +118,93 @@ def _failure_text(error: ActivityError) -> str:
     return f"{type(cause).__name__}: {cause}" if cause else str(error)
 
 
-async def run_job_here(job: Job) -> JobOutcome:
-    """In this workflow's own history: the job, then the report over
-    everything it stored, then the job's row in the store. A job without a
-    session gets one first, so that every try runs in it. A permanently
-    failed job still gets its report, then the outcome carries the failure
-    instead of a result. A failed report step is not fatal: the outcome has
-    none. Neither is a failed record: the outcome is still returned."""
+async def run_job_here(job: Job, output_schema: Schema | None = None) -> JobOutcome:
+    """In this workflow's own history: the session made, the submission
+    schema saved under it and the job asked to submit its result with `af
+    output submit`, the job run, then what it submitted. A coder that
+    submitted nothing is reminded in the same session; still nothing, the
+    outcome has no report and its verdict is unknown. A job that failed for
+    good gets a report made here from its failure, and no reminder. Then
+    the job's row in the store; a failed record is not fatal. A job asked
+    for a structured output raises when it failed or never submitted one:
+    an output cannot be made up, so the caller stops there."""
     job = await with_session(job)
-    request = await _job_as_report_request(job)
-    report = await _report_or_none(request, job.name)
-    outcome = JobOutcome(
-        session_id=job.session_id,
-        result=request.result,
-        failure=request.failure,
-        report=report,
-    )
+    asked = await _asked_for_submission(SubmissionRequest(job=job, output_schema=output_schema))
+    outcome = await _ran(asked.job)
+    if outcome.failure:
+        outcome = outcome.model_copy(update={"report": failed_report(job, outcome.failure)})
+    else:
+        outcome = await _with_submission(asked, outcome)
     workflow.upsert_search_attributes(search_attributes.at_end(outcome))
     await record_outcome(outcome, job.name)
+    if output_schema is not None:
+        _raise_without_output(job, outcome)
     return outcome
+
+
+def _raise_without_output(job: Job, outcome: JobOutcome) -> None:
+    """The named JobFailed for a job that failed for good; the named
+    StructuredOutputNotStated for one that never submitted its output."""
+    done_or_raised(job, outcome)
+    if outcome.output is None:
+        message = _named(job, NOT_SUBMITTED)
+        raise ApplicationError(message, type="StructuredOutputNotStated", non_retryable=True)
+
+
+async def _ran(job: Job) -> JobOutcome:
+    """The job run: its result, or the failure that ended it after every
+    try. Either way the runner of the last try goes to the UI."""
+    try:
+        done = await _execute_job_activity(job)
+    except ActivityError as error:
+        workflow.upsert_search_attributes(search_attributes.after_job(error.identity))
+        return JobOutcome(session_id=job.session_id, failure=_failure_text(error))
+    workflow.upsert_search_attributes(search_attributes.after_job(done.runner))
+    return JobOutcome(session_id=job.session_id, result=done.result)
+
+
+async def _with_submission(asked: AskedJob, outcome: JobOutcome) -> JobOutcome:
+    """The outcome with the report and output the coder submitted, reminding
+    it up to `submit_reminders` times while it has submitted nothing; the
+    reminders' spend added."""
+    submitted = await _submitted(asked.job)
+    reminders = 0
+    while submitted is None and reminders < settings.job_workflow.submit_reminders:
+        reminders += 1
+        outcome = await _reminded(asked, reminders, outcome)
+        submitted = await _submitted(asked.job)
+    if submitted is None:
+        return outcome
+    return outcome.model_copy(update={"report": submitted.report, "output": submitted.output})
+
+
+async def _reminded(asked: AskedJob, number: int, outcome: JobOutcome) -> JobOutcome:
+    """Reminder `number` run in the job's session, its spend added to the outcome."""
+    tries_per_job = settings.job_activity.max_attempts
+    reminder = reminder_job(asked.job, asked.command, number, tries_per_job)
+    return with_follow_up_spend(outcome, await run_follow_up_here(reminder))
+
+
+def _submission_options(name: str) -> dict[str, Any]:
+    """The submission activities' timeout and retries, labeled with the job's name."""
+    cfg = settings.submission_activity
+    return {
+        "start_to_close_timeout": timedelta(seconds=cfg.timeout_sec),
+        "retry_policy": RetryPolicy(maximum_attempts=cfg.max_attempts),
+        "summary": name,
+    }
+
+
+async def _asked_for_submission(request: SubmissionRequest) -> AskedJob:
+    return await workflow.execute_activity_method(
+        SubmissionActivity.ask_for_submission, request, **_submission_options(request.job.name)
+    )
+
+
+async def _submitted(job: Job) -> Submitted | None:
+    return await workflow.execute_activity_method(
+        SubmissionActivity.read_submission, job.session_id, **_submission_options(job.name)
+    )
 
 
 async def run_job_here_or_fail(job: Job) -> JobOutcome:
@@ -155,36 +238,6 @@ async def run_follow_up_here(job: Job) -> JobResult | None:
     tries counted. None when it failed for good."""
     try:
         return (await _execute_job_activity(job)).result
-    except ActivityError:
-        return None
-
-
-async def _job_as_report_request(job: Job) -> ReportRequest:
-    """The job run, as the report step wants it: its result, or the failure
-    that ended it after every try. Either way the runner of the last try goes
-    to the UI."""
-    try:
-        done = await _execute_job_activity(job)
-    except ActivityError as error:
-        workflow.upsert_search_attributes(search_attributes.after_job(error.identity))
-        return ReportRequest(session_id=job.session_id, failure=_failure_text(error))
-    workflow.upsert_search_attributes(search_attributes.after_job(done.runner))
-    return ReportRequest(session_id=job.session_id, result=done.result)
-
-
-async def _report_or_none(request: ReportRequest, name: str) -> JobReport | None:
-    """The report activity, given as long as the app gives its step plus a
-    margin, with the report policy; None when it failed for good. Labeled
-    with the job's name in the UI."""
-    timeout_sec = app_settings.step.timeout_sec + settings.report_activity.close_margin_sec
-    try:
-        return await workflow.execute_activity_method(
-            ReportActivity.build_report,
-            request,
-            start_to_close_timeout=timedelta(seconds=timeout_sec),
-            retry_policy=_report_retry(),
-            summary=name,
-        )
     except ActivityError:
         return None
 

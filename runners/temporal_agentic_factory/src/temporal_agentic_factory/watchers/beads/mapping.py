@@ -17,7 +17,7 @@ from pydantic import BaseModel, ValidationError
 from agentic_factory.job.coders.catalog import harness_for
 from agentic_factory.job.contract import Job
 from agentic_factory.job.defaults import with_default_model
-from agentic_factory.job.structured_output.contract import Schema
+from agentic_factory.job.submission.contract import Schema
 from temporal_agentic_factory.watchers.beads.client import JOB_KEY
 from temporal_agentic_factory.watchers.beads.front_matter import (
     FrontMatterError,

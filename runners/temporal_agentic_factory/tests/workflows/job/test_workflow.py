@@ -1,4 +1,5 @@
 import uuid
+from typing import Any
 
 import pytest
 from temporalio import activity, workflow
@@ -13,22 +14,42 @@ from temporalio.exceptions import (
 )
 from temporalio.testing import WorkflowEnvironment
 
+from agentic_factory.job.coders.catalog import harness_for
 from agentic_factory.job.contract import Job, JobResult
 from agentic_factory.job.outcome import JobOutcome
 from agentic_factory.job.report.contract import JobReport, Verdict
+from agentic_factory.job.submission.ask import AskedJob, asked_job
+from agentic_factory.job.submission.contract import Schema
+from agentic_factory.job.submission.schema import submission_schema
+from agentic_factory.job.submission.submit import Submitted
+from temporal_agentic_factory.settings.load import settings
 from temporal_agentic_factory.workflows.job import search_attributes
-from temporal_agentic_factory.workflows.job.child import run_job_or_fail, run_job_with_report
+from temporal_agentic_factory.workflows.job.child import (
+    run_job_or_fail,
+    run_job_with_report,
+    run_job_with_structured_output,
+)
 from temporal_agentic_factory.workflows.job.coder_queue import coder_queue
 from temporal_agentic_factory.workflows.job.execute import TryResult
-from temporal_agentic_factory.workflows.job.report import ReportRequest
-from temporal_agentic_factory.workflows.job.workflow import JobWorkflow, _failure_text
+from temporal_agentic_factory.workflows.job.submission import SubmissionRequest
+from temporal_agentic_factory.workflows.job.workflow import JobRequest, JobWorkflow, _failure_text
 from tests.workers import running
+
+SCHEMA: Schema = {
+    "type": "object",
+    "properties": {"urls": {"type": "array", "items": {"type": "string"}}},
+}
+REPORT = JobReport(task="t", done=["wrote a.md"], not_done=[], problems=[], verdict=Verdict.DONE)
+PLAIN = Submitted(report=REPORT)
+WITH_OUTPUT = Submitted(report=REPORT, output={"urls": ["u"]})
 
 tries: list[int] = []
 queues: list[str] = []
-sessions: list[str] = []
-report_requests: list[ReportRequest] = []
+jobs: list[Job] = []
+asked: list[SubmissionRequest] = []
+reads: list[str] = []
 recorded: list[JobOutcome] = []
+submissions: list[Submitted | None] = []  # what each read gives, in turn; then None
 
 
 @activity.defn(name="create_session")
@@ -38,24 +59,46 @@ async def fake_session(job: Job) -> str:
 
 @activity.defn(name="execute_job")
 async def fake_job(job: Job) -> TryResult:
-    """Fails once, then answers. Stands in for the real activity."""
+    """Fails the first try of the first job, then answers. Stands in for the real activity."""
     tries.append(activity.info().attempt)
     queues.append(activity.info().task_queue)
-    sessions.append(job.session_id)
-    if activity.info().attempt == 1:
+    if activity.info().attempt == 1 and not jobs:
         raise ApplicationError("no output", type="Stalled")
+    jobs.append(job)
     return TryResult(result=JobResult(session_id=job.session_id, cost_usd=0.5), runner="r1")
 
 
-@activity.defn(name="build_report")
-async def fake_report(request: ReportRequest) -> JobReport:
-    report_requests.append(request)
-    return JobReport(task="t", done=[], not_done=[], problems=[], verdict=Verdict.DONE)
+@activity.defn(name="execute_job")
+async def always_fails(job: Job) -> TryResult:
+    raise ApplicationError("no output", type="Stalled", non_retryable=True)
+
+
+@activity.defn(name="ask_for_submission")
+async def fake_ask(request: SubmissionRequest) -> AskedJob:
+    asked.append(request)
+    schema = submission_schema(request.output_schema)
+    return asked_job(request.job, schema, "af", harness_for(request.job.provider))
+
+
+@activity.defn(name="read_submission")
+async def fake_read(session_id: str) -> Submitted | None:
+    reads.append(session_id)
+    return submissions.pop(0) if submissions else None
 
 
 @activity.defn(name="record_job")
 async def fake_record(outcome: JobOutcome) -> None:
     recorded.append(outcome)
+
+
+QUICK = [fake_session, fake_ask, fake_read, fake_record]
+
+
+def _submitting(*given: Submitted | None) -> None:
+    """Every record cleared, and the reads to give `given` in turn."""
+    for record in (tries, queues, jobs, asked, reads, recorded, submissions):
+        record.clear()
+    submissions.extend(given)
 
 
 async def _environment() -> WorkflowEnvironment:
@@ -66,35 +109,118 @@ async def _environment() -> WorkflowEnvironment:
     return env
 
 
-async def test_job_workflow_retries_the_activity_and_returns_its_result() -> None:
-    tries.clear()
-    sessions.clear()
-    report_requests.clear()
-    recorded.clear()
+def _request(output_schema: Schema | None = None) -> JobRequest:
+    job = Job(name="urls", prompt="fetch", workdir=".", model="m")
+    return JobRequest(job=job, output_schema=output_schema)
+
+
+async def _run(
+    request: JobRequest, execute: Any = fake_job, quick: list[Any] = QUICK
+) -> tuple[JobOutcome, Any]:
+    """The job workflow run to its end: its outcome and its search attributes."""
     async with await _environment() as env:
         queue = f"test-{uuid.uuid4()}"
-        async with running(
-            env.client, queue, [JobWorkflow], [fake_session, fake_report, fake_record], fake_job
-        ):
+        async with running(env.client, queue, [JobWorkflow], quick, execute):
             handle = await env.client.start_workflow(
-                JobWorkflow.run,
-                Job(prompt="hi", workdir=".", model="m"),
-                id=f"j-{uuid.uuid4()}",
-                task_queue=queue,
+                JobWorkflow.run, request, id=f"j-{uuid.uuid4()}", task_queue=queue
             )
-            result = await handle.result()
-            shown = (await handle.describe()).typed_search_attributes
-    assert tries == [1, 2] and sessions == ["s1", "s1"]  # one session, made before try 1
-    assert shown.get(search_attributes.RUNNER) == "r1"  # what the ui's columns show
+            outcome = await handle.result()
+            return outcome, (await handle.describe()).typed_search_attributes
+
+
+async def test_a_plain_job_retries_its_tries_and_its_submitted_report_is_recorded() -> None:
+    _submitting(PLAIN)
+    outcome, shown = await _run(_request())
+
+    assert tries == [1, 2] and len(jobs) == 1  # one job, two tries, no reminder
+    (request,) = asked
+    assert request.job.session_id == "s1" and request.output_schema is None
+    (job,) = jobs
+    assert job.session_id == "s1" and "af output submit s1 <<'JSON'" in job.prompt
+    assert reads == ["s1"]
+    assert outcome.result is not None and outcome.result.cost_usd == 0.5
+    assert outcome.report == REPORT and outcome.output is None
+    assert shown.get(search_attributes.RUNNER) == "r1"
     assert shown.get(search_attributes.OUTCOME) == "done"
     assert shown.get(search_attributes.VERDICT) == "done"
-    assert result.result is not None
-    assert result.session_id == "s1"
-    assert result.result.session_id == "s1" and result.result.cost_usd == 0.5
-    assert result.report is not None and result.report.verdict == Verdict.DONE
-    assert len(report_requests) == 1 and report_requests[0].result is not None
-    assert report_requests[0].result.session_id == "s1"
-    assert recorded == [result]  # the job row is written from the outcome, after the report
+    assert recorded == [outcome]  # the job row is written once, from the outcome
+
+
+async def test_a_structured_job_gives_its_output_and_its_report() -> None:
+    _submitting(WITH_OUTPUT)
+    outcome, _ = await _run(_request(SCHEMA))
+
+    assert outcome.output == {"urls": ["u"]} and outcome.report == REPORT
+    (request,) = asked
+    assert request.output_schema == SCHEMA
+    assert '"urls"' in jobs[0].prompt and '"report"' in jobs[0].prompt
+
+
+async def test_a_coder_that_did_not_submit_is_reminded_in_its_session() -> None:
+    _submitting(None, PLAIN)
+    outcome, _ = await _run(_request())
+
+    first, reminder = jobs
+    assert reminder.name == "urls/reminder" and reminder.session_id == first.session_id == "s1"
+    assert reminder.try_offset == settings.job_activity.max_attempts  # after the first job's
+    assert "af output submit s1" in reminder.prompt and reads == ["s1", "s1"]
+    assert outcome.report == REPORT
+    assert outcome.result is not None and outcome.result.cost_usd == pytest.approx(1.0)
+    assert recorded == [outcome]
+
+
+async def test_a_plain_job_that_never_submitted_ends_with_verdict_unknown() -> None:
+    _submitting()
+    outcome, shown = await _run(_request())
+
+    assert len(jobs) == 1 + settings.job_workflow.submit_reminders
+    assert outcome.result is not None and outcome.report is None
+    assert shown.get(search_attributes.VERDICT) == "unknown"
+    assert recorded == [outcome]
+
+
+async def test_a_structured_job_that_never_submitted_fails() -> None:
+    _submitting()
+    with pytest.raises(WorkflowFailureError) as err:
+        await _run(_request(SCHEMA))
+
+    cause = err.value.cause
+    assert isinstance(cause, ApplicationError) and cause.type == "StructuredOutputNotStated"
+    assert cause.message.startswith("urls: ")
+    assert len(recorded) == 1 and recorded[0].report is None  # its row is still written
+
+
+async def test_a_permanently_failed_job_gets_a_report_made_by_code() -> None:
+    _submitting(PLAIN)
+    outcome, shown = await _run(_request(), always_fails)
+
+    assert outcome.result is None and outcome.failure.startswith("Stalled")
+    assert outcome.report == JobReport(
+        task="urls", done=[], not_done=[], problems=[outcome.failure], verdict=Verdict.FAILED
+    )
+    assert reads == [] and jobs == []  # no submission read, no reminder
+    assert shown.get(search_attributes.OUTCOME) == "failed"
+    assert shown.get(search_attributes.VERDICT) == "failed"
+
+
+async def test_a_failed_structured_job_raises_job_failed() -> None:
+    _submitting()
+    with pytest.raises(WorkflowFailureError) as err:
+        await _run(_request(SCHEMA), always_fails)
+
+    cause = err.value.cause
+    assert isinstance(cause, ApplicationError) and cause.type == "JobFailed"
+    assert cause.message.startswith("urls: Stalled")
+
+
+async def test_a_failed_record_is_not_fatal() -> None:
+    @activity.defn(name="record_job")
+    async def broken_record(outcome: JobOutcome) -> None:
+        raise ApplicationError("db down", type="OSError", non_retryable=True)
+
+    _submitting(PLAIN)
+    outcome, _ = await _run(_request(), quick=[fake_session, fake_ask, fake_read, broken_record])
+    assert outcome.result is not None and outcome.report == REPORT
 
 
 def test_failure_text_names_what_ended_the_last_try() -> None:
@@ -120,86 +246,18 @@ def test_failure_text_names_what_ended_the_last_try() -> None:
     assert _failure_text(failed_with(CancelledError("c"))).startswith("Cancelled")
 
 
-async def test_a_permanently_failed_job_still_gets_a_report() -> None:
-    @activity.defn(name="execute_job")
-    async def always_fails(job: Job) -> TryResult:
-        raise ApplicationError("no output", type="Stalled")
-
-    report_requests.clear()
-    async with await _environment() as env:
-        queue = f"test-{uuid.uuid4()}"
-        async with running(
-            env.client, queue, [JobWorkflow], [fake_session, fake_report, fake_record], always_fails
-        ):
-            result = await env.client.execute_workflow(
-                JobWorkflow.run,
-                Job(prompt="hi", workdir=".", model="m"),
-                id=f"j-{uuid.uuid4()}",
-                task_queue=queue,
-            )
-    assert result.result is None
-    assert result.failure.startswith("Stalled")
-    assert result.report is not None and result.report.verdict == Verdict.DONE
-
-
-async def test_a_failed_report_is_not_fatal() -> None:
-    @activity.defn(name="build_report")
-    async def broken_report(request: ReportRequest) -> JobReport:
-        raise ApplicationError("bad", type="BadOutput", non_retryable=True)
-
-    report_requests.clear()
-    tries.clear()
-    sessions.clear()
-    async with await _environment() as env:
-        queue = f"test-{uuid.uuid4()}"
-        async with running(
-            env.client, queue, [JobWorkflow], [fake_session, broken_report, fake_record], fake_job
-        ):
-            result = await env.client.execute_workflow(
-                JobWorkflow.run,
-                Job(prompt="hi", workdir=".", model="m"),
-                id=f"j-{uuid.uuid4()}",
-                task_queue=queue,
-            )
-    assert result.result is not None and result.result.session_id == "s1"
-    assert result.report is None
-
-
-async def test_a_failed_record_is_not_fatal() -> None:
-    @activity.defn(name="record_job")
-    async def broken_record(outcome: JobOutcome) -> None:
-        raise ApplicationError("db down", type="OSError", non_retryable=True)
-
-    tries.clear()
-    sessions.clear()
-    async with await _environment() as env:
-        queue = f"test-{uuid.uuid4()}"
-        async with running(
-            env.client, queue, [JobWorkflow], [fake_session, fake_report, broken_record], fake_job
-        ):
-            result = await env.client.execute_workflow(
-                JobWorkflow.run,
-                Job(prompt="hi", workdir=".", model="m"),
-                id=f"j-{uuid.uuid4()}",
-                task_queue=queue,
-            )
-    assert result.result is not None and result.report is not None
-
-
 def test_the_coder_queue_is_the_main_queue_with_the_provider() -> None:
     assert coder_queue("claude") == "agentic-factory-coder-claude"
 
 
 async def test_the_execute_step_waits_in_the_providers_coder_queue() -> None:
-    queues.clear()
+    _submitting(PLAIN)
     async with await _environment() as env:
         queue = f"test-{uuid.uuid4()}"
-        async with running(
-            env.client, queue, [JobWorkflow], [fake_session, fake_report, fake_record], fake_job
-        ):
+        async with running(env.client, queue, [JobWorkflow], QUICK, fake_job):
             await env.client.execute_workflow(
                 JobWorkflow.run,
-                Job(prompt="hi", workdir=".", provider="claude", model="m"),
+                JobRequest(job=Job(prompt="hi", workdir=".", provider="claude", model="m")),
                 id=f"j-{uuid.uuid4()}",
                 task_queue=queue,
             )
@@ -225,6 +283,7 @@ class SoftParentWorkflow:
 
 
 async def test_a_job_runs_as_a_named_child_with_its_attributes() -> None:
+    _submitting(PLAIN)
     async with await _environment() as env:
         queue = f"test-{uuid.uuid4()}"
         parent_id = f"p-{uuid.uuid4()}"
@@ -232,7 +291,7 @@ async def test_a_job_runs_as_a_named_child_with_its_attributes() -> None:
             env.client,
             queue,
             [ParentWorkflow, JobWorkflow],
-            [fake_session, fake_report, fake_record],
+            QUICK,
             fake_job,
         ):
             outcome = await env.client.execute_workflow(
@@ -251,17 +310,14 @@ async def test_a_job_runs_as_a_named_child_with_its_attributes() -> None:
 
 
 async def test_a_child_job_that_failed_for_good_raises_the_named_job_failed() -> None:
-    @activity.defn(name="execute_job")
-    async def always_fails(job: Job) -> TryResult:
-        raise ApplicationError("no output", type="Stalled", non_retryable=True)
-
+    _submitting()
     async with await _environment() as env:
         queue = f"test-{uuid.uuid4()}"
         async with running(
             env.client,
             queue,
             [ParentWorkflow, SoftParentWorkflow, JobWorkflow],
-            [fake_session, fake_report, fake_record],
+            QUICK,
             always_fails,
         ):
             job = Job(name="wiki/3", prompt="hi", workdir=".", model="m")
@@ -275,3 +331,32 @@ async def test_a_child_job_that_failed_for_good_raises_the_named_job_failed() ->
     assert soft.result is None and soft.failure.startswith("Stalled")
     assert isinstance(err.value.cause, ApplicationError) and err.value.cause.type == "JobFailed"
     assert err.value.cause.message.startswith("wiki/3: Stalled")
+
+
+@workflow.defn(name="structured_parent", sandboxed=False)
+class StructuredParentWorkflow:
+    """Runs one job asked for a structured output as a child, the way research does."""
+
+    @workflow.run
+    async def run(self, job: Job) -> dict[str, Any] | None:
+        return (await run_job_with_structured_output(job, SCHEMA)).output
+
+
+async def test_a_child_job_gives_its_output_or_raises_its_typed_error() -> None:
+    _submitting(WITH_OUTPUT)
+    async with await _environment() as env:
+        queue = f"test-{uuid.uuid4()}"
+        async with running(
+            env.client, queue, [StructuredParentWorkflow, JobWorkflow], QUICK, fake_job
+        ):
+            job = Job(name="urls", prompt="fetch", workdir=".", model="m")
+            output = await env.client.execute_workflow(
+                StructuredParentWorkflow.run, job, id=f"p-{uuid.uuid4()}", task_queue=queue
+            )
+            with pytest.raises(WorkflowFailureError) as err:
+                await env.client.execute_workflow(
+                    StructuredParentWorkflow.run, job, id=f"p-{uuid.uuid4()}", task_queue=queue
+                )
+    assert output == {"urls": ["u"]}
+    cause = err.value.cause
+    assert isinstance(cause, ApplicationError) and cause.type == "StructuredOutputNotStated"

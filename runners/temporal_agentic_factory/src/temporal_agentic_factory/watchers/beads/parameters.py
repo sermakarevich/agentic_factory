@@ -9,7 +9,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, ValidationError, field_validator
 
-from agentic_factory.job.structured_output.contract import Schema
+from agentic_factory.job.submission.contract import Schema
 
 
 class InvalidParameters(ValueError):

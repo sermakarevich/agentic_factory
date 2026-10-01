@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from agentic_factory.job.structured_output.contract import Schema
+from agentic_factory.job.submission.contract import Schema
 
 
 def absolute(path: str) -> str:

@@ -48,13 +48,8 @@ class FakeStore:
         self.calls.append(("load_events", session_id))
         return self.events
 
-    async def save_conversation(self, session_id: str, text: str, events_count: int) -> None:
-        self.calls.append(("save_conversation", session_id, text, events_count))
-
-    async def save_report(
-        self, session_id: str, result: dict[str, Any], summary: dict[str, Any], verdict: str
-    ) -> None:
-        self.calls.append(("save_report", session_id, result, summary, str(verdict)))
+    async def save_report(self, session_id: str, report: dict[str, Any], verdict: str) -> None:
+        self.calls.append(("save_report", session_id, report, verdict))
 
     async def save_structured_output(
         self,

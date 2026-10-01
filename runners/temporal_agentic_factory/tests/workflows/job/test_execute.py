@@ -11,7 +11,6 @@ from agentic_factory.failure import Stalled
 from agentic_factory.job.callback import JobCallback
 from agentic_factory.job.coders.harness import Harness
 from agentic_factory.job.contract import Job, JobResult
-from agentic_factory.job.engine import Repair
 from temporal_agentic_factory.workflows.job import execute as activity
 from temporal_agentic_factory.workflows.job.heartbeat import HeartbeatCallback
 from tests.fakes import FakeStore
@@ -33,9 +32,7 @@ async def test_second_try_continues_with_the_context_size_from_heartbeat(
 ) -> None:
     ran: list[Job] = []
 
-    async def fake_run(
-        job: Job, callback: JobCallback, harness: Harness, repair: Repair
-    ) -> JobResult:
+    async def fake_run(job: Job, callback: JobCallback, harness: Harness) -> JobResult:
         ran.append(job)
         return JobResult(session_id=job.session_id)
 
@@ -56,9 +53,7 @@ async def test_first_try_runs_the_job_as_given(
 ) -> None:
     ran: list[Job] = []
 
-    async def fake_run(
-        job: Job, callback: JobCallback, harness: Harness, repair: Repair
-    ) -> JobResult:
+    async def fake_run(job: Job, callback: JobCallback, harness: Harness) -> JobResult:
         ran.append(job)
         return JobResult()
 
@@ -70,9 +65,7 @@ async def test_first_try_runs_the_job_as_given(
 async def test_failure_becomes_typed_application_error(
     db: FakeStore, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    async def fake_run(
-        job: Job, callback: JobCallback, harness: Harness, repair: Repair
-    ) -> JobResult:
+    async def fake_run(job: Job, callback: JobCallback, harness: Harness) -> JobResult:
         raise Stalled("quiet")
 
     monkeypatch.setattr(activity.jobs, "run", fake_run)
@@ -86,9 +79,7 @@ async def test_the_engine_gets_heartbeat_log_and_journal_for_this_try(
 ) -> None:
     given: list[JobCallback] = []
 
-    async def fake_run(
-        job: Job, callback: JobCallback, harness: Harness, repair: Repair
-    ) -> JobResult:
+    async def fake_run(job: Job, callback: JobCallback, harness: Harness) -> JobResult:
         given.append(callback)
         return JobResult()
 

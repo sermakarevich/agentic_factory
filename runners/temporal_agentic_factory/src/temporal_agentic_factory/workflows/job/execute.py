@@ -11,10 +11,6 @@ from agentic_factory.job.callback import JobCallback
 from agentic_factory.job.coders.catalog import harness_for
 from agentic_factory.job.continuation import continue_job
 from agentic_factory.job.contract import Job, JobResult
-from agentic_factory.job.summary.contract import JobSummary
-from agentic_factory.job.summary.repair import repair_summary
-from agentic_factory.settings.load import settings
-from agentic_factory.step.providers.catalog import client_for
 from temporal_agentic_factory.workflows.failure import to_application_error
 from temporal_agentic_factory.workflows.job.heartbeat import Heartbeat, HeartbeatCallback
 
@@ -45,9 +41,7 @@ class JobActivity:
         job = _continued_for_this_try(job, info)
         callback = self._callback_for_try(job.session_id, job.try_offset + info.attempt)
         try:
-            result = await jobs.run(
-                job, callback, harness_for(job.provider), _repair_summary_with_step_client
-            )
+            result = await jobs.run(job, callback, harness_for(job.provider))
         except JobFailed as failure:
             raise to_application_error(failure) from failure
         return TryResult(result=result, runner=self.runner)
@@ -63,9 +57,3 @@ def _continued_for_this_try(job: Job, info: activity.Info) -> Job:
     session size the last heartbeat of the previous try reported."""
     previous = Heartbeat.last_of_previous_try(info.heartbeat_details)
     return continue_job(job, info.attempt, previous.context_tokens if previous else 0)
-
-
-async def _repair_summary_with_step_client(block: str) -> JobSummary | None:
-    """The engine's repair: the summary step with the client for the step
-    provider from settings, made only when a summary needs repairing."""
-    return await repair_summary(block, client_for(settings.step.provider))

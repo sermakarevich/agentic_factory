@@ -69,10 +69,6 @@ run *ARGS:
 job *ARGS:
     just --justfile app/agentic_factory/justfile --working-directory app/agentic_factory run "$@"
 
-# One step, a structured-output request (OpenCode Go API); no args = demo. See app/agentic_factory/justfile.
-step *ARGS:
-    just --justfile app/agentic_factory/justfile --working-directory app/agentic_factory step "$@"
-
 # start Postgres (docker compose, 127.0.0.1:5432, user/password/db "factory") and apply the migrations
 db:
     docker compose up -d --wait postgres

@@ -58,8 +58,7 @@ class BadOutput(JobFailed):
 
 
 class StructuredOutputNotStated(JobFailed):
-    """The coder ended without stating the structured output the job asked for,
-    in its last message or anywhere in the conversation; another try of the
-    same extraction would read the same text."""
+    """The coder ended without submitting the structured output the job asked
+    for, after every reminder; another try would not change that."""
 
     retryable = False

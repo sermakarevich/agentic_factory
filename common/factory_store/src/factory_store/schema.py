@@ -91,15 +91,6 @@ event = Table(
     Column("payload", PAYLOAD, nullable=False),  # the whole Event, json-dumped
 )
 
-conversation = Table(
-    "conversation",
-    metadata,
-    Column("session_id", String, ForeignKey("session.id"), primary_key=True),
-    Column("built_at", STAMP, nullable=False),
-    Column("events_count", Integer, nullable=False),
-    Column("text", Text, nullable=False),
-)
-
 # One row per job: the workflow run over every try of the session, written
 # once at its end, summed over the tries so a cost query needs no join.
 job = Table(
@@ -107,43 +98,45 @@ job = Table(
     metadata,
     Column("session_id", String, ForeignKey("session.id"), primary_key=True),
     Column("started_at", STAMP, nullable=False),  # the first try's start
-    Column("ended_at", STAMP, nullable=False),  # when the row was written, after the report
+    Column("ended_at", STAMP, nullable=False),  # when the row was written, at the job's end
     Column("tries", Integer, nullable=False),
     Column("outcome", String, nullable=False),  # done | failed
     Column("failure", Text, nullable=False, default=""),  # the last try's, when failed
     *totals_columns(),
     Column("result", PAYLOAD, nullable=False, default=dict),  # the last try's result; {} on failure
-    Column("verdict", String, nullable=False, default=""),  # the report's; "" when there is none
+    Column("verdict", String, nullable=False, default=""),  # the report's; unknown without one
 )
 
+# The report the coder submitted with `af output submit` at the end of its
+# job; a resubmit replaces it. Jobs whose coder submitted nothing have none.
 report = Table(
     "report",
     metadata,
     Column("session_id", String, ForeignKey("session.id"), primary_key=True),
     Column("created_at", STAMP, nullable=False),
-    Column("result", PAYLOAD, nullable=False),  # the job result as json; {} when the job failed
-    Column("summary", PAYLOAD, nullable=False),  # the structured report a model wrote
-    Column("verdict", String, nullable=False),
+    Column("report", PAYLOAD, nullable=False),  # the report the coder submitted
+    Column("verdict", String, nullable=False),  # done | partial | failed, as in the report
 )
 
-# The JSON schema a workflow asks the job's structured output to match, saved
-# before the coder starts so that `af output submit` can check against it.
+# The JSON schema a job's submission must match (its report and, when asked
+# for, its output), saved before the coder starts so that `af output submit`
+# can check against it.
 output_schema = Table(
     "output_schema",
     metadata,
     Column("session_id", String, ForeignKey("session.id"), primary_key=True),
     Column("created_at", STAMP, nullable=False),
-    Column("schema", PAYLOAD, nullable=False),  # the JSON schema the workflow asked for
+    Column("schema", PAYLOAD, nullable=False),  # the submission schema the workflow built
 )
 
-# The structured output a workflow asked the job for: submitted by the coder,
-# or picked out of its text by a step. Only jobs asked for one have a row.
+# The structured output a workflow asked the job for, submitted by the coder.
+# Only jobs asked for one have a row.
 structured_output = Table(
     "structured_output",
     metadata,
     Column("session_id", String, ForeignKey("session.id"), primary_key=True),
     Column("created_at", STAMP, nullable=False),
-    Column("source", String, nullable=False),  # submitted | last_message | conversation
-    Column("schema", PAYLOAD, nullable=False),  # the JSON schema the workflow asked for
+    Column("source", String, nullable=False),  # submitted; older rows: last_message | conversation
+    Column("schema", PAYLOAD, nullable=False),  # the JSON schema the submission was checked against
     Column("structured_output", PAYLOAD, nullable=False),  # the output, matching it
 )

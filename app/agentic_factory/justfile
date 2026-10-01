@@ -32,14 +32,6 @@ check: lint fmt-check typecheck test
 run *ARGS:
     uv run python scripts/run_job.py "$@"
 
-# Demo input for `just step` with no arguments.
-demo_prompt := "The coder wrote hello.txt, ran pytest (2 passed) and said 'done, but I did not update the docs'. Report."
-demo_schema := '{"type":"object","properties":{"status":{"type":"string","enum":["done","partial","blocked"]},"summary":{"type":"string"},"open_items":{"type":"array","items":{"type":"string"}}},"required":["status","summary","open_items"],"additionalProperties":false}'
-
-# One step, a structured-output request (OpenCode Go API): just step ["prompt" ["schema json or @file" [--model ...]]]
-step prompt=demo_prompt schema=demo_schema *ARGS:
-    prompt="$1"; schema="$2"; shift 2; uv run python scripts/run_step.py "$prompt" --schema "$schema" "$@"
-
 # Demo input for `just judge` with no arguments.
 demo_state := "I was charged twice for the same order and nobody answers my emails. I want a refund today."
 demo_questions := '{"tone":{"kind":"choice","question":"What is the tone?","options":{"calm":null,"angry":null}},"urgency":{"kind":"score","question":"How urgent is it?","levels":["can wait","this week","today"]},"billing":{"kind":"check","question":"Is this about billing?"}}'

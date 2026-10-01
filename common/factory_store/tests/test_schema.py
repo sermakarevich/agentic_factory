@@ -7,7 +7,6 @@ TABLES = {
     "session",
     "attempt",
     "event",
-    "conversation",
     "report",
     "job",
     "output_schema",

@@ -16,7 +16,7 @@ from temporalio.common import (
 )
 
 from agentic_factory.job.contract import Job
-from agentic_factory.job.outcome import JobOutcome
+from agentic_factory.job.outcome import JobOutcome, verdict_of
 
 NAME = SearchAttributeKey.for_keyword("Name")
 PROVIDER = SearchAttributeKey.for_keyword("Provider")
@@ -47,11 +47,11 @@ def after_job(runner: str) -> list[SearchAttributeUpdate[str]]:
 
 
 def at_end(outcome: JobOutcome) -> list[SearchAttributeUpdate[str]]:
-    """How the job ended (`done` or `failed`) and the report's verdict, if any."""
-    verdict = outcome.report.verdict.value if outcome.report else ""
+    """How the job ended (`done` or `failed`) and the report's verdict;
+    `unknown` when the coder submitted no report."""
     return [
         OUTCOME.value_set("done" if outcome.result else "failed"),
-        VERDICT.value_set(verdict),
+        VERDICT.value_set(verdict_of(outcome).value),
     ]
 
 

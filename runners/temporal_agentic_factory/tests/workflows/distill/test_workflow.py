@@ -11,21 +11,16 @@ from temporalio.testing import WorkflowEnvironment
 
 from agentic_factory.job.contract import Job, JobResult
 from agentic_factory.job.outcome import JobOutcome
-from agentic_factory.job.report.contract import JobReport, Verdict
+from agentic_factory.job.submission.contract import Schema
 from distill.contract import DistillRequest, EntryType, FetchedChunk, FetchedSource
 from temporal_agentic_factory.settings.load import settings
 from temporal_agentic_factory.workflows.distill.activities import FetchRequest
 from temporal_agentic_factory.workflows.distill.workflow import DistilledEntry, DistillWorkflow
 from temporal_agentic_factory.workflows.job import search_attributes
 from temporal_agentic_factory.workflows.job.execute import TryResult
-from temporal_agentic_factory.workflows.job.report import ReportRequest
 from temporal_agentic_factory.workflows.job.workflow import JobWorkflow
-from temporal_agentic_factory.workflows.structured_output.extract import StructuredOutputRequest
-from temporal_agentic_factory.workflows.structured_output.workflow import (
-    JobWithStructuredOutputWorkflow,
-)
 from tests.workers import running
-from tests.workflows.structured_output.submitted import submitted_by
+from tests.workflows.job.submitted import submitted_by
 
 RESEARCH_DIR = "/kb/knowledge/research/AThing"
 PLAN = {"research_dir": RESEARCH_DIR, "slug": "AThing", "title": "A thing", "type": "Article"}
@@ -73,20 +68,14 @@ async def fake_job(job: Job) -> TryResult:
     return TryResult(result=JobResult(session_id=job.session_id, cost_usd=0.1), runner="r1")
 
 
-@activity.defn(name="build_report")
-async def fake_report(request: ReportRequest) -> JobReport:
-    return JobReport(task="t", done=[], not_done=[], problems=[], verdict=Verdict.DONE)
-
-
 @activity.defn(name="record_job")
 async def fake_record(outcome: JobOutcome) -> None:
     return None
 
 
-@activity.defn(name="extract_structured_output")
-async def fake_extract(request: StructuredOutputRequest) -> dict[str, Any]:
+def fake_output(session_id: str, schema: Schema) -> dict[str, Any]:
     """The plan for the plan job's schema, the filed path for the file job's."""
-    return PLAN if "research_dir" in request.output_schema["properties"] else FILED
+    return PLAN if "research_dir" in schema["properties"] else FILED
 
 
 @activity.defn(name="verify_entry")
@@ -123,13 +112,12 @@ async def _run(request: DistillRequest, verify: Any) -> DistilledEntry:
         async with running(
             env.client,
             queue,
-            [DistillWorkflow, JobWorkflow, JobWithStructuredOutputWorkflow],
+            [DistillWorkflow, JobWorkflow],
             [
                 fake_fetch,
                 fake_session,
-                fake_report,
                 fake_record,
-                *submitted_by(fake_extract),
+                *submitted_by(fake_output),
                 verify,
             ],
             fake_job,
@@ -211,8 +199,6 @@ async def test_every_activity_is_labeled_with_its_job_in_the_ui() -> None:
         by_kind.setdefault(kind, []).append(summary)
     assert by_kind["fetch_source"] == ["https://example.org/a"]
     assert by_kind["verify_entry"] == ["AThing", "AThing"]
-    assert by_kind["ask_for_submission"] == by_kind["read_submitted_output"] == ["plan"]
-    assert "extract_structured_output" not in by_kind
     assert sorted(by_kind["execute_job"]) == sorted(
         [
             "plan",
@@ -228,7 +214,10 @@ async def test_every_activity_is_labeled_with_its_job_in_the_ui() -> None:
         ]
     )
     jobs_labels = sorted(by_kind["execute_job"])
-    assert sorted(by_kind["create_session"]) == sorted(by_kind["build_report"]) == jobs_labels
+    assert sorted(by_kind["create_session"]) == jobs_labels
+    assert (
+        sorted(by_kind["ask_for_submission"]) == sorted(by_kind["read_submission"]) == jobs_labels
+    )
     assert {job.name for job in jobs} == set(by_kind["execute_job"])
 
 

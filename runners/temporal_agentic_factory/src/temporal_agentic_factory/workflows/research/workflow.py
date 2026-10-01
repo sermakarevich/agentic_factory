@@ -40,14 +40,15 @@ with workflow.unsafe.imports_passed_through():
     from temporal_agentic_factory.workflows.distill.name import source_name
     from temporal_agentic_factory.workflows.distill.workflow import DistillWorkflow, distill_job
     from temporal_agentic_factory.workflows.job import search_attributes
-    from temporal_agentic_factory.workflows.job.child import child_id, run_job_or_fail
+    from temporal_agentic_factory.workflows.job.child import (
+        child_id,
+        run_job_or_fail,
+        run_job_with_structured_output,
+    )
     from temporal_agentic_factory.workflows.judge.workflow import run_judgment
     from temporal_agentic_factory.workflows.research.activities import (
         locate_target,
         read_candidates,
-    )
-    from temporal_agentic_factory.workflows.structured_output.child import (
-        run_job_with_structured_output,
     )
 
 AGGREGATES = ("digest", "overview", "agreements", "disagreements", "open_questions")
@@ -234,7 +235,7 @@ async def written(stage: str, prompts: dict[str, str]) -> None:
 async def stated[Output: BaseModel](job: Job, output: type[Output]) -> Output:
     """The job run, and what it stated as the `output` model."""
     done = await run_job_with_structured_output(job, output.model_json_schema())
-    return output.model_validate(done.structured_output)
+    return output.model_validate(done.output)
 
 
 async def activity_run[Result](

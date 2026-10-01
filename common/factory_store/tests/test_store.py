@@ -85,33 +85,24 @@ async def test_events_come_back_in_insert_order_across_tries() -> None:
         await store.dispose()
 
 
-async def test_conversation_and_report_replace_earlier_rows() -> None:
+async def test_a_report_replaces_an_earlier_one() -> None:
     store = await make_store()
     try:
         await store.start_session("s1", "opencode", "m", "/w", "do it")
-        await store.save_conversation("s1", "first", 1)
-        await store.save_conversation("s1", "second", 2)
-        async with store.engine.connect() as conn:
-            result = await conn.execute(
-                select(schema.conversation).where(schema.conversation.c.session_id == "s1")
-            )
-            conv_rows = result.mappings().all()
-        assert len(conv_rows) == 1
-        assert conv_rows[0]["text"] == "second"
-
-        result_dict: dict[str, Any] = {"ok": True, "files": ["a.py"]}
-        summary_dict: dict[str, Any] = {"points": [1, 2]}
-        await store.save_report("s1", {"ok": False}, {"points": []}, "bad")
-        await store.save_report("s1", result_dict, summary_dict, "good")
+        assert await store.load_report("s1") is None
+        report: dict[str, Any] = {"task": "t", "done": ["a.py"], "verdict": "done"}
+        await store.save_report("s1", {"task": "t", "verdict": "failed"}, "failed")
+        await store.save_report("s1", report, "done")
         async with store.engine.connect() as conn:
             result = await conn.execute(
                 select(schema.report).where(schema.report.c.session_id == "s1")
             )
             report_rows = result.mappings().all()
         assert len(report_rows) == 1
-        assert report_rows[0]["verdict"] == "good"
-        assert dict(report_rows[0]["result"]) == result_dict
-        assert dict(report_rows[0]["summary"]) == summary_dict
+        stored = await store.load_report("s1")
+        assert stored is not None
+        assert (stored.verdict, dict(stored.report)) == ("done", report)
+        assert stored.created_at.tzinfo is not None
     finally:
         await store.dispose()
 
@@ -219,11 +210,11 @@ async def test_structured_output_round_trip_and_replace_earlier_rows() -> None:
         await store.start_session("s1", "opencode", "m", "/w", "fetch")
         assert await store.load_structured_output("s1") is None
         schema_dict: dict[str, Any] = {"type": "object", "properties": {"urls": {}}}
-        await store.save_structured_output("s1", schema_dict, {"urls": []}, "last_message")
-        await store.save_structured_output("s1", schema_dict, {"urls": ["u"]}, "conversation")
+        await store.save_structured_output("s1", schema_dict, {"urls": []}, "submitted")
+        await store.save_structured_output("s1", schema_dict, {"urls": ["u"]}, "submitted")
         stored = await store.load_structured_output("s1")
         assert stored is not None
-        assert (stored.source, dict(stored.structured_output)) == ("conversation", {"urls": ["u"]})
+        assert (stored.source, dict(stored.structured_output)) == ("submitted", {"urls": ["u"]})
         assert dict(stored.schema) == schema_dict
         assert stored.created_at.tzinfo is not None
         async with store.engine.connect() as conn:

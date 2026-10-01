@@ -49,9 +49,8 @@ watcher, or by a schedule.
    - `Blocked` (coder asked for a human) → non-retryable, wait for signal
    - unknown → bounded generic retry, then escalate via hil
 4. **Observability.** Every event of every try is a row in the store
-   (Postgres), the session's conversation is built from them when the job
-   ends, and a report step reads that conversation and writes a structured
-   verdict. Temporal UI shows graph, timing, retries. Langfuse (fed by the
+   (Postgres), and the coder submits a report with a verdict at the end of
+   the job (`af output submit`). Temporal UI shows graph, timing, retries. Langfuse (fed by the
    same stream) is planned for turns, tool calls and tokens.
 
 ## llm job contract
@@ -64,12 +63,11 @@ Lives in `agentic_factory/tokens.py`, `event.py`, `failure.py` (shared with call
   and `session_tokens` (its last known context size).
   Built by a job definition, sent to the activity.
 - `JobResult` — what the run produced: session_id, tokens, cost_usd, usage_known,
-  duration_sec, plus `stats` (turns, tool_calls, tool_failures), the coder's
-  `summary` (its own account of the job, see "Job outcome") and
-  `summary_text` (the block as written, for repair). Built by the engine from
-  the `finished` event, the ledger it kept over the stream and its own clock.
-  Whether the work is done is not decided here: the summary is a claim and
-  the stats are evidence; the workflow judges.
+  duration_sec, plus `stats` (turns, tool_calls, tool_failures). Built by
+  the engine from the `finished` event, the ledger it kept over the stream
+  and its own clock. Whether the work is done is not decided here: the
+  stats are evidence, and the coder says what it did in the report it
+  submits (see "How a job hands back its result").
 - `Tokens` — input, output, cache_read, cache_write. Per turn in events,
   total in the result.
 - `Event` — one normalized message of the coder's stream, named after
@@ -105,7 +103,9 @@ Lives in `agentic_factory/tokens.py`, `event.py`, `failure.py` (shared with call
   (resets_at)`, `ContextPressure`, `Stalled`, `TimedOut`, `ProviderError`,
   `NetworkError`, `CoderCrashed(exit_code, stderr)`. Raised only when no
   result exists.
-- `run(job, callback, harness, repair) -> JobResult` in `job/engine.py` — the single entry point.
+- `run(job, callback, harness) -> JobResult` in `job/engine.py` — the single entry point.
+  The prompt goes to the coder as it is; the workflow has already added
+  the submit request to it.
   Takes the harness the caller picked (`job/coders/catalog.py`), fills the default model, starts the
   process in workdir (both as cwd and as `PWD` in the environment), feeds
   every event to the callback, kills the process on stall, timeout,
@@ -243,72 +243,54 @@ roles share (`runner.py`, `coders.py`, `other_coders.py`, `client.py`, `identity
   `RateLimited` sets `next_retry_delay` to the reset time. Heartbeat details
   are our `Heartbeat` model: time of the last event, event count, context
   size of the last model turn.
-- `build_report(request)` — after the job's last try: the app's
-  `job/report/build.py` turns the session's prompt and stored events into the conversation,
-  saves it, has the report step read it, saves the report and returns it.
-  Given the app's step timeout plus a margin, with the `report_activity`
+- `ask_for_submission(request)` and `read_submission(session_id)`
+  (`workflows/job/submission.py`) — around every job: the first builds the
+  submission schema (the report, and the output when the request carries
+  an output schema), saves it under the job's session and returns the job
+  with the submit request in its prompt and `af output submit` allowed in
+  its tools, naming `af` by its absolute path (the one beside the
+  runner's Python), because a coder's PATH need not hold it; the second
+  returns what the coder last submitted (`Submitted`: report, output), or
+  None. One store call each, behind the `submission_activity` timeout and
   retries.
-- `ask_for_submission(request)` and `read_submitted_output(session_id)`
-  (`workflows/structured_output/submission.py`) — around a job that must
-  submit a structured output: the first saves the job's schema under its
-  session and returns the job with the submit request in its prompt and
-  `af output submit` allowed in its tools, naming `af` by its absolute
-  path (the one beside the runner's Python), because a coder's PATH need
-  not hold it; the second returns what the coder last submitted, or None.
-  One store call each, behind the `submission_activity` timeout and retries.
-- `extract_structured_output(request)` — the fallback, after a job that
-  submitted nothing: the app's `job/structured_output/extract.py` reads
-  the session's stored events, runs the extraction step over the coder's
-  last message and, when that says "not stated", over the whole
-  conversation; saves and returns the output as a dict matching the schema
-  in the request. Given two step timeouts plus a margin, with the
-  `structured_output_activity` retries. `StructuredOutputNotStated` is
-  final: another try would read the same text.
 - `fetch_source(request)` and `verify_entry(research_dir)` — the
   `distill` app's fetch and check, each on a thread, behind the
   `fetch_activity` and `verify_activity` timeouts and retries. Free
   functions: neither needs the store.
 - Activities are methods of small classes (`SessionActivity`,
-  `JobActivity`, `ReportActivity`, `RecordActivity`) that take the store in
+  `JobActivity`, `SubmissionActivity`, `RecordActivity`) that take the store in
   their constructor: `runner.py` makes one `Store` per process, gives it to
   each and disposes it when polling ends. A `JobFailed` whose `retryable`
   is false (`CoderNotFound`, `SessionNotCreated`) becomes a non-retryable
   `ApplicationError`, so Temporal stops the tries at once.
-- `record_job(outcome)` — after the report: the app's `job/record.py`
+- `record_job(outcome)` — at the job's end: the app's `job/record.py`
   reads the session's tries, sums them and writes the `job` row. One store
   write behind the `record_activity` timeout and retries; a write that
   failed for good is logged, the workflow still returns the outcome.
-- `JobWorkflow` (`workflows/job/workflow.py`, type name `job`) — one job, then its
-  report; returns a `JobOutcome`. Its body, `run_job_here(job)`, makes the
-  session first when the job has none,
-  then carries the activity policy for any workflow
-  with a job in it: heartbeat timeout `stall_sec` plus a margin,
-  start-to-close `timeout_sec` plus a margin, so the engine kills first and
-  Temporal is the backstop, and the retry policy from settings. App code is
-  imported inside `imports_passed_through()`, because settings load on
-  import and the sandbox would rerun that.
+- `JobWorkflow` (`workflows/job/workflow.py`, type name `job`) — one job,
+  given as a `JobRequest`: the job and, optionally, the JSON schema of a
+  structured output it must hand back. Returns a `JobOutcome`. Its body,
+  `run_job_here(job, output_schema)`, makes the session first when the job
+  has none, asks for the submission, runs the job, reads what the coder
+  submitted and reminds it when there is nothing (see "How a job hands
+  back its result"), then records the row. It carries the activity policy
+  for any workflow with a job in it: heartbeat timeout `stall_sec` plus a
+  margin, start-to-close `timeout_sec` plus a margin, so the engine kills
+  first and Temporal is the backstop, and the retry policy from settings.
+  App code is imported inside `imports_passed_through()`, because settings
+  load on import and the sandbox would rerun that.
 - Jobs inside a workflow are child workflows (`workflows/job/child.py`):
   `run_job_with_report(job)` starts `JobWorkflow` as a child with id
   `<parent id>/<job name>`, the job name as its summary, its search attributes
   at start, and waits; `run_job_or_fail(job)` turns a job that failed for good
-  into the named `JobFailed` error. So each job has its own row in the UI and
-  its own attributes, instead of overwriting the parent's job after job. See
-  "Nesting workflows".
-- `JobWithStructuredOutputWorkflow` (`workflows/structured_output/workflow.py`,
-  type name `job_with_structured_output`) — a job plus the JSON schema of
-  the structured output it must state; returns a `JobWithStructuredOutput`:
-  the outcome and the output as a dict. The
-  `run_job_with_structured_output(job, schema)` helper
-  (`workflows/structured_output/child.py`) is for any workflow that needs
-  typed data out of a job: it starts this workflow as a child, which makes
-  the session, saves the schema and appends the submit request to the
-  prompt (`job/structured_output/prompt.py`), runs the job here, then reads
-  what the coder submitted; nothing there, it reminds the coder in the same
-  session, then falls back to the extraction activity (see "Structured
-  output of a job"). A child's failure is raised again with
-  its own type (`JobFailed`, `StructuredOutputNotStated`). A job that failed for good, or an output the coder
-  never stated, fail the workflow: nothing downstream can run on made-up
-  values. The caller owns the model and validates the dict with it.
+  into the named `JobFailed` error. `run_job_with_structured_output(job,
+  schema)` is for any workflow that needs typed data out of a job: the same
+  child, asked for an output of that schema; the output is in
+  `outcome.output`, and a child's failure is raised again with its own type
+  (`JobFailed`, `StructuredOutputNotStated`): nothing downstream can run on
+  made-up values. The caller owns the model and validates the dict with
+  it. So each job has its own row in the UI and its own attributes, instead
+  of overwriting the parent's job after job. See "Nesting workflows".
 - `DistillWorkflow` (`workflows/distill/workflow.py`, type name `distill`) —
   see "Distill workflow": the app's steps in order, jobs through
   `run_job_or_fail` and `run_job_with_structured_output`, the fetch and
@@ -371,8 +353,8 @@ roles share (`runner.py`, `coders.py`, `other_coders.py`, `client.py`, `identity
 ### Nesting workflows
 
 - A child workflow is for a unit with several steps that runs long and should
-  be visible on its own: a job (session, execute, report, record), a job with
-  structured output, a distill inside research. An activity is for one short
+  be visible on its own: a job (session, submission asked, execute,
+  submission read, record), a distill inside research. An activity is for one short
   call to the outside: fetch, verify, judge, a store write.
 - Child ids are `<parent id>/<name>` (`child_id` in `workflows/job/child.py`),
   so they are readable and deterministic: a replay starts the same child, and
@@ -433,112 +415,86 @@ it compacts:
 ## Job outcome
 
 The engine only knows whether the run completed. Whether the work is done is
-judged from what the run left behind, in layers from cheap and deterministic
-to a model reading text. Lives in `job/stats.py`, `job/summary/contract.py`,
-`job/ledger.py`, `job/usage.py`.
+judged from what the run left behind. Lives in `job/stats.py`,
+`job/ledger.py`, `job/usage.py`, `job/report/` and `job/outcome.py`.
 
 1. **Stats.** The ledger counts every event as it flows past: model turns,
    tool calls and failed tool calls (the coders' error flag becomes
    `Event.error`). On `JobResult.stats`. Evidence that costs nothing.
-2. **The coder's summary.** The engine wraps every prompt (`wrap_prompt`,
-   applied once, in the engine, so every definition and every try gets the
-   same wording) with a request to end the final message with a fenced json
-   block: task (one sentence), plan (list), execution (list), result (one
-   sentence), success (bool). A claim, not a verdict.
-3. **Find it.** Detection, not parsing: a partial regexp for the key
-   (`job_summary`, quoted or not, then a colon) over every `ai` event, not
-   only the last message, since the block may come earlier; the last hit
-   wins. The block runs from the object's opening brace to the next fence or
-   the end of the message. Fences are ignored on purpose: coders do drop the
-   closing one (seen on opencode), and a fence-to-fence regexp then found
-   nothing. Our stream, not the coder's session, because a compaction may
-   drop the block from the session but never from what we already read.
-4. **Parse it in Python.** Several parsers, strictest first: plain json;
-   json followed by anything (a fence, prose); a lenient pass for the
-   mistakes seen from models (bare key, trailing commas, Python literals,
-   text after the closing brace, braces inside strings). Whatever parses
-   must still validate as `JobSummary`, with or without the outer key.
-   `JobResult.summary` on success; `summary_text` keeps the raw block either
-   way.
-5. **Repair with a step.** `job/summary/repair.py`: a block that was found but did
-   not parse goes to the step engine with the summary schema and a system
-   prompt that forbids inventing facts. It runs inside the job engine, right
-   before the result is made, with a plain `Callback()`: the step's events stay
-   out of the job's stream, since the heartbeat callback would read the
-   step's tokens as the coder's context. Any step failure logs and yields
-   `summary=None`; the job still succeeds. The schema is sent in strict
-   mode, so `JobSummary` forbids extra fields.
-6. **The report from the whole session.** After the last try, whatever
-   its end, a step reads the rendered conversation of every try (see
-   Materialization), which opens with the user's request, and writes a `JobReport`: task, done (with the evidence
-   seen), not done, problems, and a verdict `done | partial | failed |
-   unknown`. It is told that a claim by the coder is not evidence and a
-   command output is. The coder's summary block, when there is one, or the
-   last failure text goes in after the transcript. This replaces the
-   earlier plan of inferring only the summary from a condensed trace.
-
-Verified Sep 2026: both opencode and claude returned a valid block on a
-two-tool job.
+2. **The report.** The coder submits it at the end of the job with `af
+   output submit` (next section): task (one sentence), done (each item
+   naming its evidence: a file, a command and its output, a test run),
+   not done, problems, and a verdict `done | partial | failed`. A job the
+   engine could not finish gets a report made by code
+   (`job/report/failure.py`): the failure as its one problem, verdict
+   `failed`. No model reads the session afterwards.
+3. **The outcome.** `JobOutcome` holds the session id, the result or the
+   failure text, the report, and the output when one was asked for.
+   `verdict_of(outcome)` is the report's verdict, or `unknown` when the
+   coder submitted none: `unknown` is the workflow's word, never the
+   coder's. The `Verdict` search attribute, the `job` row and the beads
+   ending all read it.
 
 Verified on both coders: opencode's queued compaction was applied mid-run in
 3 s (19 messages to 4, a structured summary first); claude's `/compact` in
 print mode took the context from 22.9k to 2.6k tokens and the next resume
 answered from the summary.
 
-## Structured output of a job
+## How a job hands back its result
 
-A workflow that chains jobs needs typed data out of one job to start the
-next (fleet's summarise flow reads the urls one job fetched from a file the
-coder wrote). Here the coder submits it itself, with a command:
+Every job ends the same way: the coder runs `af output submit <session
+id>` with one JSON object, `{"report": {...}, "output": {...}}`. `output`
+is there only when the workflow asked for a structured output (a workflow
+that chains jobs needs typed data out of one job to start the next).
+Nothing calls a model after the coder.
 
-1. The workflow makes the session first, so its id is known before the
-   prompt is built, and saves the JSON schema under it (`output_schema`
-   table, `ask_for_submission` activity).
-2. The prompt (`job/structured_output/prompt.py`) shows the exact command
-   with the real session id, as a heredoc:
+1. **One schema.** `submission_schema(output_schema)`
+   (`job/submission/schema.py`) builds it: an object with `report` (the
+   `JobReport` schema, whose verdict leaves out `unknown`) required, and
+   `output` required too when there is an output schema; no other key. The
+   `$defs` of both parts are hoisted to the top, so every `$ref` still
+   resolves; two parts with the same def name but a different body are
+   refused (`ClashingDefs`).
+2. **Saved first.** The workflow makes the session, so its id is known
+   before the prompt is built, and saves the schema under it
+   (`output_schema` table, `ask_for_submission` activity).
+3. **One prompt.** The submit request (`job/submission/prompt.py`) is the
+   only end-of-job instruction, the same for every job. It shows the exact
+   command with the real session id, as a heredoc:
    `<af> output submit <session id> <<'JSON' ... JSON`, says to fix the
    JSON and run it again until it prints `ok` (the last `ok` counts), and
-   shows the whole schema as indented JSON, `$defs` included. A job with
-   a tool allow-list gets the command added to it
+   shows the whole schema as indented JSON, `$defs` included. A job with a
+   tool allow-list gets the command added to it
    (`Harness.tools_with_command`: `Bash(<af> output submit:*)` for claude;
    opencode enforces no list, so nothing there).
-3. `af output submit <session id>` (`cli/output.py`, JSON on stdin or
-   `--file`) checks the JSON against the saved schema with jsonschema
-   (Draft 2020-12, `job/structured_output/check.py`). Valid: prints `ok`,
-   saves it in `structured_output` with source `submitted`, replacing any
-   earlier submission, exit 0. Invalid: prints `invalid:` and every error
-   with its path, one per line (`chapters[1].formats[0]: 'pdf' is not one
-   of ['md', 'ipynb']`; bad JSON is one line with its line and column),
-   saves nothing, exit 1. No schema for the session: exit 2.
-   `af output schema <id>` prints the schema, `af output show <id>` what
-   was saved and its source.
-4. After the job, the workflow reads the submission
-   (`read_submitted_output`). None: it runs up to
-   `[structured_output_workflow].submit_reminders` reminder jobs
-   (`job/structured_output/reminder.py`) in the same session, named
+4. **The check.** `af output submit <session id>` (`cli/output.py`, JSON on
+   stdin or `--file`) checks the JSON against the saved schema with
+   jsonschema (Draft 2020-12, `job/submission/check.py`). Valid: prints
+   `ok`, saves `report` in the `report` table and, when the job has an
+   output schema, `output` in `structured_output` with source `submitted`;
+   each replaces an earlier submission; exit 0. Invalid: prints `invalid:`
+   and every error with its path, one per line
+   (`output.chapters[1].formats[0]: 'pdf' is not one of ['md', 'ipynb']`,
+   `(top): 'report' is a required property`; bad JSON is one line with its
+   line and column), saves nothing, exit 1. No schema for the session: exit
+   2. `af output schema <id>` prints the whole submission schema, `af
+   output show <id>` the saved report and output.
+5. **Read, and reminded.** After the job, the workflow reads the
+   submission (`read_submission`). None: it runs up to
+   `[job_workflow].submit_reminders` reminder jobs
+   (`job/submission/reminder.py`) in the same session, named
    `<job>/reminder`, reading again after each. A reminder's tries are
    journaled after the job's (`Job.try_offset`), so no try row is
    overwritten, and its spend is added to the outcome
    (`with_follow_up_spend`) and to the `job` row. The `session` row keeps
    the job's own prompt, without the submit request.
-5. Still nothing: with `llm_fallback` on (the default) the old extraction
-   below runs; off, the workflow fails with `StructuredOutputNotStated`.
-
-The extraction fallback: one
-step with a schema built around the workflow's picks the output out of the
-coder's last message. The step's schema is the output or null, plus the
-fields not stated: strict mode requires every field, and without the null
-branch a model that found nothing would fill the output in. The workflow's
-schema is made strict the same way (every object requires all its
-properties and allows no other), so a hand-written one works like a
-pydantic one; an optional field is `anyOf` with null. "Not stated" is an
-answer, not a `BadOutput`: it triggers a second step over the whole
-rendered conversation. Not stated there either raises
-`StructuredOutputNotStated`, final, and the workflow stops. No second
-JSON-block parser: extraction is the only path. A found output is saved in
-the `structured_output` table with the schema and the pass that found it
-(a submitted one has source `submitted`), so a later workflow, or a person, can read it without the Temporal
-history.
+6. **Still nothing.** The outcome has no report and its verdict is
+   `unknown`. A job asked for a structured output fails with
+   `StructuredOutputNotStated`: an output cannot be made up.
+7. **The engine failed.** A job that failed for good after every try is
+   not reminded: its report is made by code from the failure (verdict
+   `failed`), and a job asked for a structured output fails with
+   `JobFailed`.
 
 ## Distill workflow
 
@@ -604,7 +560,7 @@ readable, all Temporal features, none of them history-changing:
 
 - Every activity carries a **summary** (`execute_activity(summary=...)`),
   shown on its bar and in the event list: the job's name for the four
-  activities of a job and for the extraction, the source URL for the
+  activities of a job, the source URL for the
   fetch, the entry slug for the verifier, the question names for a judge.
 - A job that failed for good fails the workflow as `JobFailed` with the
   name in front: `wiki/3: Stalled: no output for 600 s`.
@@ -974,39 +930,29 @@ Tables, one job = one session:
   session across tries and runner restarts; a sequence number kept in
   memory would restart with the process, and timestamps from two tries
   can overlap when an orphaned coder is still writing.
-- `conversation` — the session rendered as one transcript, built once at
-  the end by `job/report/conversation.py`: the user's request from the
-  `session` row (the coder never echoes it, so it is not an event), then
-  a header per try, the model's text,
-  its tool calls with clipped arguments, tool outputs clipped in the middle,
-  rate limits, compactions, the finish line. Clip sizes are settings.
-- `report` — the `JobResult` as json (empty when every try failed), the
-  `JobReport` the model wrote, and its verdict as a column.
-- `output_schema` — for a job a workflow asked a structured output of:
-  the JSON schema, keyed by session id, saved before the coder starts so
-  `af output submit` can check against it.
-- `structured_output` — for a job a workflow asked for one: the JSON
-  schema it asked for, the output, and where it came from
-  (`submitted | last_message | conversation`). Written by
-  `af output submit` on a valid submission (a later one replaces it), or by
-  the `extract_structured_output` fallback once the step found it; a job
-  whose output was neither submitted nor stated has no row.
+- `report` — the `JobReport` the coder submitted, and its verdict as a
+  column. Written by `af output submit` on a valid submission; a later one
+  replaces it. A job whose coder submitted nothing has no row.
+- `output_schema` — for every job: the submission schema, keyed by session
+  id, saved before the coder starts so `af output submit` can check
+  against it.
+- `structured_output` — for a job a workflow asked a structured output
+  of: the submission schema it was checked against, the output, and where
+  it came from (`submitted`; older rows `last_message | conversation`).
+  Written by `af output submit` on a valid submission (a later one
+  replaces it); a job whose output was never submitted has no row.
 - `job` — one row per workflow run, written last: first try's start, end
   time, number of tries, outcome `done | failed`, failure text, the
   totals summed over every try (same columns as `attempt`), the result as
-  json and the report's verdict. The one row to query when the question
+  json and the report's verdict (`unknown` without one). The one row to query when the question
   is what a job cost or how it ended; the tries are the detail.
 
 The flow in the runner: `create_session` → `start_session`; each
 `execute_job` try → `start_try`, events, `finish_try` (all three from the
-journal callback); then the `build_report` activity loads every event,
-renders and saves the conversation, runs the report step and saves the
-report; then `record_job` sums the tries into the `job` row. The workflow
-runs the report after the job activity whatever happened to the job: a
-permanently failed job gets a report on its failure. A failed report step
-is not fatal, the outcome just has no report; a failed record is not
-fatal either. `JobWorkflow` returns a `JobOutcome`: session id, result or
-failure text, report.
+journal callback); the coder's `af output submit` saves the report (and
+the output); then `record_job` sums the tries into the `job` row. A
+failed record is not fatal. `JobWorkflow` returns a `JobOutcome`: session
+id, result or failure text, report, output.
 
 Postgres runs from `docker-compose.yml` (`just db` starts it and applies the
 migrations, `just db-stop` stops it, the data stays in a volume). Tests use an
@@ -1017,75 +963,35 @@ The url is the shared setting `store.url` in `common/factory_settings`
 ## Settings
 
 Every default lives in `agentic_factory/settings/settings.toml`: job limits, the
-default provider of jobs and steps, each harness's and client's default model,
-the Go base url and user agent, reasoning and token limits of steps.
+default provider of jobs, each harness's default model, the judge step's
+client.
 `settings/load.py` loads it with dynaconf and validates it into the pydantic
-models of `settings/model.py`, so code reads `settings.step.max_tokens`, never a bare key.
+models of `settings/model.py`, so code reads `settings.job.timeout_sec`, never a bare key.
 The runner package repeats the pattern for its own `[temporal]`, `[runner]`,
 `[cli]`, `[beads]` (the beads database's home) and activity tables. The loader itself lives once, in
 `common/factory_settings` (`load(model, folder)`), which also holds the
 values more than one package needs: the store's url in `[store]`. Every
 settings model is a `Table` with `extra="forbid"`, so a misspelled key in a
 toml file or an `AF_` variable is refused on load instead of ignored.
-The conversation's clip sizes are `[conversation]`, the report's transcript
-limit `[report]`, the structured output extraction's text limit
-`[structured_output]`. The runner's `[structured_output_workflow]` holds
-`submit_reminders` and `llm_fallback`, `[submission_activity]` the
-submission activities' timeout and retries.
+The runner's `[job_workflow]` holds `submit_reminders`,
+`[submission_activity]` the submission activities' timeout and retries.
 Overrides, in order: `settings.local.toml` next to it (git-ignored), a
 `.env` found walking up from the package (repo root or `~/.env`), and
 environment variables `AF_<TABLE>__<KEY>`. `Job` and `Step` take their
 field defaults from there, and the CLIs pass on only the flags given, so no
 default is repeated in Python.
 
-## step contract
+## Steps
 
-Lives in `agentic_factory/step/`, shaped like `job/`: `contract.py` is the
-contract, `providers/client.py` the client base (as `job/coders/harness.py` is the coder
-base), `providers/catalog.py` picks a client by provider name, `engine.py` runs one
-step, and one folder per provider holds the wire code. One request, one JSON
-answer, no tools. Used inside workflows to turn events or artifacts into
-typed data (a report from a job's stream, a status from a helper's notes).
-Renamed from "llm call" Sep 2026.
-
-- `Step` — provider (default opencode), prompt, `output_schema` (a JSON
-  schema dict, usually `SomeModel.model_json_schema()`, so the shape is
-  decided by the caller), system_prompt (standing instructions), model (empty
-  = client default), reasoning (minimal … high, default high), max_tokens,
-  timeout_sec. Serializable, so it can be an activity argument.
-- `StepResult` — `output` (the answer as a dict), model, tokens,
-  duration_sec. `result.parse(SomeModel)` gives the typed object and raises
-  `BadOutput` if the answer misses the schema.
-- `Client` — abstract base, one subclass per provider: `from_env()` builds
-  it from keys in the environment, `complete(step)` sends the step and
-  returns an `Answer` (text, tokens), raising `RateLimited`, `TimedOut`,
-  `NetworkError`, `ProviderError` or `BadOutput` (cut off) when there is
-  none. Each client names its `default_model`.
-- `run(step, callback, client) -> StepResult` in `step/engine.py` —
-  the single entry point, the twin of the job engine. Takes the client
-  the caller picked, fills the default model, enforces `timeout_sec`, emits one
-  `ai` event with the answer text and one `finished` event to the callback
-  (a step has no start and end of its own),
-  reads the text as a JSON object (`BadOutput` otherwise), and returns the
-  result.
-- `OpencodeGo` in `providers/opencode/client.py` — the OpenCode Go API through the
-  `openai` SDK. Picks the wire protocol from the model name (chat
-  completions by default, Responses for muse-spark, grok and gpt) and sends
-  the schema as a strict `json_schema` format. Default model
-  `muse-spark-1.3-contributor` (about 5 s at low reasoning). No retries in
-  the client; Temporal retries.
-- `scripts/run_step.py` behind `just step` runs one from the CLI, as
-  `scripts/run_job.py` behind `just run` runs a job. The scripts are dev
-  entry points outside the package; the just recipe carries the demo input.
-  Both take `--json`, which swaps the human log on stderr for
-  `JsonLinesCallback`: one JSON object per event on stdout, no prefix, for
-  a log shipper or `jq`.
-
-Learned from probes (Go API, Sep 2026): the `openai` SDK works once the
-user agent is overridden; each request needs a fresh `x-opencode-session`;
-reasoning models spend most output tokens thinking, so `max_tokens` must
-leave room; glm-5.3-flash without a reasoning effort took 30 s, with `low`
-6 s.
+Lives in `agentic_factory/step/`. A step is one call to a model that is not
+a coder: no session, no tools. The judge (next section) is the one step
+there is. The llm step (a prompt and a schema in, JSON out, over the
+OpenCode Go API) is gone, with the summary repair, the LLM report and the
+LLM extraction that used it: a job's report and output come from the coder
+itself (see "How a job hands back its result"). `scripts/run_job.py`
+behind `just job` runs a job from the CLI; it takes `--json`, which swaps
+the human log on stderr for `JsonLinesCallback`: one JSON object per event
+on stdout, no prefix, for a log shipper or `jq`.
 
 Small results live in Temporal history. Large deliverables live in an
 artifact store keyed by run / job / try, referenced by path. The
@@ -1095,9 +1001,8 @@ process state. No task.json, no attempts log, no signal files.
 
 ## Judge step
 
-Lives in `agentic_factory/step/judge/`: the second kind of step. The llm
-step takes a prompt and a schema and gets text shaped to the schema; the
-judge step takes a **state** (text or JSON) and named **questions** and
+Lives in `agentic_factory/step/judge/`: the one kind of step. The judge
+step takes a **state** (text or JSON) and named **questions** and
 gets **answers with probabilities** back. No prompt, no schema, no tools.
 Used where a workflow branches on a judgment: rank papers by relevance,
 accept or reject a draft, route a ticket. The TypeSafe jev model answers
@@ -1117,7 +1022,7 @@ per million lives in settings so the result carries `cost_usd`.
   index, `CheckAnswer(yes)` the probability of yes.
 - `JudgeClient` is the client base (`client.py`), `catalog.py` picks one
   by provider name, `typesafe.py` is the only client so far; failures map
-  to the same `JobFailed` family as the llm step (`RateLimited` carries the
+  to the same `JobFailed` family as the job engine (`RateLimited` carries the
   retry-after, `TimedOut`, `NetworkError`, `ProviderError`).
 - `engine.run(judgment, callback, client)` emits one AI event (the answers
   as JSON, usage, cost) and a FINISHED event, then returns the result.
@@ -1150,12 +1055,6 @@ per million lives in settings so the result carries `cost_usd`.
   runner polls as `host:pid:sha` (`identity.py`), which the task queue's
   workers page and every `ActivityTaskStarted` event show.
 - Harness calls preferred over API calls for cost; both are activities.
-- Steps go to the OpenCode Go API (`https://opencode.ai/zen/go/v1`),
-  covered by the same subscription as the opencode CLI. Key in
-  `OPENCODE_API_KEY`; see `.env.example`. The endpoint needs a stable
-  `x-opencode-session` header and a client-specific user agent. Each
-  model speaks one protocol: chat completions (glm, kimi, deepseek,
-  longcat) or Responses (muse-spark, grok, gpt luna).
 - Beads is an input source (watcher) and an output target (a workflow
   updates status), not the internal state store. af owns its beads
   database at `~/.agentic_factory/beads` and calls `bd` directly.

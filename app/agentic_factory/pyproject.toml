@@ -8,7 +8,6 @@ dependencies = [
     "factory-settings",
     "factory-store",
     "jsonschema>=4.26.0",
-    "openai>=3.22.0",
     "pydantic>=2.8",
     "typesafe-sdk>=0.7",
 ]

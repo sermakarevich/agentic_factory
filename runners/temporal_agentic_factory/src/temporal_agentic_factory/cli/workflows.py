@@ -30,11 +30,9 @@ from temporal_agentic_factory.watchers.beads.control import poll_schedule_status
 from temporal_agentic_factory.workflows.distill.workflow import DistilledEntry
 from temporal_agentic_factory.workflows.job.coder_queue import coder_queue
 from temporal_agentic_factory.workflows.job.search_attributes import NAME
-from temporal_agentic_factory.workflows.structured_output.workflow import JobWithStructuredOutput
 
 RESULT_TYPES: dict[str, Any] = {
     "job": JobOutcome,
-    "job_with_structured_output": JobWithStructuredOutput,
     "distill": DistilledEntry,
 }
 

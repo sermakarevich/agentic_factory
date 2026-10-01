@@ -25,8 +25,8 @@ def stored_try(attempt: int, outcome: str, totals: Totals) -> StoredTry:
     )
 
 
-def report(verdict: Verdict) -> JobReport:
-    return JobReport(task="t", done=[], not_done=[], problems=[], verdict=verdict)
+def partial_report() -> JobReport:
+    return JobReport(task="t", done=[], not_done=[], problems=[], verdict=Verdict.PARTIAL)
 
 
 def test_a_done_job_sums_its_tries_and_keeps_the_verdict() -> None:
@@ -35,7 +35,7 @@ def test_a_done_job_sums_its_tries_and_keeps_the_verdict() -> None:
         stored_try(2, "done", Totals(input_tokens=50, cost_usd=0.05, turns=1)),
     ]
     result = JobResult(session_id="s1", cost_usd=0.05)
-    outcome = JobOutcome(session_id="s1", result=result, report=report(Verdict.PARTIAL))
+    outcome = JobOutcome(session_id="s1", result=result, report=partial_report())
     record = job_record(outcome, tries, NOW)
     assert record.outcome == Outcome.DONE and record.failure == ""
     assert record.tries == 2 and record.verdict == "partial"
@@ -44,9 +44,9 @@ def test_a_done_job_sums_its_tries_and_keeps_the_verdict() -> None:
     assert record.result == result.model_dump(mode="json")
 
 
-def test_a_failed_job_without_a_report_has_no_verdict() -> None:
+def test_a_failed_job_without_a_report_has_the_verdict_unknown() -> None:
     outcome = JobOutcome(session_id="s1", failure="Stalled: quiet")
     record = job_record(outcome, [], NOW)
     assert record.outcome == Outcome.FAILED and record.failure == "Stalled: quiet"
-    assert record.tries == 0 and record.verdict == "" and record.result == {}
+    assert record.tries == 0 and record.verdict == "unknown" and record.result == {}
     assert record.started_at == NOW and record.totals == Totals()

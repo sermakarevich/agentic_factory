@@ -15,11 +15,7 @@ from agentic_factory.job.coders.harness import Harness
 from agentic_factory.job.contract import Job
 from agentic_factory.job.defaults import with_default_model
 from agentic_factory.job.engine import run
-from agentic_factory.job.summary.contract import JobSummary
-from agentic_factory.job.summary.repair import repair_summary
 from agentic_factory.logging_setup import configure_logging
-from agentic_factory.settings.load import settings
-from agentic_factory.step.providers.catalog import client_for
 
 log = logging.getLogger("agentic_factory.job")
 
@@ -66,18 +62,12 @@ def _callback(as_json: bool) -> JobCallback:
 def _run_and_log(job: Job, harness: Harness, callback: JobCallback) -> int:
     """The engine run, with its result or failure logged; the exit code."""
     try:
-        result = asyncio.run(run(job, callback, harness, _repair_summary_with_step_client))
+        result = asyncio.run(run(job, callback, harness))
     except JobFailed as failure:
         log.error("failed    %s: %s", type(failure).__name__, failure)
         return 1
     log.info("result    %s", result.model_dump_json())
     return 0
-
-
-async def _repair_summary_with_step_client(block: str) -> JobSummary | None:
-    """The engine's repair: the summary step with the client for the step
-    provider from settings, made only when a summary needs repairing."""
-    return await repair_summary(block, client_for(settings.step.provider))
 
 
 if __name__ == "__main__":

@@ -20,17 +20,17 @@ agentic_factory/
         job/                  # contract, callback, engine, session, continuation, ledger, usage, stats, context, outcome, record, defaults
           coders/             # harness base, catalog, decode; claude/ and opencode/ (harness, stream)
           process/            # spawn, kill, environment, workdir, tail: the coder process
-          summary/            # contract, prompt, block, parse, repair: the coder's own summary
-          report/             # contract, conversation, step, build: the report a model writes over the run
-          structured_output/  # contract, prompt (the submit request), check (jsonschema errors with
-                              # paths), submission (save a valid submit, read it back), ask (the
-                              # schema saved, the job asked), reminder, step, extract (the llm fallback)
-        step/                 # contract, reasoning, engine, defaults: the llm step
+          report/             # contract (the report the coder submits), failure (the one code makes
+                              # for a job the engine could not finish)
+          submission/         # contract, schema (the one submission schema: report, output when
+                              # asked), prompt (the submit request), check (jsonschema errors with
+                              # paths), submit (save a valid submission, read it back), ask (the
+                              # schema saved, the job asked), reminder
+        step/
           judge/              # question, answer, contract, client, catalog, defaults, engine, typesafe: the judge step
-          providers/          # client base, catalog; opencode/ (client)
         callbacks/            # log, json_lines, fanout, journal: the callbacks a run's start, events and end go to
         settings/             # settings.toml holds every default; model.py types it; load.py reads it
-      scripts/              # run_job.py, run_step.py, run_judge.py: dev entry points behind `just`
+      scripts/              # run_job.py, run_judge.py: dev entry points behind `just`
       tests/
     distill/                # the application behind the distill workflow: one source into a knowledge-base entry
       pyproject.toml        # package `distill`; depends on factory_settings
@@ -65,9 +65,8 @@ agentic_factory/
         workflows/            # every Temporal workflow with its activities; failure (JobFailed to
                               # ApplicationError, what their activities share)
           job/                # workflow, child (a job as a child workflow), coder_queue, session,
-                              # execute, heartbeat, report, record, search_attributes (the ui's columns)
-          structured_output/  # workflow (submit, remind, fall back), child, submission (ask_for_submission,
-                              # read_submitted_output), extract (the llm fallback)
+                              # execute, heartbeat, submission (ask_for_submission, read_submission),
+                              # record, search_attributes (the ui's columns)
           judge/              # workflow (run_judgment), activity: the judge step for workflows that branch on an answer
           distill/            # workflow, activities (fetch + verify), name (a source's url tail)
           research/           # activities (locate_target, read_candidates), workflow (the chain of jobs
@@ -100,7 +99,7 @@ agentic_factory/
         settings/             # server address, activity limits, [providers.<name>] coder limits, one table per workflow
                               # and activity ([job_activity], [distill_workflow],
                               # [research_workflow], [locate_activity], [candidates_activity],
-                              # [tutorial_locate_activity], [structured_output_workflow],
+                              # [tutorial_locate_activity], [job_workflow],
                               # [submission_activity], ...)
       tests/                  # mirrors src: workflows/<subject>/, watchers/beads/, cleaner/, cli/;
                               # fakes.py and workers.py (a main worker plus one per coder queue),
@@ -129,13 +128,12 @@ app. What two apps would share moves to `common/`.
 **app/agentic_factory** owns the job and step domain. It holds the
 atomic abstractions:
 
-- **step**: one structured-output request to a model (`Step`,
-  `StepResult`, the client per provider, the engine that runs one).
+- **step**: one call to a model that is not a coder: the judge step.
 - **job**: one headless coder run (`Job`, `JobResult`, `Event`, failures,
   the harness per coder, the engine that runs one, the session made before
-  the first try, continuation for retries, stats, the coder's summary and
-  its repair by a step, the conversation rendered from stored events, the
-  report step over it, the structured output picked out of the coder's text).
+  the first try, continuation for retries, stats, the one submission the
+  coder hands back with `af output submit`: its report, and its output
+  when a workflow asked for one).
 - **callbacks**: the callbacks a run's start, events and end go to (log,
   fanout, the journal that records the try in the store).
 

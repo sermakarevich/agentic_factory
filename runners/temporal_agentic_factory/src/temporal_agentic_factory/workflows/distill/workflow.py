@@ -19,8 +19,8 @@ with workflow.unsafe.imports_passed_through():
         fetch_source,
         verify_entry,
     )
-    from temporal_agentic_factory.workflows.job.child import run_job_or_fail
-    from temporal_agentic_factory.workflows.structured_output.child import (
+    from temporal_agentic_factory.workflows.job.child import (
+        run_job_or_fail,
         run_job_with_structured_output,
     )
 
@@ -95,7 +95,7 @@ async def _planned(request: DistillRequest, fetched: FetchedSource, run_date: st
     done = await run_job_with_structured_output(
         distill_job("plan", plan_prompt(request, fetched, run_date)), EntryPlan.model_json_schema()
     )
-    return EntryPlan.model_validate(done.structured_output)
+    return EntryPlan.model_validate(done.output)
 
 
 async def _index_written_and_verified(entry: Entry) -> None:
@@ -123,7 +123,7 @@ async def _filed_path(entry: Entry) -> str:
     done = await run_job_with_structured_output(
         distill_job("file", page_prompt("file", entry)), FiledEntry.model_json_schema()
     )
-    return FiledEntry.model_validate(done.structured_output).path
+    return FiledEntry.model_validate(done.output).path
 
 
 async def _written(stage: str, pages: dict[str, str]) -> None:

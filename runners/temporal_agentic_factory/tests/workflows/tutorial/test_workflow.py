@@ -23,19 +23,14 @@ from tutorial.contract import (
 
 from agentic_factory.job.contract import Job, JobResult
 from agentic_factory.job.outcome import JobOutcome
-from agentic_factory.job.report.contract import JobReport, Verdict
+from agentic_factory.job.submission.contract import Schema
 from agentic_factory.tokens import Tokens
 from temporal_agentic_factory.workflows.job import search_attributes
 from temporal_agentic_factory.workflows.job.execute import TryResult
-from temporal_agentic_factory.workflows.job.report import ReportRequest
 from temporal_agentic_factory.workflows.job.workflow import JobWorkflow
-from temporal_agentic_factory.workflows.structured_output.extract import StructuredOutputRequest
-from temporal_agentic_factory.workflows.structured_output.workflow import (
-    JobWithStructuredOutputWorkflow,
-)
 from temporal_agentic_factory.workflows.tutorial.workflow import TutorialWorkflow
 from tests.workers import running
-from tests.workflows.structured_output.submitted import submitted_by
+from tests.workflows.job.submitted import submitted_by
 
 INDEX_PATH = "/tmp/tutorials/grafana/index.md"
 STUCK = "the notebook does not run"
@@ -87,21 +82,15 @@ async def fake_job(job: Job) -> TryResult:
     return TryResult(result=result, runner="r1")
 
 
-@activity.defn(name="build_report")
-async def fake_report(request: ReportRequest) -> JobReport:
-    return JobReport(task="t", done=[], not_done=[], problems=[], verdict=Verdict.DONE)
-
-
 @activity.defn(name="record_job")
 async def fake_record(outcome: JobOutcome) -> None:
     return None
 
 
-@activity.defn(name="extract_structured_output")
-async def fake_extract(request: StructuredOutputRequest) -> dict[str, Any]:
+def fake_output(session_id: str, schema: Schema) -> dict[str, Any]:
     """The name, the plan, a review or the index, by the job whose session it is.
     Chapter 01 passes, 02 passes once rewritten, 03 never passes."""
-    name = request.session_id.removeprefix("session:")
+    name = session_id.removeprefix("session:")
     if name == "name":
         return {"name": "picked"}
     if name == "design":
@@ -128,8 +117,8 @@ async def _run(request: TutorialRequest) -> TutorialOutcome:
         async with running(
             env.client,
             queue,
-            [TutorialWorkflow, JobWorkflow, JobWithStructuredOutputWorkflow],
-            [fake_locate, fake_session, fake_report, fake_record, *submitted_by(fake_extract)],
+            [TutorialWorkflow, JobWorkflow],
+            [fake_locate, fake_session, fake_record, *submitted_by(fake_output)],
             fake_job,
         ):
             return await env.client.execute_workflow(

@@ -1,6 +1,5 @@
 import asyncio
 from asyncio.subprocess import Process
-from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from time import monotonic
 
@@ -17,29 +16,22 @@ from agentic_factory.job.process.spawn import start_process
 from agentic_factory.job.process.tail import tail_of
 from agentic_factory.job.process.workdir import ensure_workdir
 from agentic_factory.job.session import create_session
-from agentic_factory.job.summary.contract import JobSummary
-from agentic_factory.job.summary.parse import parse_summary
-from agentic_factory.job.summary.prompt import wrap_prompt
 from agentic_factory.job.usage import recover_usage
 from agentic_factory.settings.load import settings
 from agentic_factory.tokens import Usage
 
-Repair = Callable[[str], Awaitable[JobSummary | None]]
-
-
 CANCELLED = "cancelled"  # the failure text of a run that was cancelled from outside
 
 
-async def run(job: Job, callback: JobCallback, harness: Harness, repair: Repair) -> JobResult:
+async def run(job: Job, callback: JobCallback, harness: Harness) -> JobResult:
     """Run one llm job to its end: give it its model, workdir and session,
     tell the callback it starts, compact a large session before resuming it,
     run the coder while feeding every event to the callback, and either return
     the result or raise the `JobFailed` subclass that says why there is none.
     The callback hears the end either way, with the totals so far: on a
-    result, on a `JobFailed`, on any other error and on a cancellation. A
-    summary block that does not parse goes to `repair`, one model step,
-    before the result is made. The caller picks the harness (`harness_for`)
-    and the repair (`repair_summary`)."""
+    result, on a `JobFailed`, on any other error and on a cancellation. The
+    prompt goes to the coder as it is: the caller adds the submit request
+    (`ask_for_submission`). The caller picks the harness (`harness_for`)."""
     job = with_default_model(job, harness)
     ensure_workdir(job)
     job = await _with_session(job, harness)
@@ -47,7 +39,7 @@ async def run(job: Job, callback: JobCallback, harness: Harness, repair: Repair)
     ledger = Ledger()
     started = monotonic()
     try:
-        result = await _coder_result(job, harness, callback, repair, ledger, started)
+        result = await _coder_result(job, harness, callback, ledger, started)
     except (Exception, asyncio.CancelledError) as failure:
         await callback.on_end(_end_of(ledger, started, failure=_failure_text(failure)))
         raise
@@ -59,18 +51,16 @@ async def _coder_result(
     job: Job,
     harness: Harness,
     callback: JobCallback,
-    repair: Repair,
     ledger: Ledger,
     started: float,
 ) -> JobResult:
     """The run itself: the compaction, the coder to its end, the usage it
-    lost read back, the summary, the result."""
+    lost read back, the result."""
     await _compact_if_large(job, harness, callback)
     since = datetime.now(UTC)
     await _read_coder(job, harness, callback, started, ledger)
     await _recover_usage_if_unknown(job, harness, callback, ledger, since)
-    summary = await _parse_or_repair_summary(ledger, repair)
-    return _job_result(ledger, summary, monotonic() - started)
+    return _job_result(ledger, monotonic() - started)
 
 
 def _failure_text(failure: BaseException) -> str:
@@ -146,8 +136,8 @@ async def _stderr_within_limit(stderr_task: asyncio.Task[str]) -> str:
 
 
 async def _start_coder(job: Job, harness: Harness) -> Process:
-    """The coder process, in the workdir, with the wrapped prompt."""
-    argv = harness.command(job.model_copy(update={"prompt": wrap_prompt(job.prompt)}))
+    """The coder process, in the workdir, with the job's prompt."""
+    argv = harness.command(job)
     return await start_process(argv, job.workdir, limit=settings.job.line_limit_bytes)
 
 
@@ -230,15 +220,7 @@ def _usage_event(session_id: str, usage: Usage) -> Event:
     )
 
 
-async def _parse_or_repair_summary(ledger: Ledger, repair: Repair) -> JobSummary | None:
-    """The coder's summary block parsed, repaired by a step when it does not
-    parse, or None when the coder wrote none."""
-    if not ledger.summary_block:
-        return None
-    return parse_summary(ledger.summary_block) or await repair(ledger.summary_block)
-
-
-def _job_result(ledger: Ledger, summary: JobSummary | None, duration_sec: float) -> JobResult:
+def _job_result(ledger: Ledger, duration_sec: float) -> JobResult:
     assert ledger.finished is not None
     return JobResult(
         session_id=ledger.finished.session_id,
@@ -247,8 +229,6 @@ def _job_result(ledger: Ledger, summary: JobSummary | None, duration_sec: float)
         usage_known=ledger.usage_known,
         duration_sec=duration_sec,
         stats=ledger.stats,
-        summary_text=ledger.summary_block,
-        summary=summary,
     )
 
 

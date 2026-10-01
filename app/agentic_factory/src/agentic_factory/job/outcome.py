@@ -1,17 +1,31 @@
+from typing import Any
+
 from pydantic import BaseModel, Field
 
 from agentic_factory.job.contract import JobResult
-from agentic_factory.job.report.contract import JobReport
+from agentic_factory.job.report.contract import JobReport, Verdict
 
 
 class JobOutcome(BaseModel):
     """What a job workflow returns: the engine's result (None when every try
-    failed) and the report a model wrote over the whole session."""
+    failed), the coder's report and, for a job asked for one, its output."""
 
     session_id: str
     result: JobResult | None = None
     failure: str = Field(default="", description="The last try's failure, when there is no result.")
-    report: JobReport | None = Field(default=None, description="None when the report step failed.")
+    report: JobReport | None = Field(
+        default=None,
+        description="What the coder submitted, or the workflow's own when the engine failed. "
+        "None when the coder submitted nothing.",
+    )
+    output: dict[str, Any] | None = Field(
+        default=None, description="The submitted output, when the job was asked for one."
+    )
+
+
+def verdict_of(outcome: JobOutcome) -> Verdict:
+    """The report's verdict; `unknown` when there is no report."""
+    return outcome.report.verdict if outcome.report else Verdict.UNKNOWN
 
 
 def with_follow_up_spend(outcome: JobOutcome, follow_up: JobResult | None) -> JobOutcome:

@@ -1,7 +1,6 @@
 from pydantic import BaseModel, Field
 
 from agentic_factory.job.stats import JobStats
-from agentic_factory.job.summary.contract import JobSummary
 from agentic_factory.settings.load import settings
 from agentic_factory.tokens import Tokens
 
@@ -50,7 +49,7 @@ class Job(BaseModel):
 
 class JobResult(BaseModel):
     """What the run produced. Whether the work is done is not decided here:
-    `summary` is the coder's claim and `stats` the evidence; the worker judges."""
+    `stats` is the evidence; the coder's report comes with the workflow's outcome."""
 
     session_id: str = Field(default="", description="Handle to continue in a later job.")
     tokens: Tokens = Field(default_factory=Tokens)
@@ -62,9 +61,3 @@ class JobResult(BaseModel):
     )
     duration_sec: float = 0.0
     stats: JobStats = Field(default_factory=JobStats)
-    summary_text: str = Field(
-        default="", description="The summary block as the coder wrote it, if any; for repair."
-    )
-    summary: JobSummary | None = Field(
-        default=None, description="That block parsed, when it was valid."
-    )

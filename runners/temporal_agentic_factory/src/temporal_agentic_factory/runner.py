@@ -14,17 +14,12 @@ from temporal_agentic_factory.watchers.beads.workflow import BeadsPollWorkflow
 from temporal_agentic_factory.workflows.distill.activities import fetch_source, verify_entry
 from temporal_agentic_factory.workflows.distill.workflow import DistillWorkflow
 from temporal_agentic_factory.workflows.job.record import RecordActivity
-from temporal_agentic_factory.workflows.job.report import ReportActivity
 from temporal_agentic_factory.workflows.job.session import SessionActivity
+from temporal_agentic_factory.workflows.job.submission import SubmissionActivity
 from temporal_agentic_factory.workflows.job.workflow import JobWorkflow
 from temporal_agentic_factory.workflows.judge.activity import judge
 from temporal_agentic_factory.workflows.research.activities import locate_target, read_candidates
 from temporal_agentic_factory.workflows.research.workflow import ResearchWorkflow
-from temporal_agentic_factory.workflows.structured_output.extract import StructuredOutputActivity
-from temporal_agentic_factory.workflows.structured_output.submission import SubmissionActivity
-from temporal_agentic_factory.workflows.structured_output.workflow import (
-    JobWithStructuredOutputWorkflow,
-)
 from temporal_agentic_factory.workflows.tutorial.activities import locate_tutorial
 from temporal_agentic_factory.workflows.tutorial.workflow import TutorialWorkflow
 
@@ -43,7 +38,6 @@ async def serve(identity: str) -> None:
             identity=identity,
             workflows=[
                 JobWorkflow,
-                JobWithStructuredOutputWorkflow,
                 DistillWorkflow,
                 ResearchWorkflow,
                 TutorialWorkflow,
@@ -61,10 +55,8 @@ async def serve(identity: str) -> None:
 def _activities(store: Store) -> list[Callable[..., Any]]:
     return [
         SessionActivity(store).create_session,
-        ReportActivity(store).build_report,
         SubmissionActivity(store).ask_for_submission,
-        SubmissionActivity(store).read_submitted_output,
-        StructuredOutputActivity(store).extract_structured_output,
+        SubmissionActivity(store).read_submission,
         RecordActivity(store).record_job,
         fetch_source,
         verify_entry,

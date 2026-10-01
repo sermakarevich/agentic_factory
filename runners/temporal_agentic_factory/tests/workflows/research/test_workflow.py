@@ -22,7 +22,7 @@ from temporalio.testing import WorkflowEnvironment
 
 from agentic_factory.job.contract import Job, JobResult
 from agentic_factory.job.outcome import JobOutcome
-from agentic_factory.job.report.contract import JobReport, Verdict
+from agentic_factory.job.submission.contract import Schema
 from agentic_factory.step.judge.answer import ChoiceAnswer, ScoreAnswer
 from agentic_factory.step.judge.contract import Judgment, JudgmentResult
 from distill.contract import DistillRequest, EntryPlan, EntryType, FetchedSource
@@ -30,15 +30,10 @@ from temporal_agentic_factory.workflows.distill.name import source_name
 from temporal_agentic_factory.workflows.distill.workflow import DistilledEntry
 from temporal_agentic_factory.workflows.job import search_attributes
 from temporal_agentic_factory.workflows.job.execute import TryResult
-from temporal_agentic_factory.workflows.job.report import ReportRequest
 from temporal_agentic_factory.workflows.job.workflow import JobWorkflow
 from temporal_agentic_factory.workflows.research.workflow import ResearchWorkflow
-from temporal_agentic_factory.workflows.structured_output.extract import StructuredOutputRequest
-from temporal_agentic_factory.workflows.structured_output.workflow import (
-    JobWithStructuredOutputWorkflow,
-)
 from tests.workers import running
-from tests.workflows.structured_output.submitted import submitted_by
+from tests.workflows.job.submitted import submitted_by
 
 TARGET_DIR = "/tmp/research/t1"
 INDEX_PATH = "/tmp/research/t1/index.md"
@@ -150,20 +145,14 @@ async def fake_job(job: Job) -> TryResult:
     return TryResult(result=JobResult(session_id=job.session_id, cost_usd=0.1), runner="r1")
 
 
-@activity.defn(name="build_report")
-async def fake_report(request: ReportRequest) -> JobReport:
-    return JobReport(task="t", done=[], not_done=[], problems=[], verdict=Verdict.DONE)
-
-
 @activity.defn(name="record_job")
 async def fake_record(outcome: JobOutcome) -> None:
     return None
 
 
-@activity.defn(name="extract_structured_output")
-async def fake_extract(request: StructuredOutputRequest) -> dict[str, Any]:
+def fake_output(session_id: str, schema: Schema) -> dict[str, Any]:
     """The candidates path, the plan, or the index path, by the schema asked for."""
-    props = request.output_schema["properties"]
+    props = schema["properties"]
     if "candidates_path" in props:
         return {"candidates_path": "/tmp/research/t1/candidates.json"}
     if "sources" in props:
@@ -215,15 +204,14 @@ async def _run(request: ResearchRequest):  # type: ignore[no-untyped-def]
         async with running(
             env.client,
             queue,
-            [ResearchWorkflow, FakeDistillWorkflow, JobWorkflow, JobWithStructuredOutputWorkflow],
+            [ResearchWorkflow, FakeDistillWorkflow, JobWorkflow],
             [
                 fake_locate,
                 fake_candidates,
                 fake_judge,
                 fake_session,
-                fake_report,
                 fake_record,
-                *submitted_by(fake_extract),
+                *submitted_by(fake_output),
             ],
             fake_job,
         ):

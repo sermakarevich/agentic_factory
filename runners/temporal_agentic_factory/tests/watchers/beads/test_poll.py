@@ -6,7 +6,7 @@ from pathlib import Path
 from agentic_factory.job.contract import Job, JobResult
 from agentic_factory.job.outcome import JobOutcome
 from agentic_factory.job.report.contract import JobReport, Verdict
-from agentic_factory.job.structured_output.contract import Schema
+from agentic_factory.job.submission.contract import Schema
 from temporal_agentic_factory.watchers.beads.client import BeadsClient
 from temporal_agentic_factory.watchers.beads.markers import marker, retried, skipped
 from temporal_agentic_factory.watchers.beads.models import Bead, BeadState

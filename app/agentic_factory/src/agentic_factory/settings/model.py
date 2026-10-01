@@ -2,8 +2,6 @@ from typing import Literal
 
 from factory_settings.table import Table
 
-from agentic_factory.step.reasoning import Reasoning
-
 
 class JobSettings(Table):
     provider: Literal["claude", "opencode"]
@@ -31,13 +29,6 @@ class HarnessesSettings(Table):
     claude: ClaudeHarnessSettings
 
 
-class OpencodeGoSettings(Table):
-    default_model: str
-    base_url: str
-    user_agent: str
-    retry_after_default_sec: int
-
-
 class TypeSafeSettings(Table):
     default_model: str
     price_per_m_input_usd: float
@@ -51,30 +42,11 @@ class JudgeSettings(Table):
 
 
 class StepSettings(Table):
-    provider: Literal["opencode"]
-    reasoning: Reasoning
-    max_tokens: int
-    timeout_sec: int
-    error_clip_chars: int
-    opencode: OpencodeGoSettings
     judge: JudgeSettings
 
 
 class LogSettings(Table):
     content_width: int
-
-
-class ConversationSettings(Table):
-    tool_output_chars: int
-    tool_args_chars: int
-
-
-class ReportSettings(Table):
-    max_chars: int
-
-
-class StructuredOutputSettings(Table):
-    max_chars: int
 
 
 class Settings(Table):
@@ -84,6 +56,3 @@ class Settings(Table):
     harness: HarnessesSettings
     step: StepSettings
     log: LogSettings
-    conversation: ConversationSettings
-    report: ReportSettings
-    structured_output: StructuredOutputSettings

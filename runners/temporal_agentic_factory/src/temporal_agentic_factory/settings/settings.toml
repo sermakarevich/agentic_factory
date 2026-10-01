@@ -4,7 +4,7 @@ namespace = "default"          # the Temporal namespace the runner and its workf
 task_queue = "agentic-factory"  # the queue the runner polls and the cli starts workflows on
 
 [runner]
-max_concurrent_activities = 20   # quick activities (session, report, record, fetch, ...) at once; coder runs live in `af coders`
+max_concurrent_activities = 20   # quick activities (session, submission, record, fetch, ...) at once; coder runs live in `af coders`
 
 [providers.claude]
 max_concurrent = 1   # claude coder runs at once on this machine
@@ -29,24 +29,15 @@ retry_backoff = 2.0         # each later wait is the previous one times this
 retry_max_sec = 600         # the longest backoff wait
 min_retry_delay_sec = 1     # the shortest wait after a rate limit whose reset time has passed
 
-[report_activity]
-close_margin_sec = 60   # start-to-close = the app's step.timeout_sec + this; the step's own timeout fires first
-max_attempts = 3        # tries of the report step before the workflow gives it up
-
 [record_activity]
 timeout_sec = 30    # two store queries: the tries read, the job row written
 max_attempts = 5    # tries before the workflow gives the row up and logs it
 
-[structured_output_activity]
-close_margin_sec = 60   # start-to-close = two of the app's step.timeout_sec (last message, then the conversation) + this
-max_attempts = 3        # tries of the extraction before the workflow fails; "not stated" is final and skips them
-
-[structured_output_workflow]
+[job_workflow]
 submit_reminders = 1    # follow-up jobs in the same session asking a coder that did not `af output submit` to do it
-llm_fallback = true     # still nothing submitted after them: pick the output out of the coder's text with a step
 
 [submission_activity]
-timeout_sec = 30    # one store write or read: the schema saved, or the submitted output read
+timeout_sec = 30    # one store write or read: the submission schema saved, or the submission read
 max_attempts = 5    # tries before the workflow fails
 
 [judge_activity]

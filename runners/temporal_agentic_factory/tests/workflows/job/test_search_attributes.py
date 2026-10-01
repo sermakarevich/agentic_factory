@@ -15,7 +15,7 @@ def test_end_says_how_it_ended_and_what_the_report_judged() -> None:
     done = JobOutcome(session_id="s", result=JobResult(), report=report)
     failed = JobOutcome(session_id="s", failure="Stalled: no output")
     assert [u.value for u in sa.at_end(done)] == ["done", "partial"]
-    assert [u.value for u in sa.at_end(failed)] == ["failed", ""]
+    assert [u.value for u in sa.at_end(failed)] == ["failed", "unknown"]  # no report
     assert [u.key.name for u in sa.at_end(done)] == ["Outcome", "Verdict"]
 
 
