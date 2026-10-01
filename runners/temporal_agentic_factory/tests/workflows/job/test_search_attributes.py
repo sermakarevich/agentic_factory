@@ -21,4 +21,13 @@ def test_end_says_how_it_ended_and_what_the_report_judged() -> None:
 
 def test_every_key_is_a_keyword_the_register_step_knows() -> None:
     names = {key.name for key in sa.KEYS}
-    assert names == {"Name", "Provider", "Model", "Workdir", "Runner", "Outcome", "Verdict"}
+    assert names == {
+        "Name",
+        "Provider",
+        "Model",
+        "Workdir",
+        "Runner",
+        "Outcome",
+        "Verdict",
+        "LastCheck",
+    }

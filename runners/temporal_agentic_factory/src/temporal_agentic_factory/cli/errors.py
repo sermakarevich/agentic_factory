@@ -17,7 +17,7 @@ STATUSES = (
     "TimedOut",
 )
 
-WORKFLOW_TYPES = ("job", "job_with_structured_output", "distill")
+WORKFLOW_TYPES = ("job", "job_with_structured_output", "distill", "beads_watcher")
 
 
 def normalize_status(value: str) -> str:

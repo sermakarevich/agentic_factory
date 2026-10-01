@@ -62,14 +62,17 @@ agentic_factory/
                               # and child distill runs)
         watchers/             # long-running things that watch a state and start workflows
           beads/              # client (bd calls on the database af owns), home ([beads].home), mapping,
-                              # models, poll, shell (`bd` subprocess), temporal, workflow (the poller)
+                              # models, poll, shell (`bd` subprocess), temporal, tick (the tick activity),
+                              # last_check (the query and LastCheck line), trim (old runs deleted),
+                              # workflow (the beads_watcher loop), control (start, stop, status),
+                              # legacy (the old beads-poll schedule)
         cli/                  # app (the `af` typer app), one module per subject (job: `run`, distill,
                               # research, coders), errors, ids (readable workflow ids), options,
                               # providers (refuses a provider with no settings table), workflows
                               # (status, result, list, cancel, terminate, health)
           beads/              # app (the `af beads` group), opened (the configured database),
-                              # database (init, add, list, show, close), poller (ready, poll,
-                              # schedule, unschedule)
+                              # database (init, add, list, show, close), poller (ready,
+                              # poll --once), watcher (start, stop, restart, status)
         settings/             # server address, activity limits, [providers.<name>] coder limits, one table per workflow
                               # and activity ([job_activity], [distill_workflow],
                               # [research_workflow], [locate_activity], [candidates_activity], ...)

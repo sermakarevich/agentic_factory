@@ -689,3 +689,21 @@ sources one module per kind** (Oct 1).
   tick summary. Rejected: a task.json beside each bead (a second source of
   truth that `bd` does not move with the bead) and keeping fleet's
   `coder`/`isolation` row keys (nothing downstream used `isolation`).
+- **beads watcher: one long-running workflow with continue-as-new instead of a
+  Schedule; keep last N runs** (2026-10-01). The `beads-poll` Schedule started
+  a one-tick workflow every 10 s, 8,600 runs a day, and made the Temporal UI
+  unusable. Now one `beads_watcher` workflow (fixed id `beads-watcher`) runs
+  the unchanged tick activity, sleeps `interval_sec` and repeats; a failed
+  tick is recorded, not fatal; after `checks_per_run` ticks (or when Temporal
+  suggests it) it continues as new. The loop is kept tiny and frozen so it
+  replays across code changes: tick logic changes go into the activity, loop
+  changes need `af beads restart`. Its knobs travel in the input, not read
+  from settings in workflow code, so a settings change cannot break a replay.
+  The last tick is a `last_check` query plus a `LastCheck` keyword attribute
+  upserted only when its line changes. A best-effort `trim_watcher_runs`
+  activity deletes all but the newest `keep_runs` (3) closed `beads_watcher`
+  and `beads_poll` runs, by run id, never another type. `af beads
+  schedule`/`unschedule` and the in-process poll daemon are gone;
+  `af beads start` removes the legacy schedule. Rejected: keeping the
+  Schedule with a shorter namespace retention (still thousands of rows and a
+  server-wide setting), and an in-process daemon (dies with its terminal).

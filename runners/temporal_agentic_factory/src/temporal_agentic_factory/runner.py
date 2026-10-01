@@ -7,7 +7,9 @@ from temporalio.worker import Worker
 
 from temporal_agentic_factory.client import connect
 from temporal_agentic_factory.settings.load import settings
-from temporal_agentic_factory.watchers.beads.workflow import BeadsPollActivity, BeadsPollWorkflow
+from temporal_agentic_factory.watchers.beads.tick import BeadsPollActivity
+from temporal_agentic_factory.watchers.beads.trim import trim_watcher_runs
+from temporal_agentic_factory.watchers.beads.workflow import BeadsWatcherWorkflow
 from temporal_agentic_factory.workflows.distill.activities import fetch_source, verify_entry
 from temporal_agentic_factory.workflows.distill.workflow import DistillWorkflow
 from temporal_agentic_factory.workflows.job.record import RecordActivity
@@ -40,7 +42,7 @@ async def serve(identity: str) -> None:
                 JobWithStructuredOutputWorkflow,
                 DistillWorkflow,
                 ResearchWorkflow,
-                BeadsPollWorkflow,
+                BeadsWatcherWorkflow,
             ],
             activities=_activities(store),
             max_concurrent_activities=settings.runner.max_concurrent_activities,
@@ -62,4 +64,5 @@ def _activities(store: Store) -> list[Callable[..., Any]]:
         locate_target,
         read_candidates,
         BeadsPollActivity().poll,
+        trim_watcher_runs,
     ]

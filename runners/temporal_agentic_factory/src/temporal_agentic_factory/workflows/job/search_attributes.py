@@ -1,6 +1,7 @@
-"""The search attributes every workflow carries: indexed by the server, so
+"""The search attributes the workflows carry: indexed by the server, so
 the UI shows them as columns and filters (`Provider = 'claude' AND Outcome =
-'failed'`). Registered once per server with `factory attributes`."""
+'failed'`). Registered once per server with `factory attributes`; the beads
+watcher's `LastCheck` is registered with them."""
 
 from temporalio.api.enums.v1 import IndexedValueType
 from temporalio.api.operatorservice.v1 import (
@@ -25,7 +26,8 @@ WORKDIR = SearchAttributeKey.for_keyword("Workdir")
 RUNNER = SearchAttributeKey.for_keyword("Runner")
 OUTCOME = SearchAttributeKey.for_keyword("Outcome")
 VERDICT = SearchAttributeKey.for_keyword("Verdict")
-KEYS = [NAME, PROVIDER, MODEL, WORKDIR, RUNNER, OUTCOME, VERDICT]
+LAST_CHECK = SearchAttributeKey.for_keyword("LastCheck")
+KEYS = [NAME, PROVIDER, MODEL, WORKDIR, RUNNER, OUTCOME, VERDICT, LAST_CHECK]
 
 
 def at_start(job: Job, name: str) -> TypedSearchAttributes:

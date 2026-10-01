@@ -28,14 +28,18 @@ test *ARGS:
 # one command that says "green"
 check: lint fmt-check typecheck test
 
-# start the runner process that polls Temporal task queues
+# start the runner process that polls Temporal task queues; the beads watcher is started first
+# (it waits on the queue for this runner), so a restart always brings it back
 runner *ARGS:
+    {{watcher_start}}
     uv run factory runner "$@"
 
-# start N runner processes in the background on this machine, each with its own log file: just runners 2
+# start N runner processes in the background on this machine, each with its own log file: just runners 2;
+# then start the beads watcher (a running one is left alone)
 runners N="2":
     mkdir -p "{{runner_logs}}"
     for i in $(seq {{N}}); do nohup uv run factory runner > "{{runner_logs}}/runner-$(date +%Y%m%d-%H%M%S)-$i.log" 2>&1 & echo "runner $! started"; done
+    {{watcher_start}}
 
 # stop every runner process on this machine, each by its exact pid; Temporal retries the activities they were running
 runners-stop:
@@ -59,6 +63,8 @@ run *ARGS:
 # Use the IP, not "localhost": that resolves to ::1 first on macOS and the server is IPv4 only.
 temporal_data := env("XDG_DATA_HOME", env("HOME") + "/.local/share") + "/agentic_factory"
 runner_logs := temporal_data + "/runner-logs"
+# `af beads start`, a warning instead of a failure (Temporal down, no beads database yet)
+watcher_start := "uv run factory beads start || echo 'warning: beads watcher not started; run `af beads start` once Temporal is up' >&2"
 temporal_ip := "127.0.0.1"
 temporal_port := "7233"
 temporal_ui_port := "8233"

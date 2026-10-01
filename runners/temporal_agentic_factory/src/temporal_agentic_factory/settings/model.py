@@ -90,12 +90,17 @@ class BeadsSettings(Table):
     command_timeout_sec: int
 
 
-class BeadsPollerSettings(Table):
+class BeadsWatcherSettings(Table):
+    workflow_id: str
     interval_sec: int
+    tick_timeout_sec: int
     batch_limit: int
     orphan_timeout_sec: int
-    schedule_id: str
-    tick_timeout_sec: int
+    checks_per_run: int
+    keep_runs: int
+    trim_timeout_sec: int
+    stop_wait_sec: int
+    query_timeout_sec: int
 
 
 class LocateActivitySettings(Table):
@@ -123,7 +128,7 @@ class Settings(Table):
     fetch_activity: FetchActivitySettings
     verify_activity: VerifyActivitySettings
     beads: BeadsSettings
-    beads_poller: BeadsPollerSettings
+    beads_watcher: BeadsWatcherSettings
     research_workflow: ResearchWorkflowSettings
     locate_activity: LocateActivitySettings
     candidates_activity: CandidatesActivitySettings

@@ -2,7 +2,7 @@
 
 import typer
 
-from temporal_agentic_factory.cli.beads import database, poller
+from temporal_agentic_factory.cli.beads import database, poller, watcher
 
 beads_app = typer.Typer(
     no_args_is_help=True, help="Beads: submit beads to the database af owns, pull them as jobs."
@@ -15,5 +15,7 @@ beads_app.command(name="show")(database.show)
 beads_app.command(name="close")(database.close)
 beads_app.command(name="ready")(poller.ready)
 beads_app.command(name="poll")(poller.poll)
-beads_app.command(name="schedule")(poller.schedule)
-beads_app.command(name="unschedule")(poller.unschedule)
+beads_app.command(name="start")(watcher.start)
+beads_app.command(name="stop")(watcher.stop)
+beads_app.command(name="restart")(watcher.restart)
+beads_app.command(name="status")(watcher.status)

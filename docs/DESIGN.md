@@ -223,7 +223,7 @@ called from an activity.
 `runners/temporal_agentic_factory`. Activities are one-line wrappers around
 the two engines; workflows compose them; retries never appear in workflow code.
 The package is grouped by role, then by subject: `workflows/` (one folder per
-workflow with its activities), `watchers/` (the beads poller), `cli/` (the `af`
+workflow with its activities), `watchers/` (the beads watcher), `cli/` (the `af`
 command, one module per subject) and `settings/`; the root holds what several
 roles share (`runner.py`, `coders.py`, `other_coders.py`, `client.py`, `identity.py`).
 
@@ -336,7 +336,7 @@ roles share (`runner.py`, `coders.py`, `other_coders.py`, `client.py`, `identity
   lets running coder jobs finish for up to `[coders] graceful_shutdown_sec`,
   then Temporal retries what was cut off after its heartbeat timeout.
   Workflows start freely: their execute step waits in the provider's queue
-  until a slot frees, and the beads poller keeps `batch_limit` as its only
+  until a slot frees, and the beads watcher keeps `batch_limit` as its only
   brake. `af health` lists the pollers of each coder queue, so a missing
   `af coders` shows.
 - To change a limit: edit `[providers.<name>] max_concurrent` in the runner
@@ -375,7 +375,7 @@ roles share (`runner.py`, `coders.py`, `other_coders.py`, `client.py`, `identity
   `asyncio.Semaphore` where the parent has a width setting (research's
   distills).
 - Never start a workflow from an activity. The only exception is a watcher:
-  the beads poll activity starts top-level job workflows, never children.
+  the beads tick activity starts top-level job workflows, never children.
 
 Learned from the restart test (runner killed mid-job, restarted): Temporal
 failed the try with a heartbeat timeout, try 2 started with attempt 2 in
@@ -677,9 +677,9 @@ cwd, so the database never depends on where a command is started.
    `af_provider`, `af_cwd` (an absolute, existing folder) and `af_model`
    (left out for the provider's default). A provider with no
    `[providers.<name>]` table is refused.
-3. The poller (`af beads schedule`, or `af beads poll` while developing)
-   takes ready beads by priority (`bd ready --sort priority`, up to
-   `[beads_poller] batch_limit`), claims each one and starts its job
+3. The watcher (`af beads start`, see below; `af beads poll --once` runs one
+   tick in the cli while debugging) takes ready beads by priority
+   (`bd ready --sort priority`, up to `[beads_watcher] batch_limit`), claims each one and starts its job
    workflow `bead-<id>`. A ready bead with no provider or workdir in its
    metadata, an unconfigured provider or a missing folder stays open; the
    tick summary says why.
@@ -689,8 +689,52 @@ cwd, so the database never depends on where a command is started.
 
 `af beads list`, `af beads show ID` and `af beads close ID [--reason R]`
 print what `bd` prints (`--json` passes through for list and show). Every
-command but `init` and `unschedule` stops with one line naming
+command on the database, `ready`, `poll` and `start` stop with one line naming
 `af beads init` while the folder holds no database.
+
+## Beads watcher
+
+One long-running workflow, `beads_watcher`, with the fixed id
+`[beads_watcher] workflow_id` (`beads-watcher`), pulls the beads. It replaced
+a Temporal Schedule that started a one-tick `beads_poll` workflow every 10 s:
+8,600 runs a day that made the Temporal UI unusable. Now there is one run at a
+time, and history keeps only the last few.
+
+- **The loop** (`watchers/beads/workflow.py`): run the tick activity
+  (`BeadsPollActivity.poll`, which calls `poll_once`), then
+  `workflow.sleep(interval_sec)`, repeat. A tick that fails after its retries
+  is caught: the loop records the error text and goes on. After
+  `checks_per_run` ticks (500), or when Temporal suggests it, the run
+  continues as new, carrying the last check over. The workflow has no I/O.
+- **The loop is frozen.** A long-running workflow replays its history on the
+  new code after a runner restart, so the loop must not change under a
+  running watcher. What a tick does lives in the activities (`tick.py`,
+  `poll.py`, `mapping.py`): change it there and restart the runners. A change
+  to the loop itself, or to its knobs (`interval_sec`, `tick_timeout_sec`,
+  `trim_timeout_sec`, `checks_per_run`, which travel in the workflow's input),
+  needs `af beads restart`.
+- **What it shows.** The query `last_check` answers the last tick: its time,
+  the spawned, closed, released, skipped and error counts, or the failure's
+  text. The keyword attribute `LastCheck` holds one short line of it
+  (`spawned 1 closed 0 released 0 skipped 0 errors 0`, or `tick failed`) and
+  is upserted only when that line changes, so a quiet watcher's history stays
+  small. `af beads start` registers the attribute when the server lacks it
+  (an upsert of an unknown attribute would block the workflow).
+- **Old runs are trimmed.** The `trim_watcher_runs` activity lists the closed
+  runs of `beads_watcher` and the old `beads_poll` type, keeps the newest
+  `keep_runs` (3) by close time and deletes the rest, each by its run id.
+  It runs once when the watcher starts and before each continue-as-new. It
+  is best effort: a failed listing or delete is logged and skipped. No other
+  workflow type is ever touched: the query names the two types and the
+  activity checks each listed run's type again.
+- **Commands.** `af beads start` (idempotent: a running watcher is left
+  alone and its id printed; it also deletes the legacy `beads-poll` schedule
+  if it is still there), `af beads stop` (cancel, then wait up to
+  `stop_wait_sec`), `af beads restart` (stop, then start) and
+  `af beads status` (running or not, and the last check). `af health` has a
+  `beads_watcher` field, with a warning when it does not run. `just runner`
+  and `just runners` run `af beads start` with the runners, a warning if it
+  fails, so a restart always brings the watcher back.
 
 ## Materialization
 
@@ -900,7 +944,8 @@ per million lives in settings so the result carries `cost_usd`.
 - Beads is an input source (watcher) and an output target (a workflow
   updates status), not the internal state store. af owns its beads
   database at `~/.agentic_factory/beads` and calls `bd` directly.
-- One watcher at most (beads). X monitoring is a schedule whose first
+- One watcher at most (beads), one long-running workflow with
+  continue-as-new. X monitoring is a schedule whose first
   activity runs `x watch check`.
 - No YAML workflow language. Graphs are Python; a data-driven DAG
   interpreter can be added later if needed.
