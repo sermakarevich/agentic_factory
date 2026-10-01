@@ -1,8 +1,7 @@
-"""The `run` command: one job started on Temporal and waited for."""
+"""The `run` command: one job submitted to Temporal, waited for by default."""
 
-import asyncio
-from typing import Annotated
-from uuid import uuid4
+from collections.abc import Coroutine
+from typing import Annotated, Any
 
 import typer
 
@@ -37,8 +36,18 @@ def run(
         str | None,
         typer.Option(help="JSON schema of the structured output the job must state, or @file"),
     ] = None,
+    detach: Annotated[
+        bool, typer.Option("--detach", help="submit and print the workflow id without waiting")
+    ] = False,
+    workflow_id: Annotated[
+        str | None,
+        typer.Option(
+            help="workflow id to start with; reusing one is idempotent. Empty = generated"
+        ),
+    ] = None,
 ) -> None:
-    """Start one job on Temporal and wait for it. Prints the result as JSON.
+    """Submit one job to Temporal. Waits and prints the result as JSON,
+    or with --detach prints the workflow id and returns.
     Options left out keep the settings defaults. With --structured-output the
     job must state it and the result carries it."""
     options = {
@@ -51,23 +60,76 @@ def run(
     }
     job = Job(name=name, prompt=prompt, workdir=absolute(workdir), **given(options))
     job = with_default_model(job, harness_for(job.provider))  # so the UI shows the model
-    if structured_output is None:
-        typer.echo(asyncio.run(_job_outcome(job)).model_dump_json(indent=2))
+    output_schema = schema(structured_output) if structured_output is not None else None
+    wid = _new_id(workflow_id)
+    if detach:
+        typer.echo(_run_coro(_submitted_id(job, output_schema, wid)))
+    elif output_schema is None:
+        typer.echo(_run_coro(_job_outcome(job, wid)).model_dump_json(indent=2))
     else:
         typer.echo(
-            asyncio.run(
-                _job_with_structured_output(job, schema(structured_output))
-            ).model_dump_json(indent=2)
+            _run_coro(_job_with_structured_output(job, output_schema, wid)).model_dump_json(
+                indent=2
+            )
         )
 
 
-async def _job_outcome(job: Job) -> JobOutcome:
+def _run_coro[T](coro: Coroutine[Any, Any, T]) -> T:
+    """`cli.errors.run_coro`, imported late: this module loads before the `cli` package."""
+    from temporal_agentic_factory.cli.errors import run_coro
+
+    return run_coro(coro)
+
+
+def _new_id(workflow_id: str | None) -> str:
+    """`cli.ids.new_id`, imported late for the same reason."""
+    from temporal_agentic_factory.cli.ids import new_id
+
+    return new_id("job", workflow_id)
+
+
+async def _submitted_id(job: Job, output_schema: Schema | None, wid: str) -> str:
+    """The workflow started but not waited for: its id, for `af status` / `af result`."""
+    if output_schema is None:
+        return await _submitted_job_id(job, wid)
+    return await _submitted_structured_id(job, output_schema, wid)
+
+
+async def _submitted_job_id(job: Job, wid: str) -> str:
+    client = await connect()
+    handle = await client.start_workflow(
+        JobWorkflow.run,
+        job,
+        id=wid,
+        task_queue=settings.temporal.task_queue,
+        search_attributes=search_attributes.at_start(job),
+        static_summary=job.name,
+    )
+    typer.echo(f"started {handle.id}", err=True)
+    return handle.id
+
+
+async def _submitted_structured_id(job: Job, output_schema: Schema, wid: str) -> str:
+    client = await connect()
+    handle = await client.start_workflow(
+        JobWithStructuredOutputWorkflow.run,
+        StructuredOutputJob(job=job, output_schema=output_schema),
+        id=wid,
+        task_queue=settings.temporal.task_queue,
+        search_attributes=search_attributes.at_start(job),
+        static_summary=job.name,
+    )
+    typer.echo(f"started {handle.id}", err=True)
+    return handle.id
+
+
+async def _job_outcome(job: Job, wid: str) -> JobOutcome:
     """The job workflow started and waited for."""
     client = await connect()
     handle = await client.start_workflow(
         JobWorkflow.run,
         job,
-        id=f"job-{uuid4().hex[: settings.cli.job_id_chars]}",
+        id=wid,
         task_queue=settings.temporal.task_queue,
         search_attributes=search_attributes.at_start(job),
         static_summary=job.name,
@@ -75,13 +137,15 @@ async def _job_outcome(job: Job) -> JobOutcome:
     return await awaited(handle)
 
 
-async def _job_with_structured_output(job: Job, output_schema: Schema) -> JobWithStructuredOutput:
+async def _job_with_structured_output(
+    job: Job, output_schema: Schema, wid: str
+) -> JobWithStructuredOutput:
     """The job-with-structured-output workflow started and waited for."""
     client = await connect()
     handle = await client.start_workflow(
         JobWithStructuredOutputWorkflow.run,
         StructuredOutputJob(job=job, output_schema=output_schema),
-        id=f"job-{uuid4().hex[: settings.cli.job_id_chars]}",
+        id=wid,
         task_queue=settings.temporal.task_queue,
         search_attributes=search_attributes.at_start(job),
         static_summary=job.name,

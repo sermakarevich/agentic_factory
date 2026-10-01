@@ -60,6 +60,14 @@ max_attempts = 3    # tries of a transient fetch failure (network, a rate-limite
 timeout_sec = 30    # a walk over one entry folder
 max_attempts = 3    # tries before the workflow fails
 
+[beads_poller]
+interval_sec = 10       # the Temporal Schedule tick and the `af beads poll` daemon loop
+batch_limit = 10        # ready beads considered per tick
+max_in_flight = 4       # running job workflows at which a tick spawns nothing
+orphan_timeout_sec = 600  # an in_progress bead with no af marker and no workflow this old is released
+schedule_id = "beads-poll"  # the Temporal Schedule id `af beads schedule` owns
+command_timeout_sec = 30  # one `fleet`/`bd` subprocess call before it fails the tick
+tick_timeout_sec = 300  # start-to-close of the poll activity: reconcile plus one batch
 
 [locate_activity]
 timeout_sec = 30    # validating the topic and making the target folder

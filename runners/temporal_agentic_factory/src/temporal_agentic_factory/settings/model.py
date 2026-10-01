@@ -75,6 +75,16 @@ class VerifyActivitySettings(Table):
     max_attempts: int
 
 
+class BeadsPollerSettings(Table):
+    interval_sec: int
+    batch_limit: int
+    max_in_flight: int
+    orphan_timeout_sec: int
+    schedule_id: str
+    command_timeout_sec: int
+    tick_timeout_sec: int
+
+
 class LocateActivitySettings(Table):
     timeout_sec: int
     max_attempts: int
@@ -97,6 +107,7 @@ class Settings(Table):
     distill_workflow: DistillWorkflowSettings
     fetch_activity: FetchActivitySettings
     verify_activity: VerifyActivitySettings
+    beads_poller: BeadsPollerSettings
     research_workflow: ResearchWorkflowSettings
     locate_activity: LocateActivitySettings
     candidates_activity: CandidatesActivitySettings
