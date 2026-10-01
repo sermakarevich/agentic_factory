@@ -54,12 +54,33 @@ class DistillWorkflowSettings(Table):
     index_attempts: int
 
 
+class ResearchWorkflowSettings(Table):
+    provider: str
+    model: str
+    planning_provider: str
+    planning_model: str
+    job_timeout_sec: int
+    job_stall_sec: int
+    planning_timeout_sec: int
+    sources_at_once: int
+
+
 class FetchActivitySettings(Table):
     timeout_sec: int
     max_attempts: int
 
 
 class VerifyActivitySettings(Table):
+    timeout_sec: int
+    max_attempts: int
+
+
+class LocateActivitySettings(Table):
+    timeout_sec: int
+    max_attempts: int
+
+
+class CandidatesActivitySettings(Table):
     timeout_sec: int
     max_attempts: int
 
@@ -76,3 +97,6 @@ class Settings(Table):
     distill_workflow: DistillWorkflowSettings
     fetch_activity: FetchActivitySettings
     verify_activity: VerifyActivitySettings
+    research_workflow: ResearchWorkflowSettings
+    locate_activity: LocateActivitySettings
+    candidates_activity: CandidatesActivitySettings

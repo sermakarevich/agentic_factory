@@ -1,0 +1,12 @@
+# Defaults of the research application. Override without editing this file:
+#   - settings.local.toml next to it (git-ignored), same layout;
+#   - environment variables AF_<TABLE>__<KEY>, e.g. AF_RESEARCH__N_SOURCES=12;
+#   - a .env file in the repo root, read on start.
+
+[research]
+n_sources = 10                    # how many sources the shortlist holds
+reserve_share = 0.3               # reserve entries as a share of n_sources, rounded up
+lenses = ["tech", "ai"]           # default audiences for the top-level lens views
+candidates_per_source_min = 3     # discover collects at least this many candidates per shortlisted source
+candidates_per_source_max = 5     # discover collects at most this many candidates per shortlisted source
+abstract_chars = 1200             # longest abstract kept per candidate

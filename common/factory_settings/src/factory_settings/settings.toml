@@ -5,3 +5,9 @@
 
 [store]
 url = "postgresql+asyncpg://factory:factory@127.0.0.1:5432/factory"  # the database of `just db` (docker-compose.yml); async driver required
+
+[vault]
+workdir = "~/.ai"                                     # where every distill job runs: the knowledge-base repo
+research = "~/.ai/knowledge/research"                 # entries with no topic go here as research/<PascalName>
+investment = "~/.ai/knowledge/investment"             # finance entries go here as investment/<YYYY-MM-DD>-<PascalName>
+research_topics = "~/.ai/knowledge/research_topics"   # one folder per topic; a filed entry moves under its topic

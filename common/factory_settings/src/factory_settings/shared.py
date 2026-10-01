@@ -8,11 +8,19 @@ class StoreSettings(Table):
     url: str
 
 
+class VaultSettings(Table):
+    workdir: str
+    research: str
+    investment: str
+    research_topics: str
+
+
 class SharedSettings(Table):
     """The values more than one package needs; each package keeps its own
     settings.toml for the rest."""
 
     store: StoreSettings
+    vault: VaultSettings
 
 
 shared = load(SharedSettings, Path(__file__).parent)

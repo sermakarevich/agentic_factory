@@ -12,6 +12,7 @@ from temporal_agentic_factory.distill.cli import distill
 from temporal_agentic_factory.identity import runner_identity
 from temporal_agentic_factory.job import search_attributes
 from temporal_agentic_factory.job.cli import run
+from temporal_agentic_factory.research.cli import research
 from temporal_agentic_factory.runner import serve
 from temporal_agentic_factory.settings.load import settings
 
@@ -41,3 +42,4 @@ async def _registered_attributes() -> list[str]:
 
 app.command()(run)
 app.command()(distill)
+app.command()(research)

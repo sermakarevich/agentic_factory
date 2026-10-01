@@ -15,6 +15,8 @@ from temporal_agentic_factory.job.report import ReportActivity
 from temporal_agentic_factory.job.session import SessionActivity
 from temporal_agentic_factory.job.workflow import JobWorkflow
 from temporal_agentic_factory.judge.activity import judge
+from temporal_agentic_factory.research.activities import locate_target, read_candidates
+from temporal_agentic_factory.research.workflow import ResearchWorkflow
 from temporal_agentic_factory.settings.load import settings
 from temporal_agentic_factory.structured_output.extract import StructuredOutputActivity
 from temporal_agentic_factory.structured_output.workflow import JobWithStructuredOutputWorkflow
@@ -31,7 +33,12 @@ async def serve(identity: str) -> None:
             client,
             task_queue=settings.temporal.task_queue,
             identity=identity,
-            workflows=[JobWorkflow, JobWithStructuredOutputWorkflow, DistillWorkflow],
+            workflows=[
+                JobWorkflow,
+                JobWithStructuredOutputWorkflow,
+                DistillWorkflow,
+                ResearchWorkflow,
+            ],
             activities=_activities(store, identity),
             max_concurrent_activities=settings.runner.max_concurrent_activities,
         )
@@ -50,4 +57,6 @@ def _activities(store: Store, identity: str) -> list[Callable[..., Any]]:
         fetch_source,
         verify_entry,
         judge,
+        locate_target,
+        read_candidates,
     ]

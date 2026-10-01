@@ -42,6 +42,16 @@ job_timeout_sec = 3600   # one distill job's own limit; the biggest wiki chunk t
 job_stall_sec = 600      # a job with no event for this long is killed
 index_attempts = 3       # index job runs (the first, then one per failed verification) before the workflow fails
 
+[research_workflow]
+provider = "opencode"                              # the coder every research writing job runs on
+model = "opencode-go/muse-spark-1.3-contributor"   # its model; "" would mean the harness default
+planning_provider = "claude"   # the coder the discover and assign jobs run on
+planning_model = "opus"        # their model: planning needs the stronger searching model
+job_timeout_sec = 3600         # one writing job's own limit
+job_stall_sec = 600            # a job with no event for this long is killed
+planning_timeout_sec = 7200    # one planning job's own limit; discover searches the web and takes longer
+sources_at_once = 3            # child distill runs at the same time; each one spends several coder slots
+
 [fetch_activity]
 timeout_sec = 300   # start-to-close of the fetch: a few http calls (60 s each) or one cli call (180 s) with their retries
 max_attempts = 3    # tries of a transient fetch failure (network, a rate-limited tool) before the workflow fails
@@ -49,3 +59,12 @@ max_attempts = 3    # tries of a transient fetch failure (network, a rate-limite
 [verify_activity]
 timeout_sec = 30    # a walk over one entry folder
 max_attempts = 3    # tries before the workflow fails
+
+
+[locate_activity]
+timeout_sec = 30    # validating the topic and making the target folder
+max_attempts = 3    # tries before the workflow fails; a bad topic is final anyway
+
+[candidates_activity]
+timeout_sec = 30    # reading one JSON file the discover job wrote
+max_attempts = 3    # tries before the workflow fails; a missing file is final anyway
