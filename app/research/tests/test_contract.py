@@ -94,3 +94,14 @@ def test_a_discovered_file_reads_candidates_with_no_scores() -> None:
     (candidate,) = Discovered.model_validate_json(text).candidates
 
     assert candidate.status == Status.in_kb and candidate.scores is None
+
+
+def test_a_list_of_authors_is_joined_into_one_line() -> None:
+    text = (
+        '{"candidates": [{"url": "u", "title": "t", "kind": "paper", "authors": ["A", "B"], '
+        '"date": "2026-01-01", "venue": "v", "abstract": "x", "status": "candidate"}]}'
+    )
+
+    (candidate,) = Discovered.model_validate_json(text).candidates
+
+    assert candidate.authors == "A, B"

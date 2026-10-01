@@ -104,6 +104,14 @@ class Candidate(BaseModel):
     status: Status
     scores: Scores | None = Field(default=None, description="Empty until the judge answered.")
 
+    @field_validator("authors", mode="before")
+    @classmethod
+    def authors_as_one_line(cls, value: object) -> object:
+        """A list of names, as coders often write it, joined into `A, B, C`."""
+        if isinstance(value, list):
+            return ", ".join(str(name) for name in value)
+        return value
+
 
 class Discovered(BaseModel):
     """What the discover job writes to <target_dir>/candidates.json."""

@@ -68,7 +68,8 @@ row; anything dropped is not recorded further.
 ## 3. Write candidates
 
 Write `$target_dir/candidates.json` as `{"candidates": [...]}` with one object
-per surviving candidate: `url`, `title`, `kind`, `authors`, `date`, `venue`,
+per surviving candidate: `url`, `title`, `kind`, `authors` (one string,
+`A, B, C`), `date`, `venue`,
 `abstract`, `status` (`candidate` or `in_kb`), `origin` (the matched folder
 relative to the knowledge folder, or empty).
 
