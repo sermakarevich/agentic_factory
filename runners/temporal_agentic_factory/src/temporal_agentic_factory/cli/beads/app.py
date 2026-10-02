@@ -6,6 +6,7 @@ import typer
 from temporal_agentic_factory.cli.beads import database, forward, poller, submit, watcher
 
 beads_app = typer.Typer(
+    rich_markup_mode=None,  # help shows [table] names as typed, not as rich tags
     cls=forward.ForwardingGroup,
     no_args_is_help=True,
     help="Beads: submit beads to the database af owns, pull them as jobs."

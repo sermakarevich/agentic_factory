@@ -14,6 +14,7 @@ from temporal_agentic_factory.schedules import delete_schedule
 from temporal_agentic_factory.settings.load import settings
 
 cleaner_app = typer.Typer(
+    rich_markup_mode=None,  # help shows [table] names as typed, not as rich tags
     no_args_is_help=True,
     help="Cleaner: a schedule that deletes old closed runs by the per-type rules in its settings.",
 )

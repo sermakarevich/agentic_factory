@@ -18,7 +18,11 @@ from temporal_agentic_factory.runner import serve
 from temporal_agentic_factory.settings.load import settings
 from temporal_agentic_factory.workflows.job import search_attributes
 
-app = typer.Typer(no_args_is_help=True, help="af: agentic_factory on Temporal.")
+app = typer.Typer(
+    rich_markup_mode=None,  # help shows [table] names as typed, not as rich tags
+    no_args_is_help=True,
+    help="af: agentic_factory on Temporal.",
+)
 
 
 @app.command()

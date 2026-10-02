@@ -36,6 +36,7 @@ class WorkflowGroup(TyperGroup):
 
 
 run_app = typer.Typer(
+    rich_markup_mode=None,  # help shows [table] names as typed, not as rich tags
     cls=WorkflowGroup,
     no_args_is_help=True,
     help="Start a workflow: af run <workflow> <its arguments and options>.",

@@ -17,6 +17,7 @@ from temporal_agentic_factory.cli.errors import run_coro
 UNKNOWN = 2  # the exit code of a session with no schema saved; 1 is an invalid submission
 
 output_app = typer.Typer(
+    rich_markup_mode=None,  # help shows [table] names as typed, not as rich tags
     no_args_is_help=True,
     help="The result a coder submits for its job, its report and output: submit, schema, show.",
 )
