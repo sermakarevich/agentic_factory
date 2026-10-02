@@ -684,12 +684,14 @@ factory run research agents,safety \
 A topic becomes a tutorial in the vault at `knowledge/tutorials/<name>/`:
 numbered chapters (`NN_<slug>.md` and/or `.ipynb`), a runnable `project/`
 when the topic needs code, and an `index.md`; one line is added to
-`knowledge/tutorials/index.md`. Nothing is committed.
+`knowledge/tutorials/index.md`. Nothing is committed. `--root <path>` lands a
+run elsewhere, as `<root>/<name>/` with its line in `<root>/index.md`; left out,
+the root is `knowledge/tutorials` in the vault (`[tutorial] root`).
 
 The application half lives in `app/tutorial`, plain Python with no Temporal
 and no import from another app:
 
-- `contract.py`: `TutorialRequest` (topic, name, formats, level,
+- `contract.py`: `tutorials_dir()` (the default root), `TutorialRequest` (topic, name, root, formats, level,
   review_rounds, a `Coder` per role: designer, writer, reviewer; left-out
   fields come from settings), `TutorialPlan` and its `Chapter`s (number,
   slug, title, spec_path, formats, outputs), `Review` (passed, problems),
@@ -701,7 +703,7 @@ and no import from another app:
   writes, a missing `NN_<slug>.<format>` output).
 - `review.py`: `after_review(review, rewrites, review_rounds)`: done when it
   passed, rewrite while rounds are left, failed after.
-- `run.py`: where tutorials land (`tutorials_dir()`), `located_dir` (the
+- `run.py`: `located_dir` (the
   folder made with its `specs/`, refused when it holds files) and
   `Tutorial`, the state the workflow grows.
 - `prompts/`: one self-contained template per job (`name`, `design`,

@@ -4,7 +4,9 @@ outcome the workflow returns."""
 
 import re
 from enum import StrEnum
+from pathlib import Path
 
+from factory_settings import vault
 from pydantic import BaseModel, Field, field_validator
 
 from tutorial.settings.load import settings
@@ -26,6 +28,11 @@ def name_problem(name: str) -> str:
     return f"name must be lowercase letters, digits, '_' or '-', got {name!r}"
 
 
+def tutorials_dir() -> Path:
+    """<vault>/knowledge/tutorials: where tutorials land unless a run says otherwise."""
+    return vault.workdir() / settings.tutorial.root
+
+
 class Coder(BaseModel):
     """Who runs one role's jobs: the provider and its model."""
 
@@ -38,6 +45,10 @@ class TutorialRequest(BaseModel):
 
     topic: str = Field(description="What the tutorial teaches, in a sentence or a few words.")
     name: str = Field(default="", description="Folder name; empty = the one the designer picks.")
+    root: str = Field(
+        default_factory=lambda: str(tutorials_dir()),
+        description="Absolute tutorials folder this run lands under, as <root>/<name>.",
+    )
     formats: list[Format] = Field(
         default_factory=lambda: [Format(item) for item in settings.tutorial.formats],
         description="The chapter formats allowed; the designer picks per chapter.",
@@ -67,6 +78,12 @@ class TutorialRequest(BaseModel):
         if not topic.strip():
             raise ValueError("topic must be non-empty")
         return topic
+
+    @field_validator("root")
+    @classmethod
+    def root_is_absolute(cls, root: str) -> str:
+        """The root, `~` expanded, an absolute path."""
+        return vault.chosen_root(root)
 
     @field_validator("name")
     @classmethod

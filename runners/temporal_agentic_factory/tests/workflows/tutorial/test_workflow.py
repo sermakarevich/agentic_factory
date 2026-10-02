@@ -130,14 +130,16 @@ async def _run(request: TutorialRequest) -> TutorialOutcome:
 
 
 def _request(name: str = "grafana") -> TutorialRequest:
-    return TutorialRequest(topic="Grafana dashboards", name=name, review_rounds=2)
+    return TutorialRequest(
+        topic="Grafana dashboards", name=name, review_rounds=2, root="/kb/tutorials"
+    )
 
 
 async def test_a_chapter_that_keeps_failing_ends_failed_and_the_others_finish() -> None:
     result = await _run(_request())
 
     assert result.title == "Grafana" and result.index_path == INDEX_PATH
-    assert result.folder.endswith("/grafana") and located == [result.folder]
+    assert result.folder == "/kb/tutorials/grafana" and located == [result.folder]
     statuses = [(item.slug, item.status, item.rewrites) for item in result.chapters]
     assert statuses == [
         ("setup", ChapterStatus.done, 0),

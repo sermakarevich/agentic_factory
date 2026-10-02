@@ -168,7 +168,7 @@ workflow will order its steps. What it shares with distill lives down a
 layer: the vault's folders in `common/factory_settings`.
 
 **app/tutorial** owns the tutorial domain: how a topic becomes numbered
-chapters under `knowledge/tutorials/<name>/` (the request, the designer's
+chapters under `<root>/<name>/` (`--root`, default `knowledge/tutorials`) (the request, the designer's
 plan and its checks, the review rule, what each job is asked, where a
 tutorial lands). It holds no Temporal and no import from another app; the
 runner's tutorial workflow orders its jobs.

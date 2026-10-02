@@ -3,7 +3,6 @@ and the state the prompts read."""
 
 from pathlib import Path
 
-import factory_settings.vault
 import pytest
 
 from tutorial.contract import (
@@ -15,7 +14,7 @@ from tutorial.contract import (
     TutorialPlan,
     TutorialRequest,
 )
-from tutorial.run import Tutorial, located_dir, tutorials_dir
+from tutorial.run import Tutorial, located_dir
 
 CHAPTERS = [
     Chapter(
@@ -33,12 +32,6 @@ TUTORIAL = Tutorial(
     root="/kb/knowledge/tutorials",
     plan=TutorialPlan(title="DuckDB", project=True, chapters=CHAPTERS),
 )
-
-
-def test_tutorials_land_under_the_vault(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    monkeypatch.setattr(factory_settings.vault, "workdir", lambda: tmp_path)
-
-    assert tutorials_dir() == tmp_path / "knowledge" / "tutorials"
 
 
 def test_a_new_folder_is_made_with_its_specs(tmp_path: Path) -> None:

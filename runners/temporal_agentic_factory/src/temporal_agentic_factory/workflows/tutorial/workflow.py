@@ -29,7 +29,7 @@ with workflow.unsafe.imports_passed_through():
     from tutorial.plan import plan_problems
     from tutorial.prompts.prompt import prompt
     from tutorial.review import Next, after_review
-    from tutorial.run import Tutorial, tutorials_dir
+    from tutorial.run import Tutorial
     from tutorial.settings.load import settings as tutorial_settings
     from tutorial.settings.model import CoderSettings
 
@@ -55,7 +55,7 @@ class TutorialWorkflow:
 
     @workflow.run
     async def run(self, request: TutorialRequest) -> TutorialOutcome:
-        tutorial = Tutorial(request=request, root=str(tutorials_dir()))
+        tutorial = Tutorial(request=request, root=request.root)
         tutorial = await named(tutorial)
         tutorial = await located(tutorial)
         tutorial = await designed(tutorial)

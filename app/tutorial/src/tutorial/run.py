@@ -3,7 +3,6 @@ and the state the workflow grows as the jobs finish."""
 
 from pathlib import Path
 
-from factory_settings import vault
 from pydantic import BaseModel, Field
 
 from tutorial.contract import (
@@ -17,16 +16,10 @@ from tutorial.contract import (
     name_problem,
 )
 from tutorial.plan import SPECS
-from tutorial.settings.load import settings
 
 PROJECT = "project"  # the shared runnable project the designer scaffolds
 PLAN = "plan.md"  # the designer's plan of the whole tutorial
 INDEX = "index.md"  # the tutorial's own index, and the tutorials' index one level up
-
-
-def tutorials_dir() -> Path:
-    """<vault>/knowledge/tutorials: where every tutorial lands."""
-    return vault.workdir() / settings.tutorial.root
 
 
 def located_dir(folder: Path) -> Path:

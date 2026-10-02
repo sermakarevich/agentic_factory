@@ -9,7 +9,7 @@ from tutorial.settings.model import CoderSettings
 
 from temporal_agentic_factory.cli.errors import run_coro
 from temporal_agentic_factory.cli.ids import new_id
-from temporal_agentic_factory.cli.options import given, tool_list
+from temporal_agentic_factory.cli.options import absolute, given, tool_list
 from temporal_agentic_factory.cli.providers import refuse_unconfigured
 from temporal_agentic_factory.client import awaited, connect
 from temporal_agentic_factory.settings.load import settings
@@ -19,8 +19,10 @@ from temporal_agentic_factory.workflows.tutorial.workflow import TutorialWorkflo
 
 def tutorial(
     topic: Annotated[str, typer.Argument(help="what the tutorial teaches")],
-    name: Annotated[
-        str | None, typer.Option(help="folder under knowledge/tutorials/; empty = picked")
+    name: Annotated[str | None, typer.Option(help="folder under the root; empty = picked")] = None,
+    root: Annotated[
+        str | None,
+        typer.Option(help="tutorials folder for this run; default: knowledge/tutorials"),
     ] = None,
     formats: Annotated[str | None, typer.Option(help="comma-separated: md, ipynb")] = None,
     level: Annotated[str | None, typer.Option(help="beginner, intermediate or advanced")] = None,
@@ -44,15 +46,16 @@ def tutorial(
     ] = None,
 ) -> None:
     """Submit one topic to Temporal, written up as a tutorial in
-    knowledge/tutorials/<name>/. Waits and prints how each chapter ended as
-    JSON, or with --detach prints the workflow id. Options left out keep the
-    settings defaults. Refused when a role's provider has no providers
-    table in settings."""
+    <root>/<name>/ (root: knowledge/tutorials in the vault unless --root).
+    Waits and prints how each chapter ended as JSON, or with --detach
+    prints the workflow id. Options left out keep the settings defaults.
+    Refused when a role's provider has no providers table in settings."""
     request = TutorialRequest(
         topic=topic,
         **given(
             {
                 "name": name,
+                "root": absolute(root) if root else None,
                 "formats": tool_list(formats),
                 "level": level,
                 "review_rounds": review_rounds,

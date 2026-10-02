@@ -3,7 +3,7 @@ built from its options."""
 
 from typing import Any
 
-from tutorial.contract import Format, TutorialRequest
+from tutorial.contract import Format, TutorialRequest, tutorials_dir
 from tutorial.settings.load import settings as tutorial_settings
 from typer.testing import CliRunner
 
@@ -78,6 +78,7 @@ def test_options_left_out_keep_the_settings_defaults(monkeypatch: Any) -> None:
     assert result.exit_code == 0
     request = _request(client)
     assert request.name == ""
+    assert request.root == str(tutorials_dir())
     assert request.formats == [Format(item) for item in tutorial_settings.tutorial.formats]
     assert request.level == tutorial_settings.tutorial.level
     assert request.review_rounds == tutorial_settings.tutorial.review_rounds
@@ -96,6 +97,8 @@ def test_the_options_pass_through(monkeypatch: Any) -> None:
             "Grafana dashboards",
             "--name",
             "grafana",
+            "--root",
+            "/kb/elsewhere",
             "--formats",
             "ipynb",
             "--level",
@@ -116,6 +119,7 @@ def test_the_options_pass_through(monkeypatch: Any) -> None:
     request = _request(client)
     assert (request.name, request.formats, request.level) == ("grafana", [Format.ipynb], "advanced")
     assert request.review_rounds == 1
+    assert request.root == "/kb/elsewhere"
     assert (request.writer.provider, request.writer.model) == ("claude", "")
     assert request.reviewer.provider == tutorial_settings.reviewer.provider
     assert request.reviewer.model == "opus"

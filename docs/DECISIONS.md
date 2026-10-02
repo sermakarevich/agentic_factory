@@ -890,3 +890,7 @@ sources one module per kind** (Oct 1).
   the settings value read when the runner starts as the only root (one
   runner, one place for every run) and moving the job workdir with the root
   (the jobs read the rest of the knowledge base from the repo).
+- **A tutorial's root is chosen per run too** (Oct 2). `af run tutorial
+  --root <path>` lands it as `<root>/<name>/`, the same idea as research's
+  `--root`; left out, the vault's `knowledge/tutorials`. The jobs still run in
+  the vault.

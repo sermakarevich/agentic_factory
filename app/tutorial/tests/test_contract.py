@@ -1,10 +1,13 @@
 """A request names a topic, a folder name or none, the formats allowed and a
 known level, and takes its defaults from settings unless told."""
 
+from pathlib import Path
+
+import factory_settings.vault
 import pytest
 from pydantic import ValidationError
 
-from tutorial.contract import Coder, Format, TutorialRequest, name_problem
+from tutorial.contract import Coder, Format, TutorialRequest, name_problem, tutorials_dir
 from tutorial.settings.load import settings
 
 
@@ -67,3 +70,16 @@ def test_an_unknown_level_is_refused() -> None:
 def test_review_rounds_cannot_be_negative() -> None:
     with pytest.raises(ValidationError, match="review_rounds"):
         TutorialRequest(topic="t", review_rounds=-1)
+
+
+def test_tutorials_land_under_the_vault(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(factory_settings.vault, "workdir", lambda: tmp_path)
+
+    assert tutorials_dir() == tmp_path / "knowledge" / "tutorials"
+    assert TutorialRequest(topic="DuckDB").root == str(tmp_path / "knowledge" / "tutorials")
+
+
+def test_a_root_is_expanded_and_must_be_absolute() -> None:
+    assert TutorialRequest(topic="DuckDB", root="~/kb").root == str(Path("~/kb").expanduser())
+    with pytest.raises(ValidationError, match="absolute"):
+        TutorialRequest(topic="DuckDB", root="kb/tutorials")
