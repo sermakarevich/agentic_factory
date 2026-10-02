@@ -1,4 +1,7 @@
+from pathlib import Path
+
 import pytest
+from factory_settings import vault
 from pydantic import ValidationError
 
 from distill.contract import DistillRequest, EntryType, FetchedSource, SourceKind
@@ -18,6 +21,20 @@ def test_a_target_dir_alone_is_kept_as_given() -> None:
     assert DistillRequest(url="https://example.com/a", target_dir="/kb/notes/Paper").target_dir == (
         "/kb/notes/Paper"
     )
+
+
+def test_the_root_defaults_to_the_research_topics_setting() -> None:
+    assert DistillRequest(url="https://example.com/a").root == str(vault.research_topics_dir())
+
+
+def test_a_root_has_its_tilde_expanded() -> None:
+    request = DistillRequest(url="https://example.com/a", root="~/kb/topics")
+    assert request.root == str(Path("~/kb/topics").expanduser())
+
+
+def test_a_relative_root_is_refused() -> None:
+    with pytest.raises(ValidationError, match="absolute"):
+        DistillRequest(url="https://example.com/a", root="kb/topics")
 
 
 def _fetched(kind: SourceKind) -> FetchedSource:

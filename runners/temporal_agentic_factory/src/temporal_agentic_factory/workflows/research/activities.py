@@ -16,7 +16,7 @@ async def locate_target(request: ResearchRequest) -> str:
     """The topic checked as the child distill runs check it, then the run's
     folder made: its absolute path."""
     try:
-        validate_topic(request.topic)
+        validate_topic(request.topic, Path(request.root))
     except ValueError as error:
         raise ApplicationError(str(error), type="BadTopic", non_retryable=True) from error
     return str(ensured_target_dir(request))

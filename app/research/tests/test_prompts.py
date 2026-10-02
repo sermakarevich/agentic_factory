@@ -1,5 +1,7 @@
 """Every template renders from one run's state with no placeholder left."""
 
+from pathlib import Path
+
 import pytest
 
 from research.contract import (
@@ -117,3 +119,15 @@ def test_the_index_prompt_carries_the_ledger_and_the_topic_page() -> None:
 
     assert "| 1 | shortlist | survey | 0.9 | Alpha |  |" in text
     assert "kb-01" in text and "agents/agents.md" in text
+
+
+def test_the_prompts_point_at_the_root_the_run_chose(tmp_path: Path) -> None:
+    request = RESEARCH.request.model_copy(update={"root": str(tmp_path)})
+    research = RESEARCH.model_copy(update={"request": request})
+
+    discover = prompt("discover", research)
+    agreements = prompt("agreements", research)
+
+    assert f"`{tmp_path}/*/research/*/index.md`" in discover
+    assert f"`{tmp_path}/agents/<Name>/summary.md`" in agreements
+    assert f"{tmp_path}/agents/agents.md" in prompt("index", research)

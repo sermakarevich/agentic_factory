@@ -121,7 +121,7 @@ agentic_factory/
     factory_settings/       # the settings loader (dynaconf + pydantic) and the values every package shares
       pyproject.toml        # package `factory_settings`
       justfile
-      src/factory_settings/ # table.py (Table base), load.py (load), vault.py (knowledge-base folders), shared.py + settings.toml ([store] url, [vault] folders)
+      src/factory_settings/ # table.py (Table base), load.py (load), vault.py (knowledge-base folders, a root chosen per run), shared.py + settings.toml ([store] url, [vault] folders)
       tests/
     factory_store/          # the database: schema.py (tables, output_schema among them), store.py (async API), clean.py, migrations/ (alembic)
       pyproject.toml        # package `factory_store`

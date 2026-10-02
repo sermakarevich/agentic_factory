@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+
 from factory_settings import vault
 from factory_settings.shared import shared
 
@@ -25,3 +27,10 @@ def test_each_folder_is_absolute_with_tilde_expanded() -> None:
     for folder in folders.values():
         assert folder.is_absolute()
         assert "~" not in str(folder)
+
+
+def test_a_chosen_root_is_expanded_and_must_be_absolute() -> None:
+    assert vault.chosen_root("~/kb") == str(Path("~/kb").expanduser())
+    assert vault.chosen_root("/kb/topics") == "/kb/topics"
+    with pytest.raises(ValueError, match="absolute"):
+        vault.chosen_root("kb/topics")

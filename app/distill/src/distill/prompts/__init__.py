@@ -85,7 +85,7 @@ def _values(
         "research_target": request.research_target,
         "research": str(vault.research_dir()),
         "investment": str(vault.investment_dir()),
-        "topic_dir": str(vault.research_topics_dir() / request.topic),
+        "topic_dir": str(Path(request.root) / request.topic),
         "target_dir": request.target_dir,
         "pdf_mb": f"{settings.entry.pdf_copy_max_bytes / 1_000_000:g}",
         "min_bytes": settings.verify.min_bytes,

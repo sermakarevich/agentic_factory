@@ -880,3 +880,13 @@ sources one module per kind** (Oct 1).
   could not finish gets a report made by code (verdict `failed`). Rejected:
   keeping the LLM fallbacks (a second model call that can make up what the
   coder never said, and three ways out of a job to keep in step).
+- **A research run's root is chosen per run** (2026-10-02). A research run's
+  root is chosen per run (`--root`, default the [vault] research_topics
+  setting) and travels to its child distill runs; the job workdir stays the
+  KB repo. `ResearchRequest.root` and `DistillRequest.root` are absolute
+  (`~` expanded, by `vault.chosen_root`); the target dir, the topic page, the
+  prompts' `$research_topics_dir` and distill's `$topic_dir` are under it,
+  and `validate_topic(value, root)` takes the root as an argument. Rejected:
+  the settings value read when the runner starts as the only root (one
+  runner, one place for every run) and moving the job workdir with the root
+  (the jobs read the rest of the knowledge base from the repo).

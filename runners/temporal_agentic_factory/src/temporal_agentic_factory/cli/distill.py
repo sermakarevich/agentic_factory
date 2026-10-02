@@ -8,7 +8,7 @@ from temporalio.client import WorkflowHandle
 from distill.contract import DistillRequest
 from temporal_agentic_factory.cli.errors import run_coro
 from temporal_agentic_factory.cli.ids import new_id
-from temporal_agentic_factory.cli.options import absolute, given, source_url
+from temporal_agentic_factory.cli.options import ROOT_HELP, absolute, given, source_url
 from temporal_agentic_factory.cli.providers import refuse_unconfigured
 from temporal_agentic_factory.client import awaited, connect
 from temporal_agentic_factory.settings.load import settings
@@ -27,6 +27,7 @@ def distill(
     chunk_chars: Annotated[int | None, typer.Option(help="target characters per chunk")] = None,
     research_target: Annotated[str, typer.Option(help="free text as Research-Target line")] = "",
     target_dir: Annotated[str, typer.Option(help="folder the entry is written into as is")] = "",
+    root: Annotated[str | None, typer.Option(help=ROOT_HELP)] = None,
     detach: Annotated[bool, typer.Option("--detach", help="submit without waiting")] = False,
     workflow_id: Annotated[str | None, typer.Option(help="workflow id to start with")] = None,
 ) -> None:
@@ -38,7 +39,7 @@ def distill(
         topic=topic,
         research_target=research_target,
         target_dir=absolute(target_dir) if target_dir else "",
-        **given({"chunk_chars": chunk_chars}),
+        **given({"chunk_chars": chunk_chars, "root": absolute(root) if root else None}),
     )
     wid = new_id("distill", source_name(request.url), workflow_id)
     if detach:

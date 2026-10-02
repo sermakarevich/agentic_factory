@@ -191,7 +191,10 @@ async def distill_one(research: Research, source: PlannedSource) -> SourceOutcom
         filed = await workflow.execute_child_workflow(
             DistillWorkflow.run,
             DistillRequest(
-                url=source.url, topic=research.request.topic, research_target=research.target_dir
+                url=source.url,
+                topic=research.request.topic,
+                research_target=research.target_dir,
+                root=research.request.root,
             ),
             id=child_id(source.key),
             static_summary=f"{source.key}: {source.title}",

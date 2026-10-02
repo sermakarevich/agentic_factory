@@ -5,6 +5,7 @@ assign job states, and the result the workflow returns."""
 import re
 from enum import StrEnum
 
+from factory_settings import vault
 from pydantic import BaseModel, Field, field_validator
 
 from research.settings.load import settings
@@ -24,8 +25,12 @@ class ResearchRequest(BaseModel):
 
     topics: list[str] = Field(description="Sub-topic slugs the sources are assigned to.")
     focus: str = Field(description="What question the research must answer, for whom.")
-    target: str = Field(description="Folder slug under research_topics/<topic>/research/.")
+    target: str = Field(description="Folder slug under <root>/<topic>/research/.")
     topic: str = Field(description="snake_case research topic folder; must exist.")
+    root: str = Field(
+        default_factory=lambda: str(vault.research_topics_dir()),
+        description="Absolute research_topics root this run lands under.",
+    )
     n_sources: int = Field(
         default_factory=lambda: settings.research.n_sources,
         description="How many sources the shortlist holds.",
@@ -68,6 +73,12 @@ class ResearchRequest(BaseModel):
         if not TOPIC_PATTERN.match(topic):
             raise ValueError(f"topic must be snake_case, got {topic!r}")
         return topic
+
+    @field_validator("root")
+    @classmethod
+    def root_is_absolute(cls, root: str) -> str:
+        """The root, `~` expanded, an absolute path."""
+        return vault.chosen_root(root)
 
 
 class Status(StrEnum):

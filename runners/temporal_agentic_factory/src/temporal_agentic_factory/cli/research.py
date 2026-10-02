@@ -8,7 +8,7 @@ from research.contract import ResearchedTopic, ResearchRequest
 
 from temporal_agentic_factory.cli.errors import run_coro
 from temporal_agentic_factory.cli.ids import new_id
-from temporal_agentic_factory.cli.options import given, tool_list
+from temporal_agentic_factory.cli.options import ROOT_HELP, absolute, given, tool_list
 from temporal_agentic_factory.cli.providers import refuse_unconfigured
 from temporal_agentic_factory.client import awaited, connect
 from temporal_agentic_factory.settings.load import settings
@@ -19,9 +19,7 @@ from temporal_agentic_factory.workflows.research.workflow import ResearchWorkflo
 def research(
     topics: Annotated[str, typer.Argument(help="comma-separated sub-topic slugs")],
     focus: Annotated[str, typer.Option(help="what question the research must answer, for whom")],
-    target: Annotated[
-        str, typer.Option(help="folder slug under research_topics/<topic>/research/")
-    ],
+    target: Annotated[str, typer.Option(help="folder slug under <root>/<topic>/research/")],
     topic: Annotated[str, typer.Option(help="snake_case research topic folder; must exist")],
     n_sources: Annotated[
         int | None, typer.Option(help="how many sources the shortlist holds")
@@ -29,6 +27,7 @@ def research(
     lenses: Annotated[str | None, typer.Option(help="comma-separated audiences")] = None,
     date_from: Annotated[str | None, typer.Option(help="ignore sources older than this")] = None,
     kinds: Annotated[str | None, typer.Option(help="comma-separated kinds")] = None,
+    root: Annotated[str | None, typer.Option(help=ROOT_HELP)] = None,
     detach: Annotated[
         bool, typer.Option("--detach", help="submit and print the workflow id without waiting")
     ] = False,
@@ -54,6 +53,7 @@ def research(
                 "lenses": tool_list(lenses),
                 "date_from": date_from,
                 "kinds": tool_list(kinds),
+                "root": absolute(root) if root else None,
             }
         ),
     )

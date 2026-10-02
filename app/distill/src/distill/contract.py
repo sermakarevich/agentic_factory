@@ -1,6 +1,7 @@
 from enum import StrEnum
 
-from pydantic import BaseModel, Field, computed_field, model_validator
+from factory_settings import vault
+from pydantic import BaseModel, Field, computed_field, field_validator, model_validator
 
 from distill.settings.load import settings
 
@@ -25,6 +26,16 @@ class DistillRequest(BaseModel):
         description="Absolute folder the entry is written into as is; when empty the plan "
         "job derives research/<PascalName> or investment/<date>-<PascalName>.",
     )
+    root: str = Field(
+        default_factory=lambda: str(vault.research_topics_dir()),
+        description="Absolute research_topics root the topic folder is under.",
+    )
+
+    @field_validator("root")
+    @classmethod
+    def root_is_absolute(cls, root: str) -> str:
+        """The root, `~` expanded, an absolute path."""
+        return vault.chosen_root(root)
 
     @model_validator(mode="after")
     def target_dir_is_absolute_and_final(self) -> "DistillRequest":

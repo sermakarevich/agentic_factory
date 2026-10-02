@@ -1,7 +1,10 @@
 """A request names slugs for its folders, a question for its focus, and takes
 its counts from settings unless told."""
 
+from pathlib import Path
+
 import pytest
+from factory_settings import vault
 from pydantic import ValidationError
 
 from research.contract import Discovered, PlannedSource, ResearchPlan, ResearchRequest, Status
@@ -23,6 +26,19 @@ def test_counts_default_from_settings() -> None:
     request = _request()
     assert request.n_sources == settings.research.n_sources
     assert request.lenses == settings.research.lenses
+
+
+def test_the_root_defaults_to_the_research_topics_setting() -> None:
+    assert _request().root == str(vault.research_topics_dir())
+
+
+def test_a_root_has_its_tilde_expanded() -> None:
+    assert _request(root="~/kb/topics").root == str(Path("~/kb/topics").expanduser())
+
+
+def test_a_relative_root_is_refused() -> None:
+    with pytest.raises(ValidationError, match="absolute"):
+        _request(root="kb/topics")
 
 
 def test_an_empty_topics_list_is_refused() -> None:

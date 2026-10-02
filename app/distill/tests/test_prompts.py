@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 
 from distill.contract import DistillRequest, EntryPlan, EntryType, FetchedChunk, FetchedSource
@@ -90,6 +92,12 @@ def test_index_lists_the_verifier_problems_only_when_there_are_some() -> None:
     assert "Verifier problems" not in clean and "{id: original" in clean
     fixing = index_prompt(_entry("pdf"), ["verify: missing digest.md"])
     assert "## Verifier problems" in fixing and "- verify: missing digest.md" in fixing
+
+
+def test_file_moves_into_the_topic_under_the_root_asked_for(tmp_path: Path) -> None:
+    request = DistillRequest(url="https://example.com/paper", topic="agents", root=str(tmp_path))
+    text = page_prompt("file", _entry("pdf", request))
+    assert f'mv "/kb/research/Paper" "{tmp_path}/agents/<Name>/"' in text
 
 
 def test_file_moves_into_the_topic_without_asking() -> None:

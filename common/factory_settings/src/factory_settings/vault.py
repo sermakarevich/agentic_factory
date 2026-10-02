@@ -24,3 +24,11 @@ def investment_dir() -> Path:
 def research_topics_dir() -> Path:
     """One folder per topic; a filed entry moves under its topic."""
     return Path(shared.vault.research_topics).expanduser()
+
+
+def chosen_root(value: str) -> str:
+    """A research_topics root chosen for one run, `~` expanded; refused unless absolute."""
+    root = Path(value).expanduser()
+    if not root.is_absolute():
+        raise ValueError(f"root must be an absolute path, got {value!r}")
+    return str(root)

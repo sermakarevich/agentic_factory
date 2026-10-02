@@ -4,7 +4,6 @@ jobs finish, with the questions the prompts ask of it."""
 from pathlib import Path
 from typing import Any
 
-from factory_settings import vault
 from pydantic import BaseModel, Field
 
 from research.contract import (
@@ -21,8 +20,8 @@ from research.contract import (
 
 
 def target_dir(request: ResearchRequest) -> Path:
-    """research_topics/<topic>/research/<target>: the run's folder."""
-    return vault.research_topics_dir() / request.topic / "research" / request.target
+    """<root>/<topic>/research/<target>: the run's folder."""
+    return Path(request.root) / request.topic / "research" / request.target
 
 
 def ensured_target_dir(request: ResearchRequest) -> Path:
@@ -46,8 +45,8 @@ class Research(BaseModel):
 
     @property
     def topic_page(self) -> Path:
-        """research_topics/<topic>/<topic>.md: the page that registers the run."""
-        return vault.research_topics_dir() / self.request.topic / f"{self.request.topic}.md"
+        """<root>/<topic>/<topic>.md: the page that registers the run."""
+        return Path(self.request.root) / self.request.topic / f"{self.request.topic}.md"
 
     @property
     def source_count(self) -> int:

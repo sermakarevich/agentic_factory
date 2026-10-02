@@ -44,7 +44,7 @@ def values(
         "target_dir": research.target_dir,
         "research_dir": str(vault.research_dir()),
         "investment_dir": str(vault.investment_dir()),
-        "research_topics_dir": str(vault.research_topics_dir()),
+        "research_topics_dir": request.root,
         "topic_page": str(research.topic_page),
         "candidates_min": request.n_sources * per_source.candidates_per_source_min,
         "candidates_max": request.n_sources * per_source.candidates_per_source_max,

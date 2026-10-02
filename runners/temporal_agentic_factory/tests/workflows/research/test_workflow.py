@@ -169,6 +169,7 @@ class FakeDistillWorkflow:
 
     @workflow.run
     async def run(self, request: DistillRequest) -> DistilledEntry:
+        distill_roots[request.url] = request.root
         if "dead" in request.url:
             raise ApplicationError(DEAD_REASON, type="SourceError", non_retryable=True)
         return DistilledEntry(
@@ -190,11 +191,13 @@ class FakeDistillWorkflow:
 
 RESEARCH_ID = "research-agents-t1-1f2e"
 distill_names: dict[str, str | None] = {}  # child distill id -> its Name attribute
+distill_roots: dict[str, str] = {}  # child distill url -> the root its request carried
 
 
 async def _run(request: ResearchRequest):  # type: ignore[no-untyped-def]
     jobs.clear()
     distill_names.clear()
+    distill_roots.clear()
     env = await WorkflowEnvironment.start_time_skipping(data_converter=pydantic_data_converter)
     async with env:
         await search_attributes.add(
@@ -279,3 +282,10 @@ async def test_every_child_distill_is_named_by_its_url_tail() -> None:
 
     assert distill_names
     assert all(name == source_name(url) for url, name in distill_names.items())
+
+
+async def test_every_child_distill_gets_the_runs_root() -> None:
+    await _run(_request().model_copy(update={"root": "/kb/elsewhere"}))
+
+    assert sorted(distill_roots) == sorted(source.url for source in PLAN.fresh)
+    assert set(distill_roots.values()) == {"/kb/elsewhere"}

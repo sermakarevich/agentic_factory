@@ -7,6 +7,8 @@ from typing import Any
 
 from agentic_factory.job.submission.contract import Schema
 
+ROOT_HELP = "research_topics root for this run; default: the [vault] research_topics setting"
+
 
 def absolute(path: str) -> str:
     """The runner's cwd is not ours, so the job gets an absolute path."""

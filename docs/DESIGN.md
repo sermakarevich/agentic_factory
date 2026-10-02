@@ -529,7 +529,7 @@ logic:
   `verify_entry`: the app's check on a thread), `workflows/distill/workflow.py`
   (`DistillWorkflow`, type name `distill`) and the
   `cli/distill.py` command `factory run distill URL [--topic] [--chunk-chars] [--research-target]
-  [--target-dir]` command.
+  [--target-dir] [--root]` command.
 
 The workflow orders the app's steps: fetch (activity, under
 `<fetch.work_root>/<workflow id>`), plan (a job with structured output,
@@ -543,7 +543,11 @@ the entry under it and states the final path (`FiledEntry`). With a
 `target_dir` (CLI `--target-dir`, made absolute) the plan job skips the
 routing rules and writes the entry into that folder as is; the request
 refuses a target dir together with a topic, since the topic would move the
-entry away again. Every job
+entry away again. The topic is a folder under the request's `root` (`--root`,
+absolute, default the `[vault] research_topics` setting): the fetch checks it
+there (`validate_topic(topic, root)`, whose error names the root) and the file
+job moves the entry to `<root>/<topic>/<Name>/`; a run with no topic is
+unchanged, its research and investment folders stay the settings ones. Every job
 is built by `distill_job(name, prompt)`: the coder, model and limits of the
 runner's `distill_workflow` table, in the vault, named `plan`, `wiki/3`,
 `digest`, `index/2` and so on. A job that failed for
@@ -580,7 +584,13 @@ readable, all Temporal features, none of them history-changing:
 
 The second workflow with a chain of jobs, ported from fleet's research
 flow: a focus question becomes a folder of digests in the vault at
-`research_topics/<topic>/research/<target>/`.
+`<root>/<topic>/research/<target>/`. The root is the request's `root`
+(`--root`, `~` expanded, refused unless absolute); left out it is the
+`[vault] research_topics` setting, as read where the request is made. The
+run's folder, its topic page, the `$research_topics_dir` the prompts carry
+(discover's "already in the KB" globs, agreements, disagreements) and the
+topic check all use it, and every child distill run gets the same root.
+The jobs still run in the knowledge-base repo (`vault.workdir()`).
 
 It is split the same way distill is: the application half lives in
 `app/research`, plain Python with no Temporal and no import from
@@ -620,8 +630,8 @@ lives in the runner.
   function runs from a test with nothing else up.
 
 The runner half lives in `runners/temporal_agentic_factory/workflows/research/`:
-`activities.py` (`locate_target`: the topic checked as the child distill
-runs check it, then the run's folder made; `read_candidates`: the discover
+`activities.py` (`locate_target`: the topic checked under the run's root as
+the child distill runs check it, then the run's folder made; `read_candidates`: the discover
 file read back and validated), `workflow.py` (`ResearchWorkflow`, type name
 `research`); the `factory run research` command is `cli/research.py`. The workflow is a short
 story of one small function per stage over the app's `Research` state and
@@ -659,7 +669,7 @@ holds `sources_at_once`, and `[locate_activity]` and
 `[candidates_activity]` bound the two short activities.
 
 `factory run research TOPICS --focus FOCUS --target TARGET --topic TOPIC
-[--n-sources] [--lenses] [--date-from] [--kinds] [--detach]
+[--n-sources] [--lenses] [--date-from] [--kinds] [--root] [--detach]
 [--workflow-id]` starts one run and waits, printing the `ResearchedTopic`
 as JSON:
 

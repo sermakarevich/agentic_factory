@@ -18,7 +18,7 @@ NO_CONTENT = (
 
 def fetch_source(request: DistillRequest, work_dir: Path) -> FetchedSource:
     """The source behind the request, fetched and chunked under `work_dir`."""
-    topic = validate_topic(request.topic) if request.topic else ""
+    topic = validate_topic(request.topic, Path(request.root)) if request.topic else ""
     base = _made_dir(work_dir)
     source = fetch(request.url.strip(), base)
     fetched_at = datetime.now(UTC).isoformat()

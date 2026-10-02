@@ -4,9 +4,6 @@ carry, and the sub-topic slices."""
 from pathlib import Path
 from typing import Any
 
-import factory_settings.vault
-import pytest
-
 from research.contract import (
     Candidate,
     Lens,
@@ -58,18 +55,14 @@ def _research(**fields: Any) -> Research:
     return Research(request=REQUEST, target_dir="/kb/t", **fields)
 
 
-@pytest.fixture
-def vault_at(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
-    monkeypatch.setattr(factory_settings.vault, "research_topics_dir", lambda: tmp_path)
-    return tmp_path
+def test_the_run_lands_under_its_topic_in_the_root_asked_for(tmp_path: Path) -> None:
+    request = REQUEST.model_copy(update={"root": str(tmp_path)})
+    expected = tmp_path / "agents" / "research" / "first-pass"
 
-
-def test_the_run_lands_under_its_topic(vault_at: Path) -> None:
-    expected = vault_at / "agents" / "research" / "first-pass"
-
-    assert target_dir(REQUEST) == expected
-    assert ensured_target_dir(REQUEST) == expected and expected.is_dir()
-    assert _research().topic_page == vault_at / "agents" / "agents.md"
+    assert target_dir(request) == expected
+    assert ensured_target_dir(request) == expected and expected.is_dir()
+    research = Research(request=request, target_dir=str(expected))
+    assert research.topic_page == tmp_path / "agents" / "agents.md"
 
 
 def test_the_source_count_is_the_filed_and_the_linked() -> None:

@@ -1,8 +1,10 @@
 """The `research` command: submit and detach, and the request built
 from its options."""
 
+from pathlib import Path
 from typing import Any
 
+from factory_settings import vault
 from research.contract import ResearchRequest
 from research.settings.load import settings as research_settings
 from typer.testing import CliRunner
@@ -134,3 +136,18 @@ def test_n_sources_and_workflow_id_pass_through(monkeypatch: Any) -> None:
     assert result.exit_code == 0
     assert _request(client).n_sources == 4
     assert client.kwargs["id"] == "research-fixed"
+
+
+def test_the_root_defaults_to_the_setting_and_root_reaches_the_request(
+    monkeypatch: Any, tmp_path: Path
+) -> None:
+    client = _client(monkeypatch)
+    base = ["run", "research", "agents", "--focus", "Q?", "--target", "t1", "--topic", "agents"]
+
+    assert CliRunner().invoke(app, [*base, "--detach"]).exit_code == 0
+    assert _request(client).root == str(vault.research_topics_dir())
+
+    result = CliRunner().invoke(app, [*base, "--root", str(tmp_path), "--detach"])
+
+    assert result.exit_code == 0
+    assert _request(client).root == str(tmp_path.resolve())

@@ -2,43 +2,35 @@
 once, a good topic makes the run's folder."""
 
 from pathlib import Path
-from typing import Any
 
-import factory_settings.vault
 import pytest
 from research.contract import ResearchRequest
 from temporalio.exceptions import ApplicationError
 from temporalio.testing import ActivityEnvironment
 
-import distill.topics
 from temporal_agentic_factory.workflows.research.activities import locate_target, read_candidates
 
 
-def _request(topic: str) -> ResearchRequest:
-    return ResearchRequest(topics=["agents"], focus="What can agents do?", target="t1", topic=topic)
+def _request(topic: str, root: Path) -> ResearchRequest:
+    return ResearchRequest(
+        topics=["agents"], focus="What can agents do?", target="t1", topic=topic, root=str(root)
+    )
 
 
-def _topics_at(monkeypatch: Any, folder: Path) -> None:
-    """Both topic readers point at `folder`: the check and the folder made."""
-    monkeypatch.setattr(distill.topics, "research_topics_dir", lambda: folder)
-    monkeypatch.setattr(factory_settings.vault, "research_topics_dir", lambda: folder)
-
-
-async def test_a_bad_topic_is_final(monkeypatch: Any, tmp_path: Path) -> None:
-    _topics_at(monkeypatch, tmp_path)
+async def test_a_bad_topic_is_final_and_names_the_root(tmp_path: Path) -> None:
     (tmp_path / "agents").mkdir()
 
     with pytest.raises(ApplicationError) as err:
-        await ActivityEnvironment().run(locate_target, _request("nope"))
+        await ActivityEnvironment().run(locate_target, _request("nope", tmp_path))
 
     assert err.value.non_retryable
+    assert f"under {tmp_path}/" in err.value.message
 
 
-async def test_a_good_topic_makes_the_target_folder(monkeypatch: Any, tmp_path: Path) -> None:
-    _topics_at(monkeypatch, tmp_path)
+async def test_a_good_topic_makes_the_target_folder(tmp_path: Path) -> None:
     (tmp_path / "agents").mkdir()
 
-    found = await ActivityEnvironment().run(locate_target, _request("agents"))
+    found = await ActivityEnvironment().run(locate_target, _request("agents", tmp_path))
 
     assert found == str(tmp_path / "agents" / "research" / "t1")
     assert Path(found).is_dir()

@@ -5,7 +5,6 @@ from pathlib import Path
 
 import pytest
 
-from distill import topics
 from distill.contract import DistillRequest, EntryType
 from distill.fetch import fetch_source
 from distill.sources import SourceError
@@ -45,13 +44,13 @@ def test_local_md_gives_the_manifest_and_the_files(tmp_path: Path) -> None:
     assert f"Source: {src}" in header and "Kind: article" in header
 
 
-def test_the_provenance_header_records_topic_and_target(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_the_provenance_header_records_topic_and_target(tmp_path: Path) -> None:
     (tmp_path / "topics" / "widgets").mkdir(parents=True)
-    monkeypatch.setattr(topics, "research_topics_dir", lambda: tmp_path / "topics")
     request = DistillRequest(
-        url=str(_source_md(tmp_path / "notes.md")), topic="widgets", research_target="spin"
+        url=str(_source_md(tmp_path / "notes.md")),
+        topic="widgets",
+        research_target="spin",
+        root=str(tmp_path / "topics"),
     )
 
     fetch_source(request, tmp_path / "work")
@@ -67,11 +66,12 @@ def test_a_missing_file_is_a_permanent_source_error(tmp_path: Path) -> None:
     assert caught.value.transient is False
 
 
-def test_an_unknown_topic_is_refused_before_any_fetch(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    monkeypatch.setattr(topics, "research_topics_dir", lambda: tmp_path / "topics")
-    request = DistillRequest(url=str(_source_md(tmp_path / "notes.md")), topic="not_a_topic")
+def test_an_unknown_topic_is_refused_before_any_fetch(tmp_path: Path) -> None:
+    request = DistillRequest(
+        url=str(_source_md(tmp_path / "notes.md")),
+        topic="not_a_topic",
+        root=str(tmp_path / "topics"),
+    )
     with pytest.raises(ValueError, match="not_a_topic"):
         fetch_source(request, tmp_path / "work")
     assert not (tmp_path / "work").exists()
