@@ -6,7 +6,7 @@
 [tutorial]
 root = "knowledge/tutorials"                         # where tutorials land, relative to the vault's workdir
 levels = ["beginner", "intermediate", "advanced"]    # the reader levels a request may name
-level = "beginner"                                   # the reader level when the request names none
+level = "intermediate"                               # the reader level when the request names none
 formats = ["md", "ipynb"]                            # the chapter formats allowed when the request names none
 review_rounds = 2                                    # rewrite rounds a failing chapter gets before it is marked failed
 rules = "skills/tutorial/rules.md"                   # the KB rules of how to teach a beginner, relative to the vault's workdir

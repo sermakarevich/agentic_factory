@@ -922,3 +922,6 @@ sources one module per kind** (Oct 1).
   is a wrap-up (beyond the tutorial, summary, FAQ, one-change exercises).
   Rejected: only naming the file (a coder may skip it) and pasting it whole
   (its rebuild parts would mislead a writer of a new notebook).
+- **Tutorials default to the intermediate reader** (Oct 3). `[tutorial] level`
+  is `intermediate`; `--level beginner` or `advanced` still picks per run.
+  Most tutorials are written for readers who know the basics.
