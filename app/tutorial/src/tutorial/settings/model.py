@@ -7,7 +7,9 @@ class TutorialSettings(Table):
     level: str
     formats: list[str]
     review_rounds: int
+    rules: str
     style_example: str
+    teaching_example: str
     notebook_command: str
     naming_timeout_sec: int
     finish_timeout_sec: int

@@ -4,6 +4,8 @@ from collections.abc import Sequence
 from pathlib import Path
 from string import Template
 
+from factory_settings import vault
+
 from tutorial.contract import Chapter, ChapterOutcome
 from tutorial.plan import SPECS
 from tutorial.run import INDEX, PLAN, PROJECT, Tutorial
@@ -26,7 +28,8 @@ def values(
     tutorial: Tutorial, chapter: Chapter | None = None, problems: Sequence[str] = ()
 ) -> dict[str, object]:
     """Every variable any template names, every path absolute: the jobs
-    never see this repo, only what their prompt says."""
+    never see this repo, only what their prompt says. The rules and the
+    examples are in the vault, whatever root the run lands under."""
     request = tutorial.request
     return {
         "topic": request.topic,
@@ -40,7 +43,9 @@ def values(
         "plan_path": str(tutorial.path_of(PLAN)),
         "index_path": str(tutorial.path_of(INDEX)),
         "tutorials_index": str(tutorial.tutorials_index),
-        "style_example": str(Path(tutorial.root) / settings.tutorial.style_example),
+        "rules": str(vault.workdir() / settings.tutorial.rules),
+        "style_example": str(vault.workdir() / settings.tutorial.style_example),
+        "teaching_example": str(vault.workdir() / settings.tutorial.teaching_example),
         "notebook_command": settings.tutorial.notebook_command,
         "house_style": _rendered(FOLDER, HOUSE_STYLE, {}),
         "title": tutorial.plan.title,

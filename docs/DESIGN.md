@@ -709,9 +709,39 @@ and no import from another app:
 - `prompts/`: one self-contained template per job (`name`, `design`,
   `write`, `rewrite`, `review`, `finish`) with `house_style.md` pasted in;
   every path in them is absolute.
-- `settings.toml`: root, levels, formats, review rounds, the style example
-  tutorial, the notebook command, the naming and finish timeouts, and one
-  table per role (provider, model, timeout, stall).
+- `settings.toml`: root, levels, formats, review rounds, the rules file and
+  the two examples, the notebook command, the naming and finish timeouts,
+  and one table per role (provider, model, timeout, stall).
+
+How to teach is not in this repo. The rules live in the knowledge base,
+`skills/tutorial/rules.md` in the vault (`[tutorial] rules`), and are edited
+only there; the design, write, rewrite, review and finish prompts name that
+file as an absolute path (`$rules`) and say to read it first and follow it
+(the reviewer checks against it). `house_style.md` keeps only how the files
+look: folder layout, headings, `project/`, real output under what is shown,
+notebooks that run, secrets, fixed settings, diagrams and tables. Two
+read-only models sit in the vault too: `style_example`
+(`knowledge/tutorials/grafana`, folder layout and house style) and
+`teaching_example` (a notebook built by the rules, how to teach). The rules
+and both examples are joined to the vault's workdir, never to the run's
+root, so `--root` does not move them.
+
+The writers run at the same time and each sees only the plan and its own
+spec, so the designer decides everything they share: the levels tree (level
+0 the big picture, each lower level zooming into one piece and answering
+one question), the ONE running example (data and task, concrete enough
+that every writer builds the same thing; its data and helpers scaffolded
+in `project/`), the terms, and per chapter what it introduces and what it
+may assume. Chapter 00 is the quick grasp plus the whole thing running once
+at the smallest size. Each spec carries its place in the tree, the ideas it
+introduces in order (simple, medium, complex), the critical points to mark
+and the 2-4 ideas to carry forward. The reviewer adds teaching checks to
+the structure ones (used before explained, more than one new thing per
+step, callouts, results interpreted, limits, the running example, the
+carry-forward ideas); the finish job checks the running example and terms
+across chapters and opens the index with the quick grasp. The structured
+plan the workflow parses is unchanged: all of this is in `plan.md` and the
+specs.
 
 The runner half lives in `runners/temporal_agentic_factory/workflows/tutorial/`:
 `activities.py` (`locate_tutorial`, bounded by `[tutorial_locate_activity]`)

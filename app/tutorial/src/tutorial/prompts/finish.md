@@ -6,6 +6,8 @@ Tutorial folder: `$folder`
 Shared project: `$project_dir`
 The plan: `$plan_path`
 
+How to teach: read the rules file `$rules` first; the chapters follow it.
+
 $house_style
 
 A finished tutorial to read as a model of that style: `$style_example`.
@@ -16,12 +18,14 @@ $status_table
 
 1. Read the plan and every chapter. Make one pass for consistency and
    gaps across chapters: the same names, ports and versions everywhere,
-   links between chapters that resolve, nothing a later chapter uses that
-   no earlier one introduced. Fix only small things (a wrong name, a broken
+   the plan's running example and the same terms in every chapter, links
+   between chapters that resolve, nothing a later chapter uses that no
+   earlier one introduced. Fix only small things (a wrong name, a broken
    link, a missing sentence); never rewrite a chapter, and never touch the
    files of a failed chapter beyond a link.
-2. Write `$index_path`: a `# <Title>` heading, what the tutorial is and who
-   it is for, in simple language, then `Retrieve chapters with
+2. Write `$index_path`: a `# <Title>` heading, then the quick grasp (what
+   the topic is, what problem it solves, how it works in 3 to 5 steps, when
+   to use it) and who the tutorial is for, in simple language, then `Retrieve chapters with
    `ai show tutorials/$name/<chapter>`.`; a `## Chapters (read in order)`
    list with one line per chapter (a link to its file and what it covers);
    a chapter that failed its review is flagged `**(failed review: <its

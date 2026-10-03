@@ -1,4 +1,5 @@
-House style of the knowledge-base tutorials (follow it exactly):
+House style of the knowledge-base tutorials (follow it exactly; how to teach is
+in the rules file, this is only how the files look):
 
 - One folder per tutorial: numbered chapters `00_<slug>.md` / `00_<slug>.ipynb`,
   `01_<slug>...` in reading order, an `index.md`, and a runnable `project/`
@@ -6,12 +7,11 @@ House style of the knowledge-base tutorials (follow it exactly):
   with a `pyproject.toml`, Python under `project/src/<package>/` with one
   module per concern, `tests/`, and a `justfile` whose recipes run every
   step: `just` lists them).
-- Simple language: the reader is not a domain expert. Explain every term
-  and abbreviation the first time it appears, in plain words, before using it.
 - A chapter opens with `# NN — <Title>`, then a **What you will learn**
-  list of 3 to 6 bullets, then sections that go from why to how.
-- Hands-on: every claim is shown with code the reader runs and the real
-  output it printed (paste what actually came out, never invented output).
+  list of 3 to 6 bullets.
+- Code is shown only where it helps understand the idea (the rules decide
+  where). Every command or cell that is shown is run, with the real output
+  it printed under it (paste what actually came out, never invented output).
   Commands are run from the tutorial's `project/` folder.
 - Small diagrams as ```mermaid blocks where a flow or a structure is easier
   seen than read; tables for settings, options and comparisons.
@@ -24,4 +24,4 @@ House style of the knowledge-base tutorials (follow it exactly):
   locally) are chosen once, listed in `index.md` and never changed by a
   chapter. Prefer unusual host ports so nothing clashes with other local
   services.
-- End a chapter with a short recap and what the next chapter builds on it.
+- End a chapter with the 2-4 ideas to carry forward (see the rules).

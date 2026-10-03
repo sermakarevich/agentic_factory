@@ -3,7 +3,11 @@ You are reviewing chapter $number of a hands-on tutorial in the knowledge base.
 Tutorial: $title ($topic), for a $level reader.
 Tutorial folder: `$folder`
 Shared project: `$project_dir`
+The plan of the whole tutorial: `$plan_path`
 The chapter's spec (what it must deliver): `$spec_path`
+
+How to teach: read the rules file `$rules` first and check the chapter
+against it; the house style below is only how the files look.
 
 $house_style
 
@@ -17,12 +21,23 @@ Check, and run, do not trust:
    goal, what the reader learns, the files to produce, the code to run, the
    checks and the done criteria.
 2. It follows the house style above: the `# NN — <Title>` heading and the
-   **What you will learn** list, simple language with every term explained,
-   real output under every command.
+   **What you will learn** list, real output under every command or cell
+   shown, the project layout.
 3. Run the code the chapter shows, from `$project_dir`. Execute every
    notebook end to end with `$notebook_command <notebook>`; one that fails
    is a problem, quote the error.
 4. The chapter's files match the spec; nothing it claims is invented.
+5. It teaches by the rules and the spec. Each of these is a problem:
+   - something used before it is explained, in this chapter or an earlier
+     one per the plan;
+   - a step that adds more than one new thing;
+   - a critical point not in the rules' callout format (**Important:** /
+     **What it means for us:** / **Why it matters:**), or a callout on
+     something that is not critical;
+   - a result or a number left uninterpreted;
+   - a tool, method or metric introduced without its limits;
+   - the plan's running example not used (another example in its place);
+   - no closing 2 to 4 ideas to carry forward.
 
 Do not fix anything and do not edit any file (refreshing a notebook's
 outputs by running it in place is fine). Do not run git.

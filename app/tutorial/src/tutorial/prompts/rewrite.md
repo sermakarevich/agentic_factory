@@ -7,7 +7,14 @@ Shared project: `$project_dir`
 The plan of the whole tutorial: `$plan_path`
 Your chapter's spec: `$spec_path`
 
+How to teach: read the rules file `$rules` first and follow it. It decides
+how the chapter explains things; the house style below decides only how
+the files look.
+
 $house_style
+
+A notebook built by the rules, the model of how to teach (never edit it):
+`$teaching_example`.
 
 The chapter's files (fix them in place; create any that is missing):
 
@@ -28,6 +35,12 @@ $others
 
 - Never edit the plan or the specs under `$specs_dir`, and do not write
   `index.md`.
+- Keep teaching by the rules and the spec's teaching points: the plan's
+  running example, nothing used before it is explained, one new thing per
+  step, helper code in `$project_dir` modules with short cells calling
+  clearly named functions, every result interpreted, critical points in the
+  rules' callout format (**Important:** / **What it means for us:** /
+  **Why it matters:**), and the 2 to 4 ideas to carry forward at the end.
 - Run every command and every piece of code the chapter shows, from
   `$project_dir`, and paste the real output.
 - A notebook must execute end to end: run `$notebook_command <notebook>`

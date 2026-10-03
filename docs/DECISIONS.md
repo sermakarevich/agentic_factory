@@ -894,3 +894,18 @@ sources one module per kind** (Oct 1).
   --root <path>` lands it as `<root>/<name>/`, the same idea as research's
   `--root`; left out, the vault's `knowledge/tutorials`. The jobs still run in
   the vault.
+- **Tutorials teach by the KB rules file** (2026-10-03). Tutorials teach by
+  the KB rules file (`skills/tutorial/rules.md`, `[tutorial] rules`), read
+  from the vault at run time: one source, edited in the KB, not copied into
+  the public repo; the prompts name it by absolute path and `house_style.md`
+  keeps only structure and format (where they clashed, "every claim shown
+  with code" against "code only where it helps", the rules win). The
+  designer fixes the running example and the levels tree, and what each
+  chapter introduces and may assume, because writers run in parallel and
+  see only the plan and their spec. The style and teaching examples are
+  vault-relative, so `--root` does not move them (before, `style_example`
+  was joined to the run's root and pointed nowhere under a custom one).
+  Rejected: pasting the rules into the prompts (two copies drift, and the
+  repo is public) and new plan fields for the tree or the example (the
+  writers read them from `plan.md` and the specs; the workflow never needs
+  them).
