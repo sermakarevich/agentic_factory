@@ -28,8 +28,8 @@ def values(
     tutorial: Tutorial, chapter: Chapter | None = None, problems: Sequence[str] = ()
 ) -> dict[str, object]:
     """Every variable any template names, every path absolute: the jobs
-    never see this repo, only what their prompt says. The rules and the
-    examples are in the vault, whatever root the run lands under."""
+    never see this repo, only what their prompt says. The rules, the
+    notebook recipe and the examples are in the vault, whatever root the run lands under."""
     request = tutorial.request
     return {
         "topic": request.topic,
@@ -44,9 +44,10 @@ def values(
         "index_path": str(tutorial.path_of(INDEX)),
         "tutorials_index": str(tutorial.tutorials_index),
         "rules": str(vault.workdir() / settings.tutorial.rules),
+        "notebook": str(vault.workdir() / settings.tutorial.notebook),
         "style_example": str(vault.workdir() / settings.tutorial.style_example),
         "teaching_example": str(vault.workdir() / settings.tutorial.teaching_example),
-        "notebook_command": settings.tutorial.notebook_command,
+        "notebook_command": _notebook_command(),
         "house_style": _rendered(FOLDER, HOUSE_STYLE, {}),
         "title": tutorial.plan.title,
         "status_table": _status_table(tutorial.chapters),
@@ -56,6 +57,12 @@ def values(
         "others": _bullets(tutorial, tutorial.others_of(chapter) if chapter else []),
         "problems": "\n".join(f"- {problem}" for problem in problems) or "- (none)",
     }
+
+
+def _notebook_command() -> str:
+    """The command that runs a notebook end to end, each cell bounded by the timeout."""
+    cfg = settings.tutorial
+    return f"{cfg.notebook_command} --ExecutePreprocessor.timeout={cfg.notebook_cell_timeout_sec}"
 
 
 def _bullets(tutorial: Tutorial, paths: list[str]) -> str:

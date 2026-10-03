@@ -22,11 +22,13 @@ def test_toml_defaults_are_typed() -> None:
 def test_the_rules_and_examples_are_vault_relative_paths() -> None:
     cfg = settings.tutorial
     assert cfg.rules == "skills/tutorial/rules.md"
+    assert cfg.notebook == "skills/tutorial/notebook.md"
     assert cfg.style_example == "knowledge/tutorials/grafana"
     assert isinstance(cfg.teaching_example, str)
     assert cfg.teaching_example.endswith("/evals_primer.ipynb")
     assert not any(
-        path.startswith("/") for path in (cfg.rules, cfg.style_example, cfg.teaching_example)
+        path.startswith("/")
+        for path in (cfg.rules, cfg.notebook, cfg.style_example, cfg.teaching_example)
     )
 
 
@@ -43,3 +45,11 @@ def test_every_role_has_a_coder_and_limits() -> None:
         assert role.stall_sec > 0
     assert settings.tutorial.naming_timeout_sec > 0
     assert settings.tutorial.finish_timeout_sec > 0
+
+
+def test_a_notebook_cell_times_out_before_the_job_stalls() -> None:
+    timeout = settings.tutorial.notebook_cell_timeout_sec
+    assert isinstance(timeout, int)
+    assert timeout == 600
+    assert settings.writer.stall_sec > timeout
+    assert settings.reviewer.stall_sec > timeout

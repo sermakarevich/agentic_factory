@@ -52,6 +52,31 @@ $others
 - Run every command and every piece of code the chapter shows, from
   `$project_dir`, and paste the real output. Code that does not run is a
   bug in the chapter: fix it.
+- Every number the prose states matches an output the chapter shows (to
+  the decimals shown), checked after the final run, md chapters included;
+  where two results disagree, say why. Claim only the provenance the data
+  has: labels a model made are not "human labels" (call them reference
+  grades and say in one sentence how they were made).
+- A notebook chapter (an `.ipynb` above) follows the KB notebook recipe
+  `$notebook`: its parts "Hide plumbing in the helper module", "Build the
+  notebook with a script, not by hand", "Execute in place and prove it"
+  and the checks of "Validate: run it and check it". Its inventory, report
+  and backup parts are for rebuilding an old notebook and do not apply.
+  The must-haves:
+  - the first code cell is the setup cell: it finds the project root from
+    any working directory (the folder holding `pyproject.toml`: the current
+    one, its `project/`, then its parents), puts the root's `src/` on
+    `sys.path`, imports the helper module and `importlib.reload`s it (a
+    kernel started earlier holds the old copy otherwise);
+  - build the notebook with an `nbformat` script kept in a temp dir outside
+    the tutorial folder, never by hand-editing the JSON: change the script,
+    rebuild, execute;
+  - a cell that may fall back (offline, a saved copy, a cache) prints which
+    path ran (the helper returns it, e.g. "live" or "saved copy"); a live
+    result that disagrees with a saved one is shown and explained;
+  - smoke-test every helper (`uv run python -c ...`), add a test under
+    `project/tests/` (named for this chapter) for each helper whose number
+    the prose relies on, and run `uv run pytest` until it passes.
 - A notebook must execute end to end: run
   `$notebook_command <notebook>` (from `$project_dir`, the way the
   project runs things) until it passes with no error, and leave the

@@ -7,7 +7,8 @@ The plan of the whole tutorial: `$plan_path`
 The chapter's spec (what it must deliver): `$spec_path`
 
 How to teach: read the rules file `$rules` first and check the chapter
-against it; the house style below is only how the files look.
+against it; the house style below is only how the files look. A notebook
+is built and checked by the KB notebook recipe `$notebook`.
 
 $house_style
 
@@ -38,6 +39,18 @@ Check, and run, do not trust:
    - a tool, method or metric introduced without its limits;
    - the plan's running example not used (another example in its place);
    - no closing 2 to 4 ideas to carry forward.
+6. It tells the truth, in md chapters too. Each of these is a problem:
+   - a number in the prose that no output shows, or shows with another
+     value (read the outputs after your own run);
+   - a provenance claim the data does not support (e.g. "human labels"
+     that a model made);
+   - a fallback that hides which path ran, or a live and a saved result
+     that contradict each other with no word on why;
+   - a notebook whose first code cell is not the setup cell (project root
+     found from any working directory, the helper module
+     `importlib.reload`ed);
+   - a helper that computes a number the prose relies on with no test
+     under `$project_dir/tests/`.
 
 Do not fix anything and do not edit any file (refreshing a notebook's
 outputs by running it in place is fine). Do not run git.

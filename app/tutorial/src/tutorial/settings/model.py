@@ -8,9 +8,11 @@ class TutorialSettings(Table):
     formats: list[str]
     review_rounds: int
     rules: str
+    notebook: str
     style_example: str
     teaching_example: str
     notebook_command: str
+    notebook_cell_timeout_sec: int
     naming_timeout_sec: int
     finish_timeout_sec: int
 

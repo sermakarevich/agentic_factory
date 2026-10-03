@@ -11,8 +11,10 @@ formats = ["md", "ipynb"]                            # the chapter formats allow
 review_rounds = 2                                    # rewrite rounds a failing chapter gets before it is marked failed
 rules = "skills/tutorial/rules.md"                   # the KB rules of how to teach a beginner, relative to the vault's workdir
 style_example = "knowledge/tutorials/grafana"        # a finished tutorial, relative to the vault: the model of folder layout and house style
+notebook = "skills/tutorial/notebook.md"             # the KB recipe of how to build and check a notebook, relative to the vault's workdir
 teaching_example = "knowledge/research_topics/evaluation_and_benchmarks/tutorials/evals/project/notebooks/evals_primer.ipynb"  # a notebook built by the rules, relative to the vault: the model of how to teach
 notebook_command = "uv run jupyter nbconvert --to notebook --execute --inplace"  # how a notebook is run end to end
+notebook_cell_timeout_sec = 600                      # one notebook cell's limit in that run; keep it below the writer's and reviewer's stall_sec
 naming_timeout_sec = 900                             # the naming job's own limit (designer coder): pick a folder name
 finish_timeout_sec = 3600                            # the finish job's own limit (designer coder): consistency pass and index
 

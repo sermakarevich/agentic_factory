@@ -52,9 +52,9 @@ agentic_factory/
       src/tutorial/         # contract (request, plan, review, outcomes), plan (plan checks), review
                             # (the rewrite-or-not rule), run (the state, where a tutorial lands, the folder made)
         prompts/              # flat .md templates, one per job, house_style pasted into each (the KB
-                              # rules file named by its vault path), and prompt.py
-        settings/             # root, levels, formats, review rounds, rules and examples (vault-relative),
-                              # timeouts, one table per role
+                              # rules file and notebook recipe named by vault path), and prompt.py
+        settings/             # root, levels, formats, review rounds, rules, notebook recipe and examples
+                              # (vault-relative), timeouts (notebook cell too), one table per role
       tests/                  # contract, plan, review, run, prompts, settings
     autocode/               # the application behind the autocode workflow: a feature spec into tested, committed code
       pyproject.toml        # package `autocode`; depends on factory_settings

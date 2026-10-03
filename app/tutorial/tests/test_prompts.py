@@ -154,3 +154,55 @@ def test_the_house_style_leaves_teaching_to_the_rules() -> None:
     assert "the 2-4 ideas to carry forward (see the rules)" in text
     assert "every claim is shown with code" not in text
     assert "short recap" not in text
+
+
+@pytest.mark.parametrize("name", ["write", "rewrite", "review"])
+def test_notebook_jobs_name_the_notebook_recipe_in_the_vault(name: str, vault_dir: Path) -> None:
+    elsewhere = TUTORIAL.model_copy(update={"root": "/elsewhere/tutorials"})
+
+    assert f"`{vault_dir}/skills/tutorial/notebook.md`" in prompt(name, elsewhere, CHAPTER)
+
+
+@pytest.mark.parametrize("name", ["write", "rewrite"])
+def test_the_writers_get_the_notebook_must_haves(name: str) -> None:
+    text = prompt(name, TUTORIAL, CHAPTER, problems=["x"])
+
+    assert '"Build the\n  notebook with a script, not by hand"' in text
+    assert "inventory, report\n  and backup parts" in text
+    assert "the setup cell" in text
+    assert "`importlib.reload`s it" in text
+    assert "`nbformat` script" in text
+    assert "Every number the prose states matches an output" in text
+    assert '"human labels"' in text
+    assert "prints which\n    path ran" in text
+    assert "`project/tests/`" in text
+
+
+def test_the_reviewer_checks_the_truth_of_the_chapter() -> None:
+    text = prompt("review", TUTORIAL, CHAPTER)
+
+    assert "a number in the prose that no output shows" in text
+    assert "a provenance claim the data does not support" in text
+    assert "a fallback that hides which path ran" in text
+    assert "not the setup cell" in text
+    assert "with no test" in text
+
+
+@pytest.mark.parametrize("name", ["write", "rewrite", "review"])
+def test_every_notebook_run_has_a_cell_timeout(name: str) -> None:
+    text = prompt(name, TUTORIAL, CHAPTER)
+
+    assert "--execute --inplace --ExecutePreprocessor.timeout=600 <notebook>" in text
+
+
+def test_the_designer_plans_a_wrap_up_and_the_setup_cell_marker() -> None:
+    text = prompt("design", TUTORIAL)
+
+    assert "The last chapter is the\n   wrap-up" in text
+    assert '"questions you may still have" FAQ' in text
+    assert "exercises that each change one\n   thing" in text
+    assert "the marker a notebook's setup\n   cell walks up to" in text
+
+
+def test_the_index_lists_the_wrap_up_chapter() -> None:
+    assert "the closing wrap-up chapter included" in prompt("finish", TUTORIAL)

@@ -40,7 +40,11 @@ the outline: order the chapters for understanding, as the rules say. Then:
      `project/` is laid out.
    Chapter 00 is the quick grasp (what it is, what problem it solves, how
    it works in 3 to 5 steps, when to use it) plus the whole thing running
-   once, end to end, at the smallest size.
+   once, end to end, at the smallest size. The last chapter is the
+   wrap-up: a map of what the full topic covers beyond the tutorial, a
+   short summary, a "questions you may still have" FAQ (the questions a
+   reader is likely left with), and a few exercises that each change one
+   thing.
 2. Write one spec per chapter at `$specs_dir/NN_<slug>.md` (`NN` from `00`).
    Each spec is all a writer will know, so make it complete:
    - its place in the levels tree, in one line (which piece it zooms into,
@@ -64,8 +68,11 @@ the outline: order the chapters for understanding, as the rules say. Then:
    `docker-compose.yml` when services are needed, `.env.template`,
    `.gitignore`, the package folder under `src/` and `tests/`, and the
    running example's data and the helpers that load it, so every writer
-   uses the same. Run `uv sync` (and `docker compose config` when there is
-   a compose file) so the scaffold is known to work. Writers may add files
+   uses the same. `pyproject.toml` is also the marker a notebook's setup
+   cell walks up to when it looks for the project root, and `tests/` is
+   where writers add the tests of their helpers. Run `uv sync` (and
+   `docker compose config` when there is a compose file) so the scaffold
+   is known to work. Writers may add files
    under `project/` but never edit yours, so put everything shared here.
 
 Pick the formats per chapter from the allowed ones: md for reading and

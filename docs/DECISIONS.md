@@ -909,3 +909,16 @@ sources one module per kind** (Oct 1).
   repo is public) and new plan fields for the tree or the example (the
   writers read them from `plan.md` and the specs; the workflow never needs
   them).
+- **Notebook chapters follow the KB notebook recipe** (2026-10-03). Notebook
+  chapters follow the KB notebook recipe (`skills/tutorial/notebook.md`,
+  `[tutorial] notebook`), named by path, its must-haves spelled out in the
+  prompts (setup cell finding the root from any cwd and reloading the helper
+  module, an `nbformat` build script in a temp dir, numbers matching outputs,
+  honest provenance, visible fallbacks, helper tests); the rebuild-only parts
+  (inventory, report, backup) left out. The reviewer checks numbers against
+  outputs, provenance, fallbacks and the setup cell. A per-cell execution
+  timeout (`notebook_cell_timeout_sec`, 600) is rendered into the notebook
+  command, below the writer's and reviewer's `stall_sec`. The last chapter
+  is a wrap-up (beyond the tutorial, summary, FAQ, one-change exercises).
+  Rejected: only naming the file (a coder may skip it) and pasting it whole
+  (its rebuild parts would mislead a writer of a new notebook).

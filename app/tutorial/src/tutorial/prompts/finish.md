@@ -27,7 +27,8 @@ $status_table
    the topic is, what problem it solves, how it works in 3 to 5 steps, when
    to use it) and who the tutorial is for, in simple language, then `Retrieve chapters with
    `ai show tutorials/$name/<chapter>`.`; a `## Chapters (read in order)`
-   list with one line per chapter (a link to its file and what it covers);
+   list with one line per chapter (a link to its file and what it covers),
+   the closing wrap-up chapter included like any other;
    a chapter that failed its review is flagged `**(failed review: <its
    problems in one line>)**` on its line; a `## Runnable project` section
    saying how to run `project/` when there is one (`cd project && just ...`);

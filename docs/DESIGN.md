@@ -709,8 +709,9 @@ and no import from another app:
 - `prompts/`: one self-contained template per job (`name`, `design`,
   `write`, `rewrite`, `review`, `finish`) with `house_style.md` pasted in;
   every path in them is absolute.
-- `settings.toml`: root, levels, formats, review rounds, the rules file and
-  the two examples, the notebook command, the naming and finish timeouts,
+- `settings.toml`: root, levels, formats, review rounds, the rules file, the
+  notebook recipe and the two examples, the notebook command and its per-cell
+  timeout, the naming and finish timeouts,
   and one table per role (provider, model, timeout, stall).
 
 How to teach is not in this repo. The rules live in the knowledge base,
@@ -742,6 +743,29 @@ carry-forward ideas); the finish job checks the running example and terms
 across chapters and opens the index with the quick grasp. The structured
 plan the workflow parses is unchanged: all of this is in `plan.md` and the
 specs.
+
+Notebook chapters follow the KB notebook recipe, `skills/tutorial/notebook.md`
+in the vault (`[tutorial] notebook`, `$notebook`), named by absolute path in
+the write, rewrite and review prompts. Only its parts for building a new
+notebook apply (hide plumbing in the helper module, build with a script,
+execute in place and prove it, the checks of validate); its inventory, report
+and backup parts are for rebuilding an old notebook and are left out. The
+writer prompts spell out the must-haves rather than trust the coder to read
+the file: a setup cell that finds the project root (the `pyproject.toml` the
+designer scaffolds) from any working directory and `importlib.reload`s the
+helper module; the notebook built by an `nbformat` script kept in a temp dir
+outside the tutorial; every number in the prose matching an output after the
+final run and honest provenance (md chapters too); a fallback printing which
+path ran; helpers smoke-tested, with a test in `project/tests/` for each
+helper whose number the prose relies on. The reviewer checks the same: a
+number no output shows, an unsupported provenance claim, a hidden fallback or
+silent contradiction, a missing setup cell, a helper number with no test.
+Every notebook run gets `--ExecutePreprocessor.timeout=<notebook_cell_timeout_sec>`
+(600) appended to `notebook_command`, below the writer's and reviewer's
+`stall_sec` (900). The last chapter the designer plans is a wrap-up: what the
+full topic covers beyond the tutorial, a short summary, a "questions you may
+still have" FAQ and a few one-change exercises; the index lists it like any
+other chapter.
 
 The runner half lives in `runners/temporal_agentic_factory/workflows/tutorial/`:
 `activities.py` (`locate_tutorial`, bounded by `[tutorial_locate_activity]`)
